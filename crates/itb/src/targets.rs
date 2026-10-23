@@ -10,7 +10,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IngressKind {
     /// `tpuQuic` is on the validator's own gossip IP.

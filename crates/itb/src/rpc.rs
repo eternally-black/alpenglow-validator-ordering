@@ -300,6 +300,15 @@ impl Rpc {
         Ok(out)
     }
 
+    /// Fee charged to a landed transaction (`meta.fee`), or `None` if the RPC does not have it yet.
+    pub async fn transaction_fee(&self, signature: &str) -> Result<Option<u64>> {
+        let v = self
+            .call("getTransaction", json!([signature, {"encoding": "json", "commitment": "confirmed",
+                                                       "maxSupportedTransactionVersion": 1}]))
+            .await?;
+        Ok(v["meta"]["fee"].as_u64())
+    }
+
     pub async fn minimum_balance_for_rent_exemption(&self, size: usize) -> Result<u64> {
         self.call_as("getMinimumBalanceForRentExemption", json!([size])).await
     }

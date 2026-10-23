@@ -1,0 +1,41 @@
+# Single Compose file for the project (PLAN.md §5). Services are grouped by profile; the default
+# profile (offline reproduction) and the verify / dryrun / live profiles are added later.
+#
+# localnet: a throwaway single-node Solana cluster (solana-test-validator, Agave v4.3.2) for
+# integration tests. Fresh ledger on every start. See docker/LOCALNET.md.
+#
+#   docker compose --profile localnet up -d --build --wait localnet
+#   docker compose --profile localnet down -v
+
+services:
+  localnet:
+    profiles: ["localnet"]
+    build:
+      context: docker
+      dockerfile: localnet.Dockerfile
+    image: itb-localnet:4.3.2
+    # The entrypoint binds the validator to this container's IP on the compose network, so the
+    # tpuQuic/gossip addresses in getClusterNodes are reachable from other services here
+    # (also by name: localnet:8899, localnet:8002). `command:` appends solana-test-validator flags.
+    # --alpenglow activates Alpenglow (SIMD-0326) at genesis, as on mainnet since epoch 1064;
+    # without it the test validator deactivates that feature and runs TowerBFT.
+    command: ["--alpenglow"]
+    ports:
+      # Published on the host's loopback only; the faucet (9900) and gossip stay internal.
+      - "127.0.0.1:8899:8899/tcp" # JSON-RPC
+      - "127.0.0.1:8900:8900/tcp" # RPC PubSub (WebSocket)
+      - "127.0.0.1:8002:8002/udp" # TPU QUIC (fixed by --dynamic-port-range 8000-8030)
+    volumes:
+      - /ledger # anonymous volume; the validator also runs with --reset
+    # Agave 4.x hard-requires io_uring on Linux (it panics with "assertion failed:
+    # io_uring_supported()" while preparing the accounts dirs), and Docker's default seccomp
+    # profile blocks io_uring_setup/enter/register. Acceptable for this throwaway local node only.
+    security_opt:
+      - seccomp=unconfined
+    healthcheck:
+      test: ["CMD", "solana", "--url", "http://127.0.0.1:8899", "cluster-version"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    stop_grace_period: 10s
