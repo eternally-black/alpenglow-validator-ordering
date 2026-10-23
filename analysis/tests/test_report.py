@@ -56,9 +56,25 @@ def test_published_claims_carry_every_withdrawal():
     v = {"diagnosis": {"verdict": "cu_price"}, "gates": {"key_conclusions_withdrawn": False}, "confirmatory": True}
     assert published_claim(v, controls_failed=False, is_control=False) == "cu_price"
     assert published_claim(v, controls_failed=True, is_control=False) == "withdrawn: positive control failed"
-    assert published_claim(v, controls_failed=True, is_control=True) == "cu_price"
+    assert published_claim(v, controls_failed=True, is_control=True) == "control failed: cu_price"
     assert published_claim(v | {"confirmatory": False}, False, False) == "exploratory: cu_price"
     broken = v | {"gates": {"key_conclusions_withdrawn": True}}
     assert published_claim(broken, False, False) == "withdrawn: buffer assumption broken"
     fragile = v | {"diagnosis": {"verdict": "cu_price", "selection_robust": False}}
     assert published_claim(fragile, False, False) == "cu_price (assumes selection)"
+
+
+
+def test_a_mixture_with_key_effects_only_in_streaming_windows_is_withdrawn():
+    # DeepSeek review #5
+    by_regime = {"buffered": {"label": NULL, "order": NULL}, "streaming": {"label": STRONG, "order": NULL}}
+    g = _regime_gates("direct", by_regime, "mixed:fifo+cu_price")
+    assert g["key_conclusions_withdrawn"] and g["withdrawal_reason"] == "key component only in streaming windows"
+
+
+def test_a_failed_control_does_not_publish_its_raw_verdict():
+    # DeepSeek review #6
+    from itb_analysis.report import published_claim
+
+    v = {"diagnosis": {"verdict": "none"}, "gates": {}, "confirmatory": True}
+    assert published_claim(v, controls_failed=True, is_control=True) == "control failed: none"

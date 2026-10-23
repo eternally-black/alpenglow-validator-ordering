@@ -168,7 +168,7 @@ def test_a_mode_switching_leader_is_partial_not_the_rule():
     pairs = _window_pairs(lambda c, w, xs: RC_PRED[c] if w < 24 else xs, 40)
     eff = stats.validator_effects(pairs, n_draws=1_000)
     assert eff["rules"]["reward_cost"]["status"] == "SUPPORTED"
-    assert eff["strictness"]["reward_cost"]["lower95"] < stats.STRICT_MAJORITY
+    assert eff["diagnosis"]["governed_share_lower95"] < stats.STRICT_MAJORITY
     assert eff["diagnosis"]["verdict"] == "partial:reward_cost"
     strict = stats.validator_effects(_window_pairs(lambda c, w, xs: RC_PRED[c], 40), n_draws=1_000)
     assert strict["diagnosis"]["verdict"] == "reward_cost" and strict["diagnosis"]["selection_robust"] is True
@@ -189,3 +189,27 @@ def test_balanced_double_loss_is_flagged_as_not_selection_robust():
     assert eff["diagnosis"]["selection_robust"] is False
     b = eff["selection_bounds"]["c1"]
     assert (b["complete"], b["neither_landed"]) == (40, 40) and b["L_lo"].estimate == 0.5
+
+
+def test_the_majority_split_does_not_starve_when_no_window_is_complete_in_every_contrast():
+    # DeepSeek review #7: at low landing almost no window has all three contrasts complete. Each contrast here is
+    # observed in a different third of the windows, always reward/cost's way: the rule is clear and must not be
+    # downgraded (a positive control would otherwise fail the §9 gate and withdraw everything).
+    idx = {"c1": 0, "c2": 1, "c3": 2}
+    pairs = _window_pairs(lambda c, w, xs: RC_PRED[c] if w % 3 == idx[c] else None, 48)
+    eff = stats.validator_effects(pairs, n_draws=1_000)
+    assert eff["strictness"]["reward_cost"]["windows"] == 0
+    assert eff["diagnosis"]["verdict"] == "reward_cost"
+    assert eff["diagnosis"]["governed_share_lower95"] > stats.STRICT_MAJORITY
+
+
+def test_a_mixture_is_never_selection_robust():
+    # DeepSeek review #4: the economic component of mixed:fifo+R cannot be bounded from complete-case windows.
+    pairs = _pairs(lambda c, xs, rng: xs if rng.random() < 0.5 else RC_PRED[c], n=200)
+    eff = stats.validator_effects(pairs, n_draws=2_000)
+    if eff["diagnosis"]["verdict"].startswith("mixed:"):
+        assert eff["diagnosis"]["selection_robust"] is False
+    d = stats.diagnosis(eff["rules"] | {"fifo": {"status": "SUPPORTED"}}, {r: {"consistent": r == "reward_cost",
+                        "p_holm": 0.0} for r in stats.ECONOMIC_RULES}, eff["label"], None, eff["strictness"],
+                        eff["selection_bounds"], eff["order"])
+    assert d["verdict"] == "mixed:fifo+reward_cost" and d["selection_robust"] is False

@@ -87,18 +87,20 @@ Settings: 100,000 seeded draws, Holm over the fixed family of 36 (missing effect
 
 | Verdict | Condition |
 |---|---|
-| **R** | exactly one economic rule R is SUPPORTED/CONFIRMED, and it governs the majority of complete windows: its window-level strictness has a one-sided 95 % lower bound above 0.5 |
-| **partial:R** | R is SUPPORTED/CONFIRMED, but that strictness bound is ≤ 0.5. R's key is visible, but other windows follow something else (a mode-switching leader, say) |
-| **fifo** / **partial:fifo** | FIFO is SUPPORTED, the mixture diagnostic names nothing; same strictness split |
-| **mixed:fifo+R** | FIFO is SUPPORTED and the mixture diagnostic names exactly one R |
+| **R** | exactly one economic rule R is SUPPORTED/CONFIRMED, and it provably governs the majority of windows: governed share > 0.5 (below) |
+| **partial:R** | R is SUPPORTED/CONFIRMED, but its governed share is ≤ 0.5. R's key is visible, but other windows follow something else (a mode-switching leader, say) |
+| **fifo** / **partial:fifo** | FIFO is SUPPORTED, the mixture diagnostic names nothing; same split, on the send-order coding |
+| **mixed:fifo+R** | FIFO is SUPPORTED and the mixture diagnostic names exactly one R. Never selection-robust: the economic component cannot be bounded from complete-case windows |
 | **unidentified** | no rule is SUPPORTED, but random is REJECTED (systematic, not one of ours) |
 | **none** | no rule SUPPORTED and random not rejected (no rule detectable at our power) |
 | **unidentified:selection** | the selection check (§1) failed; overrides every other verdict |
 
+**Governed share.** If R governs a share s of windows and the others order its pairs label-blind, R's preferred member wins each of R's directional contrasts with probability L = (1 + s)/2. The one-sided 95 % Clopper–Pearson lower bound of L therefore bounds s ≥ 2·L_lower − 1. The governed share is the minimum of that bound over R's directional predictions. It uses the label coding for an economic rule and the send-order coding for FIFO, and every complete pair of each contrast. No window has to be complete in all three contrasts, so the split does not starve at low landing rates. It can only weaken a claim, never create one. Its level is nominal: it is applied after the rule test on the same windows.
+
 Every rule verdict carries `selection_robust` (§1). The **published claim** is the verdict after the §9 gates and the "(assumes selection)" qualifier. Groups outside the frozen confirmatory group are prefixed "exploratory:". REPORT.md and every summary print the published claim.
 
 **Secondary diagnostics** (outside the 36-effect family; reported with their own Holm correction):
-- **Strictness** of rule R, computed at the window level over **complete** windows (every contrast carrying one of R's directional predictions observed there): the share in which *all* of them held. One Bernoulli trial per window, with a one-sided 95 % Clopper–Pearson lower bound; incomplete windows are counted, not scored. For FIFO: complete windows where the first-sent member won in every contrast. The bound also decides R vs partial:R (above).
+- **Strictness** of rule R (descriptive), computed at the window level over **complete** windows: windows where every contrast carrying one of R's directional predictions was observed. It is the share of those windows in which *all* of R's predictions held: one Bernoulli trial per window, with a one-sided 95 % Clopper–Pearson lower bound. Incomplete windows are counted, not scored. `lower95_worst` counts them as failures, which is strictness without the selection assumption. For FIFO: complete windows where the first-sent member won in every contrast.
 - **Mixture diagnostic.** Per window, d_w = (share of R's directional contrasts won by R's preferred member) − 0.5.
   - A sign-flip randomisation test over windows tests whether a key-dependent component exists.
   - The test is valid because, under any label-blind mechanism (arrival order plus label-blind noise), d_w is symmetric about 0.
@@ -161,7 +163,8 @@ Every rule verdict carries `selection_robust` (§1). The **published claim** is 
 |---|---|
 | A positive control (the frozen direct-ingress Agave and Firedancer core targets) does not end with the final verdict **reward_cost** in its frozen group (after the selection check and the strictness split) | The method failed on a known rule. The report states it, and the published claims of every other group are withdrawn (`closed_source_conclusions_withdrawn`). |
 | O_C confirmed "first" on direct ingress in the buffered regime, for a key verdict (R or partial:R) | The buffered probes did not compete on their key (they did not coexist in the queue): that group's claim is withdrawn (`gates.buffer_assumption_broken`, `key_conclusions_withdrawn`). For an arrival-order verdict this is exactly what FIFO predicts and withdraws nothing. |
-| Label effects only in streaming windows | The ordering happens upstream of the regime we thought we controlled; reported as such (`gates.label_effects_streaming_only`). |
+| Label effects only in streaming windows | The ordering happens upstream of the regime we thought we controlled; reported as such (`gates.label_effects_streaming_only`). A `mixed:fifo+R` claim is withdrawn in that case: its key component appears only when the probes do not coexist. |
+| A positive control fails | Besides the withdrawal above, the control's own claim is published as "control failed: …", never as a finding about that validator. |
 | Selection check fails | `unidentified:selection` for that validator. |
 
 ## Deviations

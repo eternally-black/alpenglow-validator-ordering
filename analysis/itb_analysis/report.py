@@ -153,15 +153,22 @@ def _regime_gates(ingress: str, by_regime: dict[str, dict], verdict: str) -> dic
     - buffer_assumption_broken: on direct ingress, some order effect is confirmed "first" in the buffered regime. For a
       key verdict that means the buffered probes did not compete on their key (they did not coexist in the queue), so
       the key conclusion is withdrawn. For an arrival-order verdict it is what FIFO predicts and withdraws nothing.
-    - label_effects_streaming_only: label effects appear in streaming windows but in no buffered one."""
+    - label_effects_streaming_only: label effects appear in streaming windows but in no buffered one. For a mixture
+      (`mixed:fifo+R`) that means the key component appears only when probes do not coexist in the queue, so the
+      mixture claim is withdrawn; otherwise it is reported."""
     def any_effect(effs: dict) -> bool:
         return any(e.n and (e.interval[0] > 0.5 or e.interval[1] < 0.5) for e in effs.values())
 
     buf, stream = by_regime.get("buffered"), by_regime.get("streaming")
     broken = any(e.verdict("first") == "confirmed" for e in buf["order"].values()) if ingress == "direct" and buf else None
     streaming_only = any_effect(stream["label"]) and not any_effect(buf["label"]) if buf and stream else None
+    reason = None
+    if broken and verdict in KEY_VERDICTS:
+        reason = "buffer assumption broken"
+    elif streaming_only and verdict.startswith("mixed:"):
+        reason = "key component only in streaming windows"
     return {"buffer_assumption_broken": broken, "label_effects_streaming_only": streaming_only,
-            "key_conclusions_withdrawn": bool(broken) and verdict in KEY_VERDICTS}
+            "key_conclusions_withdrawn": reason is not None, "withdrawal_reason": reason}
 
 
 #: Qualifier of a rule claim that does not survive the worst-case selection bounds (PREREGISTRATION §1).
@@ -172,9 +179,11 @@ def published_claim(v: dict, controls_failed: bool, is_control: bool) -> str:
     """The claim a group's verdict supports after every gate (PREREGISTRATION §1, §9)."""
     verdict = v["diagnosis"]["verdict"]
     if v["gates"].get("key_conclusions_withdrawn"):
-        return "withdrawn: buffer assumption broken"
+        return f"withdrawn: {v['gates'].get('withdrawal_reason') or 'buffer assumption broken'}"
     if controls_failed and not is_control:
         return "withdrawn: positive control failed"
+    if controls_failed and is_control and verdict != "reward_cost":
+        return f"control failed: {verdict}"
     if v["diagnosis"].get("selection_robust") is False:
         verdict += ASSUMES_SELECTION
     if not v["confirmatory"]:

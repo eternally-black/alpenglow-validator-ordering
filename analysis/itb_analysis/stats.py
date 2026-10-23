@@ -205,7 +205,7 @@ def validator_effects(pairs: pd.DataFrame, alpha_adj: float | None = None, n_dra
     out["selection"] = selection_balance(pairs, estimand)
     out["selection_bounds"] = selection_bounds(pairs, alpha_adj)
     out["diagnosis"] = diagnosis(out["rules"], out["mixture"], out["label"], out["selection"], out["strictness"],
-                                 out["selection_bounds"])
+                                 out["selection_bounds"], out["order"])
     return out
 
 
@@ -304,8 +304,11 @@ def strictness(pairs: pd.DataFrame, rule: str, estimand: str = "cc") -> dict:
     per_window = hits.groupby(["run_id", "seq"]).agg(n=("hit", "size"), all_hit=("hit", "min"))
     complete = per_window[per_window["n"] == len(needed)]
     k, n = int(complete["all_hit"].sum()), int(len(complete))
-    return {"windows_all_agree": k, "windows": n, "windows_incomplete": int(len(per_window) - n),
-            "rate": k / n if n else float("nan"), "lower95": one_sided_lower(k, n)}
+    incomplete = int(len(per_window) - n)
+    # `lower95_worst` counts every incomplete window as a failure: what strictness is without the selection assumption.
+    return {"windows_all_agree": k, "windows": n, "windows_incomplete": incomplete,
+            "rate": k / n if n else float("nan"), "lower95": one_sided_lower(k, n),
+            "lower95_worst": one_sided_lower(k, n + incomplete)}
 
 
 def mixture_diagnostic(pairs: pd.DataFrame, estimand: str = "cc", n_draws: int = 20_000, seed: int = 0) -> dict:
@@ -349,24 +352,44 @@ def mixture_diagnostic(pairs: pd.DataFrame, estimand: str = "cc", n_draws: int =
     return res
 
 
-#: A detected rule is reported as the validator's rule only if it provably governs the majority of complete windows.
+#: A detected rule is reported as the validator's rule only if it provably governs the majority of windows.
 STRICT_MAJORITY = 0.5
 
 
+def governed_share_lower(rule: str, label: dict[str, Effect], order: dict[str, Effect], alpha: float = 0.05) -> float:
+    """One-sided (1 − alpha) lower bound on the share s of windows that `rule` governs, if the other windows order its
+    pairs label-blind: a contrast is then won by the rule's preferred member with probability L = (1 + s) / 2, so
+    s ≥ 2·L_lower − 1. The bound is the minimum over the rule's directional predictions (label coding for a key rule,
+    send-order coding for FIFO). Each contrast uses all of its complete pairs — no window has to be complete in every
+    contrast, so the bound does not starve when landing rates are low."""
+    bounds = []
+    for c in CONTRASTS:
+        for coding, preds, effs in (("label", RULES[rule]["label"], label), ("order", RULES[rule]["order"], order)):
+            p, e = preds[c], effs[c]
+            if p not in ("x", "y", "first"):
+                continue
+            k = e.k if p in ("x", "first") else e.n - e.k  # wins of the rule's preferred member
+            bounds.append(2 * one_sided_lower(k, e.n, alpha) - 1)
+    return max(min(bounds), 0.0) if bounds else 0.0
+
+
 def diagnosis(rules: dict[str, dict], mixture: dict, label: dict[str, Effect], selection: dict | None = None,
-              strict: dict | None = None, bounds: dict | None = None) -> dict:
+              strict: dict | None = None, bounds: dict | None = None, order: dict[str, Effect] | None = None) -> dict:
     """One-line verdict per validator (PREREGISTRATION §4). Secondary diagnostics never resurrect a rule that the
     confirmatory contrasts rejected, except to describe a mixture with arrival order. A failed selection check
     overrides everything: the analysed subset is not assignment-invariant.
 
-    A SUPPORTED/CONFIRMED rule R becomes the verdict `R` only if its window-level strictness lower bound exceeds 0.5
-    (it governs most windows); otherwise the verdict is `partial:R` (R's key is visible, but other windows follow
-    something else — a mode-switching leader, say). Every rule verdict carries `selection_robust`: whether it survives
-    the worst-case selection bounds."""
-    def out(verdict: str, rule: str | None = None, component: str | None = None) -> dict:
-        robust = selection_robust(rule, bounds) if rule and bounds else None
+    A SUPPORTED/CONFIRMED rule R becomes the verdict `R` only if it provably governs the majority of windows
+    (`governed_share_lower` > 0.5); otherwise the verdict is `partial:R` (R's key is visible, but other windows follow
+    something else — a mode-switching leader, say). This split can only weaken a claim. Every rule verdict carries
+    `selection_robust`: whether it survives the worst-case selection bounds; a mixture's economic component cannot be
+    bounded that way, so a mixture is never selection-robust."""
+    def out(verdict: str, rule: str | None = None, component: str | None = None, robust: bool | None = None,
+            share: float | None = None) -> dict:
+        if robust is None and rule and bounds:
+            robust = selection_robust(rule, bounds)
         s = strict.get(rule) if rule and strict else None
-        return {"verdict": verdict, "component": component, "selection_robust": robust,
+        return {"verdict": verdict, "component": component, "selection_robust": robust, "governed_share_lower95": share,
                 "strictness_lower95": s["lower95"] if s else None}
 
     if selection and any(v["flag"] for v in selection.values()):
@@ -375,18 +398,19 @@ def diagnosis(rules: dict[str, dict], mixture: dict, label: dict[str, Effect], s
     if len(supported) > 1:
         return out("ambiguous:" + ",".join(sorted(supported)))
 
-    def strict_or_partial(r: str) -> str:
-        if strict is None or r not in strict:
-            return r
-        return r if strict[r]["lower95"] > STRICT_MAJORITY else f"partial:{r}"
+    def split(r: str) -> dict:
+        if order is None:
+            return out(r, r)
+        share = governed_share_lower(r, label, order)
+        return out(r if share > STRICT_MAJORITY else f"partial:{r}", r, share=share)
 
     if supported == ["fifo"]:
         named = [r for r in ECONOMIC_RULES if mixture[r]["consistent"] and mixture[r]["p_holm"] < FAMILY_ALPHA]
         if len(named) == 1:
-            return out(f"mixed:fifo+{named[0]}", "fifo", named[0])
-        return out(strict_or_partial("fifo"), "fifo")
+            return out(f"mixed:fifo+{named[0]}", "fifo", named[0], robust=False if bounds else None)
+        return split("fifo")
     if supported:
-        return out(strict_or_partial(supported[0]), supported[0])
+        return split(supported[0])
     if rules["random"]["status"] == "REJECTED":
         return out("unidentified")
     return out("none")
