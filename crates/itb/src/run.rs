@@ -888,6 +888,35 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
         if items.is_empty() {
             continue;
         }
+        // Reserve the phase *before* waiting for its anchor, so the ledger's durable write never sits between the
+        // observed anchor and the send. Every path below that does not send releases it (provably unsent).
+        let mut reserved = false;
+        if let Some(l) = &ctx.live {
+            let batch: Vec<Reservation> = items.iter().map(|p| p.reservation.clone()).collect();
+            match l
+                .campaign
+                .ensure_running()
+                .and_then(|_| l.campaign.ledger.reserve_batch(&batch))
+            {
+                Ok(()) => reserved = true,
+                Err(e) => {
+                    tracing::warn!(error = %e, "phase not reserved; not sending it");
+                    for p in &items {
+                        not_sent.insert(p.probe_id.clone(), "not_reserved".into());
+                    }
+                    continue;
+                }
+            }
+        }
+        let skip = |reason: &str, not_sent: &mut HashMap<String, String>| -> Result<()> {
+            for p in &items {
+                not_sent.insert(p.probe_id.clone(), reason.to_string());
+                if let (true, Some(l)) = (reserved, &ctx.live) {
+                    l.campaign.ledger.cancel_unsent(&p.signature)?;
+                }
+            }
+            Ok(())
+        };
         let (anchor_slot, extra_ms) = match phase {
             Anchor::Estimate => (window.0, 0.0),
             Anchor::PrevSlot => (window.0 - 1, cadence.boundary_ms),
@@ -912,13 +941,8 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
             json!({"slot": anchor_slot, "anchor_unix_ns": anchor_ns, "observed": observed, "extra_ms": extra_ms,
                    "event": ctx.slot_clock.anchor_kind()}),
         );
-        let mark = |reason: &str, not_sent: &mut HashMap<String, String>| {
-            for p in &items {
-                not_sent.insert(p.probe_id.clone(), reason.to_string());
-            }
-        };
         if phase != Anchor::Estimate && !observed {
-            mark("anchor_missed", &mut not_sent);
+            skip("anchor_missed", &mut not_sent)?;
             continue;
         }
         let outgoing: Vec<Outgoing> = items
@@ -937,27 +961,21 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
             .collect();
         let earliest = outgoing.iter().map(|o| o.at).min().expect("non-empty");
         if tokio::time::Instant::now() > earliest + max_late {
-            mark("late", &mut not_sent);
+            skip("late", &mut not_sent)?;
             continue;
         }
         if tokio::time::Instant::now() >= stop_at || outgoing.iter().all(|o| o.at > stop_at) {
-            mark("campaign_cutoff", &mut not_sent);
+            skip("campaign_cutoff", &mut not_sent)?;
             continue;
         }
         match &ctx.live {
             Some(l) => {
                 if let Err(e) = l.campaign.ensure_running() {
                     tracing::error!(error = %e, "phase not sent");
-                    mark("sending_stopped", &mut not_sent);
+                    skip("sending_stopped", &mut not_sent)?;
                     continue;
                 }
                 let ledger = &l.campaign.ledger;
-                let batch: Vec<Reservation> = items.iter().map(|p| p.reservation.clone()).collect();
-                if let Err(e) = ledger.reserve_batch(&batch) {
-                    tracing::warn!(error = %e, "phase not reserved; not sending it");
-                    mark("not_reserved", &mut not_sent);
-                    continue;
-                }
                 let records = ctx
                     .quic
                     .send_scheduled(&l.campaign.auth, addr, outgoing)

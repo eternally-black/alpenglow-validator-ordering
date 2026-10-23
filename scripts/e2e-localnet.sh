@@ -52,5 +52,13 @@ live setup sweep "${COMMON[@]}"
 
 echo "== analysis + archive verification"
 PY=${PYTHON:-.venv/Scripts/python}; [ -x "$PY" ] || PY=python3
-PYTHONPATH=analysis "$PY" -m itb_analysis.cli report --raw $E2E/raw --derived $E2E/derived
+PYTHONPATH=analysis "$PY" -m itb_analysis.cli report --raw $E2E/raw --derived $E2E/derived --design $E2E/design.jsonl
 PYTHONPATH=analysis "$PY" -m itb_analysis.cli verify --raw $E2E/raw --source archive --sample 0
+# The analysis must have found evaluable windows (realised probes matching the frozen localnet design).
+PYTHONPATH=analysis "$PY" - "$E2E/derived/results.json" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+ev = sum(f.get("windows_evaluable", 0) for f in r.get("funnel") or [])
+print(f"evaluable windows: {ev}; claims: {[v.get('published_claim') for v in r.get('validators', {}).values()]}")
+sys.exit(0 if ev > 0 else 1)
+PY
