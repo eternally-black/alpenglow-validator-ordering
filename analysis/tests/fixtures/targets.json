@@ -1,0 +1,5 @@
+[
+  {"identity": "AGAVExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1", "client_id": "Agave",      "ingress": "direct",              "tier": "core",     "k_windows": 40, "t_windows": 4, "hs_windows": 2},
+  {"identity": "BAMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1", "client_id": "AgaveBam",   "ingress": "bam_node",            "tier": "core",     "k_windows": 40, "t_windows": 4, "hs_windows": 2},
+  {"identity": "HARMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1", "client_id": "HarmonicFiredancer", "ingress": "harmonic_remote_tpu", "tier": "extended", "k_windows": 20, "t_windows": 2, "hs_windows": 2}
+]

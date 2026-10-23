@@ -56,8 +56,12 @@ pub fn classify(node: &ClusterNode) -> IngressKind {
         "AgaveBam" | "FireBAM" => IngressKind::BamNode,
         "HarmonicAgave" | "HarmonicFiredancer" | "HarmonicFrankendancer" => IngressKind::HarmonicRemoteTpu,
         _ => {
+            // IP equality is a heuristic, not proof of direct ingress: a self-hosted Jito relayer can share the
+            // validator's IP, so the relayer's default port (11228) marks a relayer either way.
             let same_ip = ip_of(&node.tpu_quic) == ip_of(&node.gossip);
+            let relayer_port = node.tpu_quic.as_deref().is_some_and(|a| a.ends_with(":11228"));
             match (same_ip, client) {
+                (_, "JitoLabs") if relayer_port => IngressKind::Relayer,
                 (true, _) => IngressKind::Direct,
                 (false, "JitoLabs") => IngressKind::Relayer,
                 (false, _) => IngressKind::OtherProxy,
@@ -152,6 +156,8 @@ mod tests {
     fn ingress_classification() {
         assert_eq!(classify(&node("Agave", "1.2.3.4:8001", Some("1.2.3.4:8009"))), IngressKind::Direct);
         assert_eq!(classify(&node("JitoLabs", "1.2.3.4:8001", Some("5.6.7.8:11228"))), IngressKind::Relayer);
+        assert_eq!(classify(&node("JitoLabs", "1.2.3.4:8001", Some("1.2.3.4:11228"))), IngressKind::Relayer, "same-IP relayer");
+        assert_eq!(classify(&node("JitoLabs", "1.2.3.4:8001", Some("1.2.3.4:8002"))), IngressKind::Direct);
         assert_eq!(classify(&node("AgaveBam", "1.2.3.4:8001", Some("9.9.9.9:5010"))), IngressKind::BamNode);
         assert_eq!(classify(&node("HarmonicFiredancer", "1.2.3.4:8001", Some("8.8.8.8:9007"))), IngressKind::HarmonicRemoteTpu);
         assert_eq!(classify(&node("Firedancer", "1.2.3.4:8001", None)), IngressKind::None);

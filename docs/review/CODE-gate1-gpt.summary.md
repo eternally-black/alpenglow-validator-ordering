@@ -1,0 +1,2 @@
+Report: [CODE-gate1-gpt.md](</C:/Users/valera/Desktop/AlpenGlow Validator Bounty/docs/review/CODE-gate1-gpt.md>) — 30 findings: 4 BLOCKER, 25 MAJOR, 1 MINOR; gate should not pass.
+Expiry can undercount fees; pooled inference and mixture diagnosis can mislead; eligibility and verification fail open. Updated statistics tests: 10 passed. Only the report was written; concurrent external edits were reviewed.

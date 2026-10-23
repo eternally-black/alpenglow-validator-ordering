@@ -113,10 +113,13 @@ pub fn informative_target(tier: &str) -> u32 {
 pub const AGED_BLOCKHASH_SLOTS: u64 = 125;
 pub const BUFFERED_OFFSET_MS: f64 = -150.0;
 pub const STREAMING_DIRECT_OFFSET_MS: f64 = 60.0;
-pub const RACE_DTS_MS: [f64; 4] = [5.0, 25.0, 60.0, 150.0];
+/// Observed post-Alpenglow cadence: ≈130 ms between first shreds inside a leader window (≈560 ms at hand-over).
+pub const OBSERVED_INSIDE_SLOT_MS: f64 = 130.0;
+pub const RACE_DTS_MS: [f64; 4] = [5.0, 25.0, 60.0, 100.0];
 pub const EQUAL_KEY_DTS_MS: [f64; 2] = [10.0, 40.0];
-/// Races start this far into slot 1 of the window (observed frame), so Δt ≤ 150 ms stays inside one slot.
-pub const RACE_START_OFFSET_MS: f64 = 220.0;
+/// Races start this far after the observed first shred of the target's first slot, so the longest race
+/// (5 + 100 ms) ends before the next slot's first shred (≈130 ms). Crossings are still classified from the data.
+pub const RACE_START_OFFSET_MS: f64 = 5.0;
 /// Agave holds packets that arrive ≤ 20 slots before its window. 20 slots ≈ 4.7 s of real time at the observed
 /// ≈235 ms/slot, so −3 s is safely inside the hold horizon and −7 s (≈30 slots) safely outside it.
 pub const H_OFFSETS_MS: [f64; 3] = [-500.0, -3_000.0, -7_000.0];
@@ -177,10 +180,11 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
             let burst_offset_ms = match (regime, direct) {
                 (Regime::Buffered, _) => BUFFERED_OFFSET_MS,
                 (_, true) => STREAMING_DIRECT_OFFSET_MS,
-                // Shared ingress: uniform in [40, 500] ms, avoiding ±15 ms around the predicted slot boundaries.
+                // Shared ingress: uniform in [40, 500] ms after the window's first shred, avoiding ±15 ms around the
+                // observed in-window slot boundaries (k·130 ms).
                 (_, false) => loop {
                     let x: f64 = rng.gen_range(40.0..500.0);
-                    if [200.0, 400.0].iter().all(|b| (x - b).abs() > 15.0) {
+                    if [1.0, 2.0, 3.0].iter().all(|k| (x - k * OBSERVED_INSIDE_SLOT_MS).abs() > 15.0) {
                         break x.round();
                     }
                 },
@@ -274,6 +278,37 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
     out
 }
 
+/// Structural checks before a design may be frozen or executed: unique (target, stage, seq) and pair ids, the
+/// expected member count per pair kind, and templates above the CU floor.
+pub fn validate(plans: &[WindowPlan]) -> anyhow::Result<()> {
+    use std::collections::HashSet;
+    let mut keys = HashSet::new();
+    let mut pair_ids = HashSet::new();
+    for p in plans {
+        if !keys.insert((p.target_identity.clone(), p.stage, p.seq)) {
+            anyhow::bail!("duplicate plan {}/{}/{}", p.target_identity, p.stage, p.seq);
+        }
+        for q in &p.pairs {
+            if !pair_ids.insert((p.target_identity.clone(), q.pair_id.clone())) {
+                anyhow::bail!("duplicate pair id {}", q.pair_id);
+            }
+            let expected = if q.kind == PairKind::Single { 1 } else { 2 };
+            if q.members.len() != expected {
+                anyhow::bail!("pair {} has {} members, expected {expected}", q.pair_id, q.members.len());
+            }
+            for m in &q.members {
+                if m.template.cu_limit < crate::probe::ATOM_EXECUTED_CU {
+                    anyhow::bail!("pair {}: CU limit {} below the atom's {} CU", q.pair_id, m.template.cu_limit, crate::probe::ATOM_EXECUTED_CU);
+                }
+            }
+        }
+        if probe_count(p) > crate::quic::MAX_STREAMS_PER_100MS {
+            anyhow::bail!("plan {}/{} has {} probes > {} per burst", p.target_identity, p.seq, probe_count(p), crate::quic::MAX_STREAMS_PER_100MS);
+        }
+    }
+    Ok(())
+}
+
 /// Worst-case fee of a plan: what the ledger will reserve.
 pub fn max_fee(plan: &WindowPlan) -> u64 {
     plan.pairs.iter().flat_map(|p| &p.members).map(|m| m.template.total_fee()).sum()
@@ -310,7 +345,7 @@ mod tests {
         let plans = generate(1, &targets());
         assert_eq!(plans.len(), 3 * (40 + 16 + 6));
         for p in &plans {
-            assert!(probe_count(p) <= crate::quic::MAX_STREAMS_PER_BURST, "{} probes", probe_count(p));
+            assert!(probe_count(p) <= crate::quic::MAX_STREAMS_PER_100MS, "{} probes", probe_count(p));
         }
         let k = plans.iter().find(|p| p.kit == Kit::K).unwrap();
         assert_eq!(max_fee(k), 49_500);
@@ -361,11 +396,29 @@ mod tests {
     }
 
     #[test]
-    fn races_stay_inside_one_slot() {
+    fn races_stay_inside_one_observed_slot() {
         for p in generate(11, &targets()).iter().filter(|p| p.kit == Kit::T) {
             for q in p.pairs.iter().filter(|q| q.kind == PairKind::Race) {
                 let end = q.members.iter().map(|m| m.send_offset_ms).fold(f64::MIN, f64::max);
-                assert!(end <= RACE_START_OFFSET_MS + 150.0 && end < 400.0);
+                assert!(end < OBSERVED_INSIDE_SLOT_MS, "race ends at {end} ms");
+            }
+        }
+    }
+
+    #[test]
+    fn generated_designs_validate_and_duplicates_are_rejected() {
+        let plans = generate(13, &targets());
+        validate(&plans).unwrap();
+        let mut dup = plans.clone();
+        dup.push(plans[0].clone());
+        assert!(validate(&dup).is_err());
+    }
+
+    #[test]
+    fn shared_offsets_avoid_observed_slot_boundaries() {
+        for p in generate(17, &targets()).iter().filter(|p| p.kit == Kit::K && p.target_identity.starts_with("BAM")) {
+            for k in 1..=3 {
+                assert!((p.burst_offset_ms - k as f64 * OBSERVED_INSIDE_SLOT_MS).abs() > 15.0);
             }
         }
     }

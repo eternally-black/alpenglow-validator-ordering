@@ -17,7 +17,7 @@ mod store;
 mod targets;
 mod timing;
 
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,7 +25,7 @@ use std::sync::Arc;
 #[derive(Parser)]
 #[command(name = "itb", version, about = "Inside the Block — Solana intra-block ordering measurement")]
 struct Cli {
-    /// JSON-RPC endpoint. API keys in the URL are redacted from every log and data file.
+    /// JSON-RPC endpoint. Only `scheme://host` of it ever reaches a log or data file.
     #[arg(long, env = "RPC_URL", default_value = "https://api.mainnet-beta.solana.com", global = true)]
     rpc_url: String,
     /// WebSocket endpoint for slot updates (defaults to the RPC URL with ws/wss).
@@ -40,7 +40,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Check the Alpenglow gate and RPC/WebSocket reachability.
+    /// Check the Alpenglow gate, the cluster identity and RPC/WebSocket reachability.
     Check,
     /// Print staked validators grouped by client and ingress kind.
     Targets {
@@ -75,6 +75,9 @@ enum Cmd {
         blockhash_age_slots: u64,
         #[arg(long, default_value_t = 12)]
         max_targets: usize,
+        /// Sub-budget for the smoke test inside the campaign cap (defined once in the ledger).
+        #[arg(long, default_value_t = 0.001)]
+        budget_sol: f64,
     },
     /// Generate N payer keypairs into a (writable) directory. Writes keys only, sends nothing.
     InitPayers {
@@ -119,24 +122,47 @@ enum Cmd {
         stage: u8,
         #[arg(long, default_value = "data/raw")]
         out: PathBuf,
-        #[arg(long, env = "ITB_PROGRESS", default_value = "state/progress.jsonl")]
-        progress: PathBuf,
+        /// Attempt journal. Defaults to state/progress.jsonl for live runs and state/progress.dryrun.jsonl for dry runs.
+        #[arg(long, env = "ITB_PROGRESS")]
+        progress: Option<PathBuf>,
         #[arg(long, value_delimiter = ',')]
         targets: Vec<String>,
         #[arg(long, default_value_t = usize::MAX)]
         max_windows: usize,
         #[arg(long, default_value_t = 240)]
         max_minutes: u64,
+        /// Campaign cutoff (RFC 3339, e.g. 2026-10-29T23:59:00Z): nothing is prepared or sent after it.
+        #[arg(long)]
+        not_after: Option<String>,
         #[arg(long, default_value_t = 2)]
         concurrency: usize,
         #[arg(long, default_value_t = 0.0, allow_hyphen_values = true)]
         obs_lag_ms: f64,
         #[arg(long, default_value_t = 200.0)]
         nominal_slot_ms: f64,
+        #[arg(long, value_enum, default_value_t = timing::AnchorEvent::FirstShred)]
+        anchor_event: timing::AnchorEvent,
+        #[arg(long, default_value_t = 20.0)]
+        max_lateness_ms: f64,
+        /// Sub-budget name for this run's probes (e.g. pilot, stage1, stage2) and, the first time, its cap.
+        #[arg(long, default_value = "campaign")]
+        budget: String,
+        #[arg(long)]
+        budget_sol: Option<f64>,
+        /// Allow a non-mainnet cluster (localnet tests only).
+        #[arg(long)]
+        allow_non_mainnet: bool,
         #[arg(long, env = "ITB_TPU_OVERRIDE")]
         tpu_override: Option<std::net::SocketAddr>,
     },
-    /// Write the frozen experimental design (design.jsonl) for a target list.
+    /// Resolve every open reservation in the ledger on chain evidence (after a crash or timeout).
+    Reconcile {
+        #[arg(long, env = "ITB_LEDGER", default_value = "state/ledger.sqlite")]
+        ledger: PathBuf,
+        #[arg(long)]
+        max_spend_sol: f64,
+    },
+    /// Write the frozen experimental design (design.jsonl) for a target list. Refuses to overwrite.
     Design {
         /// JSON file with a list of TargetSpec objects.
         #[arg(long)]
@@ -146,12 +172,15 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
-    /// Show spend-ledger totals.
+    /// Show spend-ledger totals and open reservations.
     Ledger {
         #[arg(long, env = "ITB_LEDGER", default_value = "state/ledger.sqlite")]
         ledger: PathBuf,
         #[arg(long)]
         max_spend_sol: f64,
+        /// Record an external top-up of the owned accounts (keeps on-chain reconciliation exact).
+        #[arg(long)]
+        add_deposit_lamports: Option<u64>,
     },
 }
 
@@ -190,6 +219,13 @@ fn derive_ws(rpc_url: &str) -> String {
     rpc_url.replacen("https://", "wss://", 1).replacen("http://", "ws://", 1)
 }
 
+fn ensure_parent(p: &std::path::Path) -> Result<()> {
+    if let Some(dir) = p.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir)?;
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -201,17 +237,21 @@ async fn main() -> Result<()> {
         Cmd::Check => {
             let gate = alpenglow::require_active(&rpc).await?;
             let version = rpc.call("getVersion", serde_json::json!([])).await?;
-            let clock = timing::SlotClock::start(&ws_url, timing::RunClock::new(), 200.0).await?;
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            let genesis = rpc.genesis_hash().await?;
+            let clock = timing::SlotClock::start(&ws_url, timing::RunClock::new(), 200.0, timing::AnchorEvent::FirstShred).await?;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "rpc": smoke::redact_url(&cli.rpc_url),
-                    "ws": smoke::redact_url(&ws_url),
+                    "rpc": rpc::redact_url(&cli.rpc_url),
+                    "ws": rpc::redact_url(&ws_url),
                     "version": version,
+                    "genesis_hash": genesis,
+                    "is_mainnet_beta": genesis == rpc::MAINNET_GENESIS_HASH,
                     "alpenglow": gate,
                     "latest_observed_slot": clock.latest_slot(),
-                    "observed_slot_ms": clock.slot_ms_estimate(),
+                    "anchor_event": clock.anchor_kind(),
+                    "cadence": clock.cadence(),
                 }))?
             );
         }
@@ -243,11 +283,12 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Cmd::Smoke { live, max_spend_sol, ledger, keypair, out, targets, per_group, probes, offset_ms, blockhash_age_slots, max_targets } => {
+        Cmd::Smoke { live, max_spend_sol, ledger, keypair, out, targets, per_group, probes, offset_ms, blockhash_age_slots, max_targets, budget_sol } => {
+            if probes == 0 || probes > quic::MAX_STREAMS_PER_100MS {
+                bail!("--probes must be 1..={}", quic::MAX_STREAMS_PER_100MS);
+            }
             if live {
-                if let Some(dir) = ledger.parent() {
-                    std::fs::create_dir_all(dir)?;
-                }
+                ensure_parent(&ledger)?;
             }
             smoke::run(
                 rpc,
@@ -264,6 +305,7 @@ async fn main() -> Result<()> {
                     offset_ms,
                     blockhash_age_slots,
                     max_targets,
+                    budget_sol,
                 },
             )
             .await?;
@@ -282,15 +324,27 @@ async fn main() -> Result<()> {
             targets,
             max_windows,
             max_minutes,
+            not_after,
             concurrency,
             obs_lag_ms,
             nominal_slot_ms,
+            anchor_event,
+            max_lateness_ms,
+            budget,
+            budget_sol,
+            allow_non_mainnet,
             tpu_override,
         } => {
+            let progress = progress.unwrap_or_else(|| PathBuf::from(if live { "state/progress.jsonl" } else { "state/progress.dryrun.jsonl" }));
+            let not_after_unix = not_after
+                .map(|s| {
+                    time::OffsetDateTime::parse(&s, &time::format_description::well_known::Rfc3339)
+                        .map(|t| t.unix_timestamp())
+                        .with_context(|| format!("--not-after {s}: expected RFC 3339"))
+                })
+                .transpose()?;
             for p in [&ledger, &progress] {
-                if let Some(dir) = p.parent() {
-                    std::fs::create_dir_all(dir)?;
-                }
+                ensure_parent(p)?;
             }
             run::run(
                 rpc,
@@ -309,13 +363,41 @@ async fn main() -> Result<()> {
                     targets,
                     max_windows,
                     max_minutes,
+                    not_after_unix,
                     concurrency,
                     obs_lag_ms,
                     nominal_slot_ms,
+                    anchor_event,
+                    max_lateness_ms,
+                    budget,
+                    budget_cap_sol: budget_sol,
+                    require_mainnet: !allow_non_mainnet,
                     tpu_override,
                 },
             )
             .await?;
+        }
+        Cmd::Reconcile { ledger, max_spend_sol } => {
+            let l = ledger::Ledger::open(&ledger, auth::sol_to_lamports(max_spend_sol)?)?;
+            let open = l.open_reservations()?;
+            let tracked: Vec<collect::Tracked> = open
+                .iter()
+                .map(|r| collect::Tracked {
+                    probe_id: r.label.clone(),
+                    signature: r.signature.clone(),
+                    target_identity: String::new(),
+                    window_first_slot: 0,
+                    window_last_slot: 0,
+                    last_valid_block_height: r.last_valid_block_height,
+                    max_fee: r.max_fee,
+                    transport_error: None,
+                })
+                .collect();
+            let outcomes = collect::resolve(&rpc, Some(&l), &tracked, None, std::time::Duration::from_secs(180)).await?;
+            for o in &outcomes {
+                println!("{} {:?}", o.signature, o.status);
+            }
+            println!("{}", serde_json::to_string_pretty(&l.totals()?)?);
         }
         Cmd::InitPayers { dir, count } => {
             for pk in setup::init_payers(&dir, count)? {
@@ -325,9 +407,7 @@ async fn main() -> Result<()> {
         Cmd::Setup { action, live, max_spend_sol, ledger, keypair, payer_dir } => {
             let gate = alpenglow::require_active(&rpc).await?;
             let cap = auth::sol_to_lamports(max_spend_sol.ok_or_else(|| anyhow::anyhow!("setup requires --max-spend-sol"))?)?;
-            if let Some(dir) = ledger.parent() {
-                std::fs::create_dir_all(dir)?;
-            }
+            ensure_parent(&ledger)?;
             let l = ledger::Ledger::open(&ledger, cap)?;
             let live_auth = auth::LiveAuthorization::grant(live, max_spend_sol, &gate, &l)?;
             let master = keys::read_keypair(&keypair.ok_or_else(|| anyhow::anyhow!("setup requires --keypair / ITB_KEYPAIR_PATH"))?)?;
@@ -344,24 +424,36 @@ async fn main() -> Result<()> {
         Cmd::Design { targets, seed, out } => {
             let specs: Vec<design::TargetSpec> = serde_json::from_str(&std::fs::read_to_string(&targets)?)?;
             let plans = design::generate(seed, &specs);
-            let file = store::Jsonl::open(&out)?;
+            design::validate(&plans)?;
+            let mut text = String::new();
             for p in &plans {
-                file.append(p)?;
+                text.push_str(&serde_json::to_string(p)?);
+                text.push('\n');
             }
+            // Never append: a design is written once, whole, and then frozen.
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&out).with_context(|| format!("{} exists; a design is never overwritten or appended", out.display()))?;
+            f.write_all(text.as_bytes())?;
+            f.sync_all()?;
             let worst: u64 = plans.iter().map(design::max_fee).sum();
-            let bytes = std::fs::read(&out)?;
             use sha2::Digest;
             println!(
                 "{} windows, worst-case fees {} lamports ({:.4} SOL), sha256 {:x}",
                 plans.len(),
                 worst,
                 worst as f64 / 1e9,
-                sha2::Sha256::digest(&bytes)
+                sha2::Sha256::digest(text.as_bytes())
             );
         }
-        Cmd::Ledger { ledger, max_spend_sol } => {
+        Cmd::Ledger { ledger, max_spend_sol, add_deposit_lamports } => {
             let l = ledger::Ledger::open(&ledger, auth::sol_to_lamports(max_spend_sol)?)?;
+            if let Some(d) = add_deposit_lamports {
+                println!("external deposits now {} lamports", l.add_external_deposit(d)?);
+            }
             println!("{}", serde_json::to_string_pretty(&l.totals()?)?);
+            for r in l.open_reservations()? {
+                println!("open: {} {} payer {} lvbh {}", r.signature, r.label, r.payer, r.last_valid_block_height);
+            }
         }
     }
     Ok(())

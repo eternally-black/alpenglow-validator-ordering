@@ -3,10 +3,11 @@
 
 use crate::auth::LiveAuthorization;
 use crate::keys::{read_keypair, write_keypair};
-use crate::ledger::{Kind, Ledger};
+use crate::collect::{self, Status, Tracked};
+use crate::ledger::{Kind, Ledger, Reservation};
 use crate::probe::LAMPORTS_PER_SIGNATURE;
 use crate::rpc::Rpc;
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use base64::Engine;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_keypair::Keypair;
@@ -37,32 +38,50 @@ pub fn init_payers(dir: &Path, count: usize) -> Result<Vec<Pubkey>> {
     Ok(out)
 }
 
-/// Sends one setup transaction (reserved at its worst-case fee) and waits until it is confirmed or proven expired.
-async fn send_setup(rpc: &Rpc, ledger: &Ledger, _auth: &LiveAuthorization, signers: &[&Keypair], ixs: &[Instruction], label: &str) -> Result<String> {
+/// Sends one setup transaction (reserved at its worst-case fee, against the "setup" budget) and resolves it with the
+/// same evidence rules as probes. Success requires a confirmed block containing the transaction with `err == null`;
+/// an on-chain failure, an expiry or an unresolved outcome is an error (the fee accounting is kept either way).
+async fn send_setup(rpc: &Rpc, ledger: &Ledger, auth: &LiveAuthorization, signers: &[&Keypair], ixs: &[Instruction], label: &str) -> Result<String> {
     let bh = rpc.latest_blockhash().await?;
     let payer = signers[0].pubkey();
     let tx = Transaction::new(signers, Message::new(ixs, Some(&payer)), bh.blockhash.clone());
     let sig = tx.signatures[0].to_string();
     let max_fee = LAMPORTS_PER_SIGNATURE * tx.signatures.len() as u64;
-    ledger.reserve(&sig, Kind::Setup, label, max_fee)?;
+    ledger.reserve_batch(&[Reservation {
+        signature: sig.clone(),
+        kind: Kind::Setup,
+        label: label.to_string(),
+        max_fee,
+        payer: payer.to_string(),
+        last_valid_block_height: bh.last_valid_block_height,
+        budget: "setup".into(),
+    }])?;
     let wire = base64::engine::general_purpose::STANDARD.encode(bincode::serialize(&tx)?);
-    rpc.send_transaction(&wire).await.with_context(|| format!("{label}: sendTransaction"))?;
-    for _ in 0..60 {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        if let Some(Some(st)) = rpc.signature_statuses(std::slice::from_ref(&sig)).await?.into_iter().next() {
-            if let Some(err) = st.err {
-                tracing::error!(%sig, ?err, label, "setup transaction failed on-chain");
-            }
-            let fee = rpc.transaction_fee(&sig).await?.unwrap_or(max_fee);
-            ledger.resolve_landed(&sig, fee)?;
-            return Ok(sig);
-        }
-        if rpc.get_block_height("finalized").await? > bh.last_valid_block_height {
-            ledger.resolve_expired(&sig)?;
-            bail!("{label}: {sig} expired without landing");
-        }
+    if let Err(e) = rpc.send_transaction(auth, &wire).await {
+        // The node may still have forwarded it: resolve on evidence instead of assuming it was not sent.
+        tracing::warn!(label, error = %e, "sendTransaction returned an error; resolving on chain evidence");
     }
-    bail!("{label}: {sig} unresolved after 120 s (reservation kept)")
+    let tracked = Tracked {
+        probe_id: label.to_string(),
+        signature: sig.clone(),
+        target_identity: String::new(),
+        window_first_slot: 0,
+        window_last_slot: 0,
+        last_valid_block_height: bh.last_valid_block_height,
+        max_fee,
+        transport_error: None,
+    };
+    let outcome = collect::resolve(rpc, Some(ledger), &[tracked], None, Duration::from_secs(150)).await?.remove(0);
+    match outcome.status {
+        Status::ExpiredConfirmed => bail!("{label}: {sig} expired without landing (reservation released)"),
+        Status::Unresolved => bail!("{label}: {sig} unresolved (reservation kept; run `itb reconcile` later)"),
+        Status::LandedUnverified => bail!("{label}: {sig} landed but its block could not be verified; check it before relying on it"),
+        Status::NotSent => unreachable!("setup transactions are always handed to the RPC"),
+        _ => match outcome.err {
+            Some(err) => bail!("{label}: {sig} landed but FAILED on-chain: {err}"),
+            None => Ok(sig),
+        },
+    }
 }
 
 /// Tops every payer up to `target_lamports` from the master.

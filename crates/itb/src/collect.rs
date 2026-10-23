@@ -1,8 +1,15 @@
-//! Turns sent signatures into outcomes (PLAN §4.1) and archives the blocks they landed in.
+//! Turns sent signatures into outcomes (PREREGISTRATION §1) and archives the blocks they landed in.
 //!
-//! Status taxonomy: `landed_target`, `spillover_same_validator_other_window`, `spillover_other_leader`,
-//! `expired_confirmed` (last valid block height finalized and the signature still unknown), `unresolved`
-//! (we could not prove either way before the timeout). Unknown outcomes stay charged in the spend ledger.
+//! Status taxonomy:
+//! - `landed_target` / `spillover_same_validator_other_window` / `spillover_other_leader`: the signature has a
+//!   confirmed status **and** was found in the archived block (index, fee and metadata known);
+//! - `landed_unverified`: confirmed status, but the block could not be fetched or did not contain the signature —
+//!   charged in the ledger, never used as an ordering observation;
+//! - `expired_confirmed`: proof of non-inclusion — a finalized block height above the transaction's last valid height
+//!   was observed *first*, and a history-capable status lookup answered by a node at or past that finalized slot
+//!   *afterwards* still returned nothing;
+//! - `unresolved`: neither could be proven before the timeout (stays charged in the ledger);
+//! - `not_sent`: never put on the wire.
 
 use crate::ledger::Ledger;
 use crate::rpc::Rpc;
@@ -21,6 +28,7 @@ pub struct Tracked {
     pub window_first_slot: u64,
     pub window_last_slot: u64,
     pub last_valid_block_height: u64,
+    pub max_fee: u64,
     pub transport_error: Option<String>,
 }
 
@@ -30,26 +38,16 @@ pub enum Status {
     LandedTarget,
     SpilloverSameValidatorOtherWindow,
     SpilloverOtherLeader,
+    LandedUnverified,
     ExpiredConfirmed,
     Unresolved,
-    /// Never put on the wire (e.g. its send anchor was not observed); never reserved, cannot land.
+    /// Never put on the wire (anchor missed, deadline passed, cap reached); cannot land.
     NotSent,
 }
 
-pub fn not_sent_outcome(t: &Tracked) -> Outcome {
-    Outcome {
-        probe_id: t.probe_id.clone(),
-        signature: t.signature.clone(),
-        status: Status::NotSent,
-        slot: None,
-        index_in_block: None,
-        block_tx_count: None,
-        leader: None,
-        fee: None,
-        err: None,
-        cost_units: None,
-        compute_units_consumed: None,
-        transport_error: t.transport_error.clone(),
+impl Status {
+    pub fn is_terminal(self) -> bool {
+        !matches!(self, Status::Unresolved)
     }
 }
 
@@ -66,7 +64,33 @@ pub struct Outcome {
     pub err: Option<Value>,
     pub cost_units: Option<u64>,
     pub compute_units_consumed: Option<u64>,
+    pub confirmation_status: Option<String>,
     pub transport_error: Option<String>,
+    /// How non-inclusion was proven: finalized height and the status response's context slot.
+    pub expiry_evidence: Option<Value>,
+}
+
+fn blank(t: &Tracked, status: Status) -> Outcome {
+    Outcome {
+        probe_id: t.probe_id.clone(),
+        signature: t.signature.clone(),
+        status,
+        slot: None,
+        index_in_block: None,
+        block_tx_count: None,
+        leader: None,
+        fee: None,
+        err: None,
+        cost_units: None,
+        compute_units_consumed: None,
+        confirmation_status: None,
+        transport_error: t.transport_error.clone(),
+        expiry_evidence: None,
+    }
+}
+
+pub fn not_sent_outcome(t: &Tracked) -> Outcome {
+    blank(t, Status::NotSent)
 }
 
 /// Finds `signature` in a raw `getBlock` result: (index, meta).
@@ -77,38 +101,63 @@ pub fn locate(block: &Value, signature: &str) -> Option<(usize, Value)> {
     })
 }
 
-pub async fn resolve(rpc: &Rpc, ledger: Option<&Ledger>, tracked: &[Tracked], run: &RunDir, timeout: Duration) -> Result<Vec<Outcome>> {
+fn confirmed(st: &crate::rpc::SignatureStatus) -> bool {
+    matches!(st.confirmation_status.as_deref(), Some("confirmed") | Some("finalized"))
+}
+
+pub async fn resolve(rpc: &Rpc, ledger: Option<&Ledger>, tracked: &[Tracked], run: Option<&RunDir>, timeout: Duration) -> Result<Vec<Outcome>> {
     let mut pending: Vec<&Tracked> = tracked.iter().collect();
-    let mut landed: HashMap<String, u64> = HashMap::new();
-    let mut expired: HashSet<String> = HashSet::new();
+    let mut landed: HashMap<String, (u64, Option<String>)> = HashMap::new();
+    let mut expired: HashMap<String, Value> = HashMap::new();
     let deadline = tokio::time::Instant::now() + timeout;
 
-    while !pending.is_empty() && tokio::time::Instant::now() < deadline {
+    while !pending.is_empty() {
         let sigs: Vec<String> = pending.iter().map(|t| t.signature.clone()).collect();
-        let statuses = rpc.signature_statuses(&sigs).await?;
-        let finalized_height = rpc.get_block_height("finalized").await?;
+        let (_, statuses) = rpc.signature_statuses(&sigs).await?;
         let mut still = vec![];
         for (t, st) in pending.into_iter().zip(statuses) {
             match st {
-                Some(s) => {
-                    landed.insert(t.signature.clone(), s.slot);
+                Some(s) if confirmed(&s) => {
+                    landed.insert(t.signature.clone(), (s.slot, s.confirmation_status.clone()));
                 }
-                None if finalized_height > t.last_valid_block_height => {
-                    expired.insert(t.signature.clone());
-                }
-                None => still.push(t),
+                _ => still.push(t), // unknown or only `processed`: keep waiting
             }
         }
-        pending = still;
-        if !pending.is_empty() {
-            tokio::time::sleep(Duration::from_secs(2)).await;
+        // Expiry protocol: barrier first (finalized height, then the finalized slot), fresh lookup second.
+        let fin_height = rpc.get_block_height("finalized").await?;
+        let fin_slot = rpc.get_slot("finalized").await?;
+        let (cands, keep): (Vec<&Tracked>, Vec<&Tracked>) = still.into_iter().partition(|t| fin_height > t.last_valid_block_height);
+        pending = keep;
+        if !cands.is_empty() {
+            let sigs: Vec<String> = cands.iter().map(|t| t.signature.clone()).collect();
+            let (context_slot, statuses) = rpc.signature_statuses(&sigs).await?;
+            for (t, st) in cands.into_iter().zip(statuses) {
+                match st {
+                    Some(s) if confirmed(&s) => {
+                        landed.insert(t.signature.clone(), (s.slot, s.confirmation_status.clone()));
+                    }
+                    None if context_slot >= fin_slot => {
+                        expired.insert(
+                            t.signature.clone(),
+                            serde_json::json!({"finalized_block_height": fin_height, "finalized_slot": fin_slot,
+                                               "last_valid_block_height": t.last_valid_block_height,
+                                               "status_context_slot": context_slot}),
+                        );
+                    }
+                    _ => pending.push(t), // stale responder or still provisional: retry
+                }
+            }
         }
+        if pending.is_empty() || tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     // Fetch each landing block once; archive it verbatim.
     let mut blocks: HashMap<u64, Option<Value>> = HashMap::new();
     let mut leaders: HashMap<u64, String> = HashMap::new();
-    for slot in landed.values().copied().collect::<HashSet<_>>() {
+    for slot in landed.values().map(|(s, _)| *s).collect::<HashSet<_>>() {
         let mut block = None;
         for _ in 0..10 {
             block = rpc.block_raw(slot, "confirmed").await?;
@@ -117,7 +166,7 @@ pub async fn resolve(rpc: &Rpc, ledger: Option<&Ledger>, tracked: &[Tracked], ru
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
-        if let Some(b) = &block {
+        if let (Some(b), Some(run)) = (&block, run) {
             let path = run.path.join("blocks").join(format!("{slot}.json.zst"));
             if !path.exists() {
                 write_zst(&path, b)?;
@@ -131,45 +180,40 @@ pub async fn resolve(rpc: &Rpc, ledger: Option<&Ledger>, tracked: &[Tracked], ru
 
     let mut out = Vec::with_capacity(tracked.len());
     for t in tracked {
-        let mut o = Outcome {
-            probe_id: t.probe_id.clone(),
-            signature: t.signature.clone(),
-            status: Status::Unresolved,
-            slot: None,
-            index_in_block: None,
-            block_tx_count: None,
-            leader: None,
-            fee: None,
-            err: None,
-            cost_units: None,
-            compute_units_consumed: None,
-            transport_error: t.transport_error.clone(),
-        };
-        if let Some(&slot) = landed.get(&t.signature) {
-            o.slot = Some(slot);
-            o.leader = leaders.get(&slot).cloned();
-            let same_leader = o.leader.as_deref() == Some(t.target_identity.as_str());
-            let in_window = (t.window_first_slot..=t.window_last_slot).contains(&slot);
-            o.status = match (same_leader, in_window) {
-                (true, true) => Status::LandedTarget,
-                (true, false) => Status::SpilloverSameValidatorOtherWindow,
-                _ => Status::SpilloverOtherLeader,
-            };
-            if let Some(Some(block)) = blocks.get(&slot) {
-                o.block_tx_count = block["transactions"].as_array().map(Vec::len);
-                if let Some((idx, meta)) = locate(block, &t.signature) {
+        let mut o = blank(t, Status::Unresolved);
+        if let Some((slot, conf)) = landed.get(&t.signature) {
+            o.slot = Some(*slot);
+            o.confirmation_status = conf.clone();
+            o.leader = leaders.get(slot).cloned();
+            let found = blocks.get(slot).and_then(|b| b.as_ref()).and_then(|b| locate(b, &t.signature).map(|(i, m)| (i, m, b)));
+            match found {
+                Some((idx, meta, block)) => {
+                    let same_leader = o.leader.as_deref() == Some(t.target_identity.as_str());
+                    let in_window = (t.window_first_slot..=t.window_last_slot).contains(slot);
+                    o.status = match (same_leader, in_window) {
+                        (true, true) => Status::LandedTarget,
+                        (true, false) => Status::SpilloverSameValidatorOtherWindow,
+                        _ => Status::SpilloverOtherLeader,
+                    };
                     o.index_in_block = Some(idx);
+                    o.block_tx_count = block["transactions"].as_array().map(Vec::len);
                     o.fee = meta["fee"].as_u64();
                     o.err = meta.get("err").filter(|e| !e.is_null()).cloned();
                     o.cost_units = meta["costUnits"].as_u64();
                     o.compute_units_consumed = meta["computeUnitsConsumed"].as_u64();
                 }
+                None => {
+                    o.status = Status::LandedUnverified;
+                    o.fee = rpc.transaction_fee(&t.signature).await.ok().flatten();
+                }
             }
-            if let (Some(l), Some(fee)) = (ledger, o.fee) {
-                l.resolve_landed(&t.signature, fee)?;
+            if let Some(l) = ledger {
+                // An unknown fee is charged at the worst case.
+                l.resolve_landed(&t.signature, o.fee.unwrap_or(t.max_fee))?;
             }
-        } else if expired.contains(&t.signature) {
+        } else if let Some(ev) = expired.get(&t.signature) {
             o.status = Status::ExpiredConfirmed;
+            o.expiry_evidence = Some(ev.clone());
             if let Some(l) = ledger {
                 l.resolve_expired(&t.signature)?;
             }
@@ -194,5 +238,12 @@ mod tests {
         assert_eq!(i, 1);
         assert_eq!(meta["costUnits"], 2335);
         assert!(locate(&block, "ccc").is_none());
+    }
+
+    #[test]
+    fn only_confirmed_statuses_count_as_landed() {
+        let st = |c: &str| crate::rpc::SignatureStatus { slot: 1, confirmations: None, err: None, confirmation_status: Some(c.into()) };
+        assert!(confirmed(&st("confirmed")) && confirmed(&st("finalized")));
+        assert!(!confirmed(&st("processed")));
     }
 }

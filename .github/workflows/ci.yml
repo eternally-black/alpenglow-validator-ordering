@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: rust (fmt, clippy, tests)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97.1"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy -p itb --all-targets --locked -- -D warnings
+      - run: cargo test -p itb --locked
+
+  python:
+    name: analysis (pytest)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r analysis/requirements.lock
+      - run: python -m pytest analysis/tests -q
+        env:
+          PYTHONPATH: analysis
+
+  reproduce:
+    name: docker compose up (offline reproduction)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build reproduce dryrun
+      - name: offline reproduction (no network inside the container)
+        run: |
+          if [ -f data/derived/results.json ]; then
+            docker compose up --exit-code-from reproduce reproduce
+          else
+            echo "no committed results yet — reproduction is checked once data/derived exists"
+          fi
+
+  e2e-localnet:
+    name: end-to-end against Agave 4.3.2 localnet (live QUIC sends)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r analysis/requirements.lock
+      - run: docker compose --profile localnet up -d --build --wait localnet
+      - run: docker compose build dryrun
+      - run: bash scripts/e2e-localnet.sh
+        env:
+          PYTHON: python
+      - if: always()
+        run: docker compose --profile localnet logs --tail 200 localnet
+
+  secrets:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

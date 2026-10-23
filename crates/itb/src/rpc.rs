@@ -102,15 +102,16 @@ impl Rpc {
         for attempt in 1..=self.max_attempts {
             let id = self.next_id.fetch_add(1, Ordering::Relaxed);
             let body = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
+            // reqwest errors embed the full URL (which may carry an API key): strip it before logging or returning.
             let resp = match self.http.post(&self.url).json(&body).send().await {
                 Ok(r) => r,
                 Err(e) if attempt < self.max_attempts => {
-                    tracing::warn!(method, attempt, error = %e, "rpc transport error, retrying");
+                    tracing::warn!(method, attempt, error = %e.without_url(), "rpc transport error, retrying");
                     tokio::time::sleep(delay).await;
                     delay *= 2;
                     continue;
                 }
-                Err(e) => return Err(e).with_context(|| format!("{method}: transport")),
+                Err(e) => bail!("{method}: transport: {}", e.without_url()),
             };
             let status = resp.status();
             if status.as_u16() == 429 || status.is_server_error() {
@@ -129,7 +130,10 @@ impl Rpc {
                 }
                 bail!("{method}: HTTP {status} after {attempt} attempts");
             }
-            let v: Value = resp.json().await.with_context(|| format!("{method}: decoding response"))?;
+            let v: Value = match resp.json().await {
+                Ok(v) => v,
+                Err(e) => bail!("{method}: decoding response: {}", e.without_url()),
+            };
             if let Some(err) = v.get("error") {
                 return Err(RpcError {
                     code: err.get("code").and_then(Value::as_i64).unwrap_or(0),
@@ -262,16 +266,24 @@ impl Rpc {
         })
     }
 
-    pub async fn signature_statuses(&self, sigs: &[String]) -> Result<Vec<Option<SignatureStatus>>> {
+    /// History-capable status lookup. Returns the minimum response context slot over all chunks (the slot the
+    /// answering node had processed), so callers can prove the answer is not older than an expiry barrier.
+    pub async fn signature_statuses(&self, sigs: &[String]) -> Result<(u64, Vec<Option<SignatureStatus>>)> {
         let mut out = Vec::with_capacity(sigs.len());
+        let mut context_slot = u64::MAX;
         for chunk in sigs.chunks(256) {
             let v = self
                 .call("getSignatureStatuses", json!([chunk, {"searchTransactionHistory": true}]))
                 .await?;
+            context_slot = context_slot.min(v["context"]["slot"].as_u64().unwrap_or(0));
             let part: Vec<Option<SignatureStatus>> = serde_json::from_value(v["value"].clone())?;
             out.extend(part);
         }
-        Ok(out)
+        Ok((if out.is_empty() { 0 } else { context_slot }, out))
+    }
+
+    pub async fn genesis_hash(&self) -> Result<String> {
+        self.call_as("getGenesisHash", json!([])).await
     }
 
     /// (owner, data, lamports) or `None` when the account does not exist.
@@ -327,7 +339,8 @@ impl Rpc {
     }
 
     /// Used only for setup transactions (funding, sweeping, the pre-registration Memo) — never for probes.
-    pub async fn send_transaction(&self, tx_base64: &str) -> Result<String> {
+    /// Requires the same live authorization as the QUIC sender.
+    pub async fn send_transaction(&self, _auth: &crate::auth::LiveAuthorization, tx_base64: &str) -> Result<String> {
         self.call_as(
             "sendTransaction",
             json!([tx_base64, {"encoding": "base64", "skipPreflight": false, "preflightCommitment": "confirmed",
@@ -337,7 +350,35 @@ impl Rpc {
     }
 }
 
-/// JSON fields we rely on, so a renamed field fails loudly instead of silently producing zeros.
-pub fn require_u64(v: &Value, field: &str) -> Result<u64> {
-    v.get(field).and_then(Value::as_u64).ok_or_else(|| anyhow!("missing u64 field `{field}`"))
+/// Mainnet-beta genesis hash: confirmatory runs must be bound to it (an active feature account alone does not
+/// identify the cluster).
+pub const MAINNET_GENESIS_HASH: &str = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
+
+/// Credential-free endpoint identity for logs and data: `scheme://host[:port]`. Paths, queries and user-info are
+/// dropped, because providers put API keys in any of them.
+pub fn redact_url(url: &str) -> String {
+    let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = authority.rsplit('@').next().unwrap_or("");
+    let redacted = rest.len() > authority.len() || authority.contains('@');
+    match (scheme.is_empty(), redacted) {
+        (true, _) => "<redacted-endpoint>".into(),
+        (false, true) => format!("{scheme}://{host}/<redacted>"),
+        (false, false) => format!("{scheme}://{host}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redaction_drops_every_credential_location() {
+        assert_eq!(redact_url("https://api.mainnet-beta.solana.com"), "https://api.mainnet-beta.solana.com");
+        assert_eq!(redact_url("https://mainnet.helius-rpc.com/?api-key=SECRET"), "https://mainnet.helius-rpc.com/<redacted>");
+        assert_eq!(redact_url("https://rpc.example/v2/TEST_API_TOKEN"), "https://rpc.example/<redacted>");
+        assert_eq!(redact_url("wss://user:pass@rpc.example:8900/ws"), "wss://rpc.example:8900/<redacted>");
+        assert!(!redact_url("https://x.io/abc?k=SECRET").contains("SECRET"));
+        assert_eq!(redact_url("not a url SECRET"), "<redacted-endpoint>");
+    }
 }

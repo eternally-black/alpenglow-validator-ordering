@@ -1,0 +1,2 @@
+# False positive: the words "blake3/sha512" in the list of feature-gate names in docker/LOCALNET.md (not a key).
+c4afe25dec7cb82eff8570551975a094d62fdf31:docker/LOCALNET.md:generic-api-key:78

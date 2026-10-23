@@ -72,11 +72,36 @@ pub struct SlotEvent {
     pub server_ms: Option<u64>,
 }
 
+/// Which slot event times the clock and anchors sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, clap::ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum AnchorEvent {
+    /// `firstShredReceived` (mainnet observer: the earliest sign of a leader's slot). Falls back to plain slot
+    /// notifications only if the provider lacks `slotsUpdatesSubscribe` (recorded as such).
+    FirstShred,
+    /// `createdBank`: for a leader node observing itself (single-node localnet), which never "receives" a shred.
+    CreatedBank,
+}
+
 #[derive(Default)]
 struct State {
-    /// First time we saw each slot's first shred (or its slot notification, if the provider lacks slot updates).
+    /// First observation per slot, kept separately for each event kind (never mixed).
     first_shred: BTreeMap<u64, i64>,
+    created_bank: BTreeMap<u64, i64>,
+    slot_notification: BTreeMap<u64, i64>,
+    /// Set when the provider rejected `slotsUpdatesSubscribe` and we fell back to `slotSubscribe`.
+    fallback: bool,
     events: Vec<SlotEvent>,
+}
+
+impl State {
+    fn timing(&self, anchor: AnchorEvent) -> &BTreeMap<u64, i64> {
+        match (anchor, self.fallback) {
+            (AnchorEvent::FirstShred, false) => &self.first_shred,
+            (AnchorEvent::FirstShred, true) => &self.slot_notification,
+            (AnchorEvent::CreatedBank, _) => &self.created_bank,
+        }
+    }
 }
 
 /// Leader windows are 4 slots aligned to multiples of 4 (`NUM_CONSECUTIVE_LEADER_SLOTS`).
@@ -119,12 +144,13 @@ pub struct SlotClock {
     latest: watch::Receiver<u64>,
     clock: RunClock,
     nominal_slot_ms: f64,
+    anchor: AnchorEvent,
 }
 
 impl SlotClock {
     /// Connects and starts following slots in a background task (reconnecting on errors). Returns once the first
     /// notification has arrived.
-    pub async fn start(ws_url: &str, clock: RunClock, nominal_slot_ms: f64) -> Result<Self> {
+    pub async fn start(ws_url: &str, clock: RunClock, nominal_slot_ms: f64, anchor: AnchorEvent) -> Result<Self> {
         let (tx, rx) = watch::channel(0u64);
         let state = Arc::new(Mutex::new(State::default()));
         let url = ws_url.to_string();
@@ -133,7 +159,7 @@ impl SlotClock {
             let mut backoff = Duration::from_millis(250);
             loop {
                 let connected_at = Instant::now();
-                if let Err(e) = follow(&url, &st, &tx, clock).await {
+                if let Err(e) = follow(&url, &st, &tx, clock, anchor).await {
                     tracing::warn!(error = %e, "slot stream dropped; reconnecting");
                 }
                 // A connection that lived a while was healthy: reconnect quickly next time.
@@ -147,23 +173,33 @@ impl SlotClock {
         let mut rx2 = rx.clone();
         tokio::time::timeout(Duration::from_secs(20), rx2.wait_for(|s| *s > 0))
             .await
-            .map_err(|_| anyhow!("no slot notification within 20 s from {ws_url}"))?
+            .map_err(|_| anyhow!("no slot notification within 20 s from {}", crate::rpc::redact_url(ws_url)))?
             .map_err(|_| anyhow!("slot stream task ended"))?;
-        Ok(Self { state, latest: rx, clock, nominal_slot_ms })
+        Ok(Self { state, latest: rx, clock, nominal_slot_ms, anchor })
     }
 
     pub fn latest_slot(&self) -> u64 {
         *self.latest.borrow()
     }
 
+    /// Observation time of `slot` for the configured anchor event.
     pub fn first_shred_unix_ns(&self, slot: u64) -> Option<i64> {
-        self.state.lock().expect("slot state").first_shred.get(&slot).copied()
+        self.state.lock().expect("slot state").timing(self.anchor).get(&slot).copied()
+    }
+
+    /// The event kind actually timing the clock (recorded with every anchor).
+    pub fn anchor_kind(&self) -> &'static str {
+        match (self.anchor, self.state.lock().expect("slot state").fallback) {
+            (AnchorEvent::FirstShred, false) => "firstShredReceived",
+            (AnchorEvent::FirstShred, true) => "slotNotification",
+            (AnchorEvent::CreatedBank, _) => "createdBank",
+        }
     }
 
     /// Median observed increments over the last 256 slots, split by inside-window vs window-boundary slots.
     pub fn cadence(&self) -> Cadence {
         let st = self.state.lock().expect("slot state");
-        let pts: Vec<(u64, i64)> = st.first_shred.iter().rev().take(257).map(|(s, t)| (*s, *t)).collect();
+        let pts: Vec<(u64, i64)> = st.timing(self.anchor).iter().rev().take(257).map(|(s, t)| (*s, *t)).collect();
         let (mut inside, mut boundary) = (vec![], vec![]);
         for w in pts.windows(2) {
             let ((s1, t1), (s0, t0)) = (w[0], w[1]);
@@ -195,14 +231,15 @@ impl SlotClock {
     pub fn estimate_unix_ns(&self, slot: u64) -> Option<i64> {
         let c = self.cadence();
         let st = self.state.lock().expect("slot state");
-        if let Some(t) = st.first_shred.get(&slot) {
+        let m = st.timing(self.anchor);
+        if let Some(t) = m.get(&slot) {
             return Some(*t);
         }
-        if let Some((&s0, &t0)) = st.first_shred.range(..slot).next_back() {
+        if let Some((&s0, &t0)) = m.range(..slot).next_back() {
             let ms: f64 = (s0 + 1..=slot).map(|s| c.increment_ms(s)).sum();
             return Some(t0 + (ms * 1e6) as i64);
         }
-        let (&s0, &t0) = st.first_shred.iter().next()?;
+        let (&s0, &t0) = m.iter().next()?;
         let ms: f64 = (slot + 1..=s0).map(|s| c.increment_ms(s)).sum();
         Some(t0 - (ms * 1e6) as i64)
     }
@@ -246,8 +283,11 @@ impl SlotClock {
     }
 }
 
-async fn follow(url: &str, state: &Arc<Mutex<State>>, tx: &watch::Sender<u64>, clock: RunClock) -> Result<()> {
-    let (mut ws, _) = tokio_tungstenite::connect_async(url).await.with_context(|| format!("websocket {url}"))?;
+async fn follow(url: &str, state: &Arc<Mutex<State>>, tx: &watch::Sender<u64>, clock: RunClock, anchor: AnchorEvent) -> Result<()> {
+    // Never put the raw URL (which may carry an API key) into an error.
+    let (mut ws, _) = tokio_tungstenite::connect_async(url)
+        .await
+        .map_err(|e| anyhow!("websocket {}: {}", crate::rpc::redact_url(url), e.to_string().replace(url, "<url>")))?;
     ws.send(Message::text(json!({"jsonrpc": "2.0", "id": 1, "method": "slotsUpdatesSubscribe"}).to_string())).await?;
     let mut fallback_sent = false;
     let mut ping = tokio::time::interval(Duration::from_secs(15));
@@ -278,6 +318,7 @@ async fn follow(url: &str, state: &Arc<Mutex<State>>, tx: &watch::Sender<u64>, c
             // Provider without slotsUpdatesSubscribe: fall back to plain slot notifications.
             ws.send(Message::text(json!({"jsonrpc": "2.0", "id": 2, "method": "slotSubscribe"}).to_string())).await?;
             fallback_sent = true;
+            state.lock().expect("slot state").fallback = true;
             continue;
         }
         let (slot, kind, server_ms) = match v.get("method").and_then(Value::as_str) {
@@ -289,19 +330,28 @@ async fn follow(url: &str, state: &Arc<Mutex<State>>, tx: &watch::Sender<u64>, c
             _ => continue,
         };
         let Some(slot) = slot else { continue };
-        // First-shred (or plain slot) notifications time the clock. `createdBank` counts only for slots without one —
-        // a leader node (e.g. a single-node localnet) never "receives" its own first shred. Later lifecycle events are
-        // logged only.
         let mut st = state.lock().expect("slot state");
-        let timing_event = kind == "firstShredReceived"
-            || kind == "slotNotification"
-            || (kind == "createdBank" && !st.first_shred.contains_key(&slot));
-        if timing_event {
-            st.first_shred.entry(slot).or_insert(recv);
-            while st.first_shred.len() > 4096 {
-                st.first_shred.pop_first();
+        let map = match kind.as_str() {
+            "firstShredReceived" => Some(&mut st.first_shred),
+            "createdBank" => Some(&mut st.created_bank),
+            "slotNotification" => Some(&mut st.slot_notification),
+            _ => None,
+        };
+        let mut first_time = false;
+        if let Some(m) = map {
+            first_time = !m.contains_key(&slot);
+            m.entry(slot).or_insert(recv);
+            while m.len() > 4096 {
+                m.pop_first();
             }
         }
+        let fallback = st.fallback;
+        let timing_event = first_time
+            && match (anchor, fallback) {
+                (AnchorEvent::FirstShred, false) => kind == "firstShredReceived",
+                (AnchorEvent::FirstShred, true) => kind == "slotNotification",
+                (AnchorEvent::CreatedBank, _) => kind == "createdBank",
+            };
         st.events.push(SlotEvent { slot, kind, recv_unix_ns: recv, server_ms });
         drop(st);
         if timing_event {
@@ -343,7 +393,7 @@ mod tests {
     #[test]
     fn cadence_split_and_extrapolation() {
         let (_tx, rx) = watch::channel(0u64);
-        let clock = SlotClock { state: Arc::new(Mutex::new(State::default())), latest: rx, clock: RunClock::new(), nominal_slot_ms: 200.0 };
+        let clock = SlotClock { state: Arc::new(Mutex::new(State::default())), latest: rx, clock: RunClock::new(), nominal_slot_ms: 200.0, anchor: AnchorEvent::FirstShred };
         {
             let mut st = clock.state.lock().unwrap();
             let mut t = 0i64;

@@ -9,10 +9,10 @@ use crate::alpenglow;
 use crate::auth::{LiveAuthorization, sol_to_lamports};
 use crate::collect::{self, Tracked};
 use crate::keys::read_keypair;
-use crate::ledger::{Kind, Ledger};
+use crate::ledger::{Kind, Ledger, Reservation};
 use crate::probe::library;
 use crate::quic::{Outgoing, QuicClient};
-use crate::rpc::Rpc;
+use crate::rpc::{Rpc, redact_url};
 use crate::store::{RunDir, new_run_id, utc_now_rfc3339};
 use crate::targets::{self, Validator};
 use crate::timing::{RunClock, SlotClock};
@@ -40,6 +40,7 @@ pub struct SmokeArgs {
     pub offset_ms: i64,
     pub blockhash_age_slots: u64,
     pub max_targets: usize,
+    pub budget_sol: f64,
 }
 
 #[derive(Serialize)]
@@ -68,13 +69,6 @@ fn lock_for(run_id: &str, probe_id: &str) -> Pubkey {
     Pubkey::new_from_array(h.into())
 }
 
-pub fn redact_url(url: &str) -> String {
-    match url.split_once('?') {
-        Some((base, _)) => format!("{base}?<redacted>"),
-        None => url.to_string(),
-    }
-}
-
 pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
     let clock = RunClock::new();
     let run_id = new_run_id(if args.live { "smoke-live" } else { "smoke-dry" });
@@ -88,6 +82,7 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
     let (payer, ledger, auth) = if args.live {
         let cap = sol_to_lamports(args.max_spend_sol.context("--live requires --max-spend-sol")?)?;
         let ledger = Ledger::open(&args.ledger, cap)?;
+        ledger.define_budget("smoke", sol_to_lamports(args.budget_sol)?)?;
         let auth = LiveAuthorization::grant(true, args.max_spend_sol, &gate, &ledger)?;
         let kp = read_keypair(args.keypair.as_deref().context("--live requires --keypair (or ITB_KEYPAIR_PATH)")?)?;
         (Arc::new(kp), Some(Arc::new(ledger)), Some(Arc::new(auth)))
@@ -128,7 +123,7 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
         .collect();
     eprintln!("{}", serde_json::to_string_pretty(&preview)?);
 
-    let slot_clock = SlotClock::start(ws_url, clock, 200.0).await?;
+    let slot_clock = SlotClock::start(ws_url, clock, 200.0, crate::timing::AnchorEvent::FirstShred).await?;
     let quic = Arc::new(QuicClient::new(clock)?);
     let planned = Arc::new(run.jsonl("plan.jsonl")?);
     let sends = Arc::new(run.jsonl("sends.jsonl")?);
@@ -182,6 +177,7 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
                         window_first_slot: window.0,
                         window_last_slot: window.1,
                         last_valid_block_height: bh.last_valid_block_height,
+                        max_fee: template.total_fee(),
                         transport_error: None,
                     });
                     items.push((probe_id, wire));
@@ -203,15 +199,32 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
                             }
                             return Ok(vec![]); // nothing reserved, nothing sent
                         }
-                        for t in &tracked {
-                            ledger.reserve(&t.signature, Kind::Probe, &t.probe_id, template.total_fee())?;
-                        }
-                        let outgoing = items.into_iter().map(|(probe_id, wire)| Outgoing { probe_id, wire, at }).collect();
+                        let batch: Vec<Reservation> = tracked
+                            .iter()
+                            .map(|t| Reservation {
+                                signature: t.signature.clone(),
+                                kind: Kind::Probe,
+                                label: t.probe_id.clone(),
+                                max_fee: t.max_fee,
+                                payer: payer.pubkey().to_string(),
+                                last_valid_block_height: t.last_valid_block_height,
+                                budget: "smoke".into(),
+                            })
+                            .collect();
+                        ledger.reserve_batch(&batch)?;
+                        let deadline = at + Duration::from_millis(200);
+                        let outgoing = items.into_iter().map(|(probe_id, wire)| Outgoing { probe_id, wire, at, deadline }).collect();
                         let records = quic.send_scheduled(auth, addr, outgoing).await;
                         for (t, r) in tracked.iter_mut().zip(&records) {
                             t.transport_error = r.error.clone();
+                            if r.never_opened {
+                                ledger.cancel_unsent(&t.signature)?; // provably never left this process
+                            }
                             sends.append(&json!({"dry_run": false, "record": r, "target_identity": v.identity}))?;
                         }
+                        // Probes that never left are resolved as not sent, not polled for.
+                        let unsent: std::collections::HashSet<String> = records.iter().filter(|r| r.never_opened).map(|r| r.probe_id.clone()).collect();
+                        tracked.retain(|t| !unsent.contains(&t.probe_id));
                     }
                     _ => {
                         let scheduled_unix_ns = crate::timing::RunClock::new().instant_to_unix_ns(at.into_std());
@@ -241,7 +254,7 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
     let mut summary = json!({"run_id": run_id, "mode": if args.live { "live" } else { "dry_run" }, "started_at": started_at,
                              "rpc": redact_url(rpc.url()), "alpenglow": gate, "probes_planned": tracked.len()});
     if args.live {
-        let outcomes = collect::resolve(&rpc, ledger.as_deref(), &tracked, &run, Duration::from_secs(120)).await?;
+        let outcomes = collect::resolve(&rpc, ledger.as_deref(), &tracked, Some(&run), Duration::from_secs(120)).await?;
         let out = run.jsonl("outcomes.jsonl")?;
         for o in &outcomes {
             out.append(o)?;
