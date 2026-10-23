@@ -143,17 +143,38 @@ fn lock_for(run_id: &str, target: &str, seq: u32, lock_index: u32) -> Pubkey {
 }
 
 /// Leader windows of `identity` starting after `from_slot`, looking into the next epoch if needed.
-async fn upcoming_windows(rpc: &Rpc, identity: &str, from_slot: u64) -> Result<Vec<(u64, u64)>> {
-    let epoch = rpc.get_epoch_info().await?;
-    let first = epoch.first_slot_of_epoch();
-    let mut slots = rpc.leader_slots(epoch.absolute_slot, identity, first).await?;
-    let next_first = first + epoch.slots_in_epoch;
-    if next_first.saturating_sub(epoch.absolute_slot) < 20_000 {
-        if let Ok(next) = rpc.leader_slots(next_first, identity, next_first).await {
-            slots.extend(next);
+/// Leader windows per target, fetched once per epoch (the schedule is fixed for an epoch).
+#[derive(Default)]
+struct ScheduleCache {
+    /// (target, epoch first slot) -> windows
+    windows: HashMap<(String, u64), Vec<(u64, u64)>>,
+    epoch: Option<crate::rpc::EpochInfo>,
+}
+
+impl ScheduleCache {
+    async fn upcoming(&mut self, rpc: &Rpc, identity: &str, from_slot: u64) -> Result<Option<(u64, u64)>> {
+        let stale = self.epoch.as_ref().is_none_or(|e| from_slot >= e.first_slot_of_epoch() + e.slots_in_epoch);
+        if stale {
+            self.epoch = Some(rpc.get_epoch_info().await?);
         }
+        let e = self.epoch.clone().expect("epoch info");
+        let first = e.first_slot_of_epoch();
+        let mut epochs = vec![first];
+        if (first + e.slots_in_epoch).saturating_sub(from_slot) < 20_000 {
+            epochs.push(first + e.slots_in_epoch);
+        }
+        for ep_first in epochs {
+            let key = (identity.to_string(), ep_first);
+            if !self.windows.contains_key(&key) {
+                let slots = rpc.leader_slots(ep_first, identity, ep_first).await.unwrap_or_default();
+                self.windows.insert(key.clone(), targets::windows(slots));
+            }
+            if let Some(w) = self.windows[&key].iter().find(|(s, _)| *s > from_slot) {
+                return Ok(Some(*w));
+            }
+        }
+        Ok(None)
     }
-    Ok(targets::windows(slots).into_iter().filter(|(s, _)| *s > from_slot).collect())
 }
 
 fn load_progress(path: &PathBuf) -> Result<HashMap<String, HashSet<u32>>> {
@@ -271,11 +292,18 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         "itb_version": env!("CARGO_PKG_VERSION"),
     }))?;
 
+    // Warm-up: the cadence estimate needs a few window hand-overs before anchors and estimates are trustworthy.
+    let warm_deadline = tokio::time::Instant::now() + Duration::from_secs(90);
+    while slot_clock.cadence().samples_boundary < 8 && tokio::time::Instant::now() < warm_deadline {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+
     let deadline = tokio::time::Instant::now() + Duration::from_secs(args.max_minutes * 60);
     let semaphore = Arc::new(tokio::sync::Semaphore::new(args.concurrency.max(1)));
     let mut handles = vec![];
     let mut windows_started = 0usize;
     let mut next_from: HashMap<String, u64> = HashMap::new();
+    let mut schedule = ScheduleCache::default();
 
     while windows_started < args.max_windows && tokio::time::Instant::now() < deadline {
         // Next upcoming window across all targets that still have plans.
@@ -286,7 +314,7 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
                 continue;
             }
             let from = (*next_from.get(t).unwrap_or(&0)).max(now_slot + 40);
-            if let Some(&(s, e)) = upcoming_windows(&rpc, t, from).await?.first() {
+            if let Some((s, e)) = schedule.upcoming(&rpc, t, from).await? {
                 if best.as_ref().is_none_or(|b| s < b.0) {
                     best = Some((s, e, t.clone()));
                 }
@@ -382,10 +410,14 @@ struct Pending {
     nominal_ms: f64,
 }
 
-fn anchor_for(nominal_ms: f64, boundary_ms: f64) -> Anchor {
+/// Sends inside the hand-over gap are anchored on the previous leader's last slot; the gap is ≥ ~280 ms in every
+/// observation so far, so −250 ms is the deepest offset that still lands after the anchor event.
+pub const PREV_SLOT_MAX_LEAD_MS: f64 = 250.0;
+
+fn anchor_for(nominal_ms: f64) -> Anchor {
     if nominal_ms >= 0.0 {
         Anchor::WindowSlot
-    } else if nominal_ms > -(boundary_ms - 50.0) {
+    } else if nominal_ms >= -PREV_SLOT_MAX_LEAD_MS {
         Anchor::PrevSlot
     } else {
         Anchor::Estimate
@@ -441,7 +473,7 @@ async fn execute_window(ctx: WindowCtx, v: Validator, plan: WindowPlan, window: 
             let wire = bincode::serialize(&tx)?;
             let signature = tx.signatures[0].to_string();
             let nominal_ms = nominal(m.send_offset_ms);
-            let anchor = anchor_for(nominal_ms, cadence.boundary_ms);
+            let anchor = anchor_for(nominal_ms);
             let probe_id = format!("{}/{}", pair.pair_id, m.label);
             ctx.logs.probes.append(&ProbeRecord {
                 run_id: &ctx.run_id,
@@ -496,15 +528,16 @@ async fn execute_window(ctx: WindowCtx, v: Validator, plan: WindowPlan, window: 
                 ctx.pool.release(&payer_idx);
                 return Ok(());
             }
-            for (t, fee) in tracked.iter().zip(&max_fees) {
-                ledger.reserve(&t.signature, Kind::Probe, &t.probe_id, *fee)?;
-            }
-            Some(auth.clone())
+            Some((auth.clone(), ledger.clone()))
         }
         _ => None,
     };
+    let fee_of: HashMap<String, u64> = tracked.iter().zip(&max_fees).map(|(t, f)| (t.probe_id.clone(), *f)).collect();
+    let sig_of: HashMap<String, String> = tracked.iter().map(|t| (t.probe_id.clone(), t.signature.clone())).collect();
+    let mut not_sent: HashMap<String, &'static str> = HashMap::new();
 
-    // Phases in time order. Each anchor is waited for (or estimated if missed) only when its phase comes up.
+    // Phases in time order. An event anchor that is not observed (stream gap, skipped slot) cancels its phase:
+    // those probes are never reserved nor sent, rather than being sent at a badly estimated time.
     let mut records = vec![];
     let mut anchors = serde_json::Map::new();
     for phase in [Anchor::Estimate, Anchor::PrevSlot, Anchor::WindowSlot] {
@@ -531,6 +564,12 @@ async fn execute_window(ctx: WindowCtx, v: Validator, plan: WindowPlan, window: 
             format!("{phase:?}"),
             json!({"slot": anchor_slot, "anchor_unix_ns": anchor_ns, "observed": observed, "extra_ms": extra_ms}),
         );
+        if phase != Anchor::Estimate && !observed {
+            for p in &items {
+                not_sent.insert(p.probe_id.clone(), "anchor_missed");
+            }
+            continue;
+        }
         let outgoing: Vec<Outgoing> = items
             .iter()
             .map(|p| {
@@ -539,7 +578,12 @@ async fn execute_window(ctx: WindowCtx, v: Validator, plan: WindowPlan, window: 
             })
             .collect();
         match &live {
-            Some(auth) => records.extend(ctx.quic.send_scheduled(auth, addr, outgoing).await),
+            Some((auth, ledger)) => {
+                for p in &items {
+                    ledger.reserve(&sig_of[&p.probe_id], Kind::Probe, &p.probe_id, fee_of[&p.probe_id])?;
+                }
+                records.extend(ctx.quic.send_scheduled(auth, addr, outgoing).await)
+            }
             None => {
                 for o in outgoing {
                     tokio::time::sleep_until(o.at).await;
@@ -550,6 +594,12 @@ async fn execute_window(ctx: WindowCtx, v: Validator, plan: WindowPlan, window: 
         }
     }
     row["anchors"] = serde_json::Value::Object(anchors);
+    row["not_sent"] = json!(not_sent.len());
+    for t in &mut tracked {
+        if let Some(reason) = not_sent.get(&t.probe_id) {
+            t.transport_error = Some(format!("not_sent: {reason}"));
+        }
+    }
 
     if live.is_some() {
         let by_id: HashMap<&str, &crate::quic::StreamRecord> = records.iter().map(|r| (r.probe_id.as_str(), r)).collect();
@@ -568,7 +618,9 @@ async fn execute_window(ctx: WindowCtx, v: Validator, plan: WindowPlan, window: 
                                      "live": live.is_some(), "at": utc_now_rfc3339()}))?;
 
     if live.is_some() {
-        let outcomes = collect::resolve(&ctx.rpc, ctx.ledger.as_deref(), &tracked, &ctx.run, Duration::from_secs(90)).await?;
+        let (unsent, sent): (Vec<Tracked>, Vec<Tracked>) = tracked.into_iter().partition(|t| not_sent.contains_key(&t.probe_id));
+        let mut outcomes = collect::resolve(&ctx.rpc, ctx.ledger.as_deref(), &sent, &ctx.run, Duration::from_secs(90)).await?;
+        outcomes.extend(unsent.iter().map(collect::not_sent_outcome));
         for o in &outcomes {
             ctx.logs.outcomes.append(&json!({"run_id": ctx.run_id, "outcome": o}))?;
         }
@@ -583,11 +635,12 @@ mod tests {
 
     #[test]
     fn anchors_by_offset() {
-        assert_eq!(anchor_for(60.0, 560.0), Anchor::WindowSlot);
-        assert_eq!(anchor_for(0.0, 560.0), Anchor::WindowSlot);
-        assert_eq!(anchor_for(-150.0, 560.0), Anchor::PrevSlot);
-        assert_eq!(anchor_for(-600.0, 560.0), Anchor::Estimate);
-        assert_eq!(anchor_for(-7_000.0, 560.0), Anchor::Estimate);
+        assert_eq!(anchor_for(60.0), Anchor::WindowSlot);
+        assert_eq!(anchor_for(0.0), Anchor::WindowSlot);
+        assert_eq!(anchor_for(-150.0), Anchor::PrevSlot);
+        assert_eq!(anchor_for(-250.0), Anchor::PrevSlot);
+        assert_eq!(anchor_for(-600.0), Anchor::Estimate);
+        assert_eq!(anchor_for(-7_000.0), Anchor::Estimate);
     }
 
     #[test]

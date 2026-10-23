@@ -32,6 +32,25 @@ pub enum Status {
     SpilloverOtherLeader,
     ExpiredConfirmed,
     Unresolved,
+    /// Never put on the wire (e.g. its send anchor was not observed); never reserved, cannot land.
+    NotSent,
+}
+
+pub fn not_sent_outcome(t: &Tracked) -> Outcome {
+    Outcome {
+        probe_id: t.probe_id.clone(),
+        signature: t.signature.clone(),
+        status: Status::NotSent,
+        slot: None,
+        index_in_block: None,
+        block_tx_count: None,
+        leader: None,
+        fee: None,
+        err: None,
+        cost_units: None,
+        compute_units_consumed: None,
+        transport_error: t.transport_error.clone(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
