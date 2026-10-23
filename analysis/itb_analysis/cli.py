@@ -37,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     o.add_argument("--n-draws", type=int, default=2_000)
     o.add_argument("--out", type=Path, default=Path("data/derived/oc.json"))
     a = ap.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     if a.cmd == "report":
         path = report.write(report.compute(a.raw), a.derived)

@@ -175,20 +175,28 @@ def mcnemar_exact(landed_x: np.ndarray, landed_y: np.ndarray) -> float:
     return float(sps.binomtest(b, b + c, 0.5).pvalue)
 
 
-def validator_effects(pairs: pd.DataFrame, alpha_adj: float | None = None, n_draws: int = N_RANDOMISATION) -> dict:
-    """All confirmatory quantities for one validator from its evaluable contended K-window pairs."""
+ESTIMANDS = {"cc": ("x_first_cc", "first_sent_first_cc"), "censored": ("x_first", "first_sent_first")}
+
+
+def validator_effects(pairs: pd.DataFrame, alpha_adj: float | None = None, n_draws: int = N_RANDOMISATION, estimand: str = "cc") -> dict:
+    """All confirmatory quantities for one validator from its evaluable contended K-window pairs.
+
+    estimand "cc" (primary): pairs where both members landed in the targeted window.
+    estimand "censored" (sensitivity): a member that did not land counts as after every member that did.
+    """
+    xc, oc_ = ESTIMANDS[estimand]
     alpha_adj = adjusted_alpha() if alpha_adj is None else alpha_adj
     out: dict = {"label": {}, "order_by_contrast": {}, "pvalues": {}, "inclusion": {}}
     order_k = order_n = 0
     for c in ("c1", "c2", "c3"):
         g = pairs[(pairs["pair_kind"] == c) & pairs["evaluable"]]
-        obs = g.dropna(subset=["x_first"])
-        k, n = int(obs["x_first"].sum()), len(obs)
+        obs = g.dropna(subset=[xc])
+        k, n = int(obs[xc].sum()), len(obs)
         out["label"][c] = Effect(k, n, alpha_adj)
-        ko, no = int(obs["first_sent_first"].sum()), len(obs)
+        ko, no = int(obs[oc_].sum()), len(obs)
         out["order_by_contrast"][c] = Effect(ko, no, alpha_adj)
         order_k, order_n = order_k + ko, order_n + no
-        out["pvalues"][c] = randomisation_pvalues(obs["x_first"].to_numpy(), obs["x_sent_first"].to_numpy(dtype=float), n_draws=n_draws)
+        out["pvalues"][c] = randomisation_pvalues(obs[xc].to_numpy(), obs["x_sent_first"].to_numpy(dtype=float), n_draws=n_draws)
         out["inclusion"][c] = {
             "x_rate": float(g["landed_x"].mean()) if len(g) else float("nan"),
             "y_rate": float(g["landed_y"].mean()) if len(g) else float("nan"),
@@ -201,17 +209,18 @@ def validator_effects(pairs: pd.DataFrame, alpha_adj: float | None = None, n_dra
     return out
 
 
-def strictness(pairs: pd.DataFrame, rule: str) -> dict:
+def strictness(pairs: pd.DataFrame, rule: str, estimand: str = "cc") -> dict:
     """Share of evaluable windows whose outcome matches a rule's directional predictions, with a one-sided 95 % lower bound."""
     preds = RULES[rule]
+    xc, oc_ = ESTIMANDS[estimand]
     k = n = 0
     for c in ("c1", "c2", "c3"):
         if preds[c] not in ("x", "y"):
             continue
-        g = pairs[(pairs["pair_kind"] == c) & pairs["evaluable"]].dropna(subset=["x_first"])
-        hit = g["x_first"] == (1.0 if preds[c] == "x" else 0.0)
+        g = pairs[(pairs["pair_kind"] == c) & pairs["evaluable"]].dropna(subset=[xc])
+        hit = g[xc] == (1.0 if preds[c] == "x" else 0.0)
         k, n = k + int(hit.sum()), n + len(g)
     if preds["order"] == "first":
-        g = pairs[pairs["pair_kind"].isin(["c1", "c2", "c3"]) & pairs["evaluable"]].dropna(subset=["first_sent_first"])
-        k, n = k + int(g["first_sent_first"].sum()), n + len(g)
+        g = pairs[pairs["pair_kind"].isin(["c1", "c2", "c3"]) & pairs["evaluable"]].dropna(subset=[oc_])
+        k, n = k + int(g[oc_].sum()), n + len(g)
     return {"agree": k, "n": n, "rate": k / n if n else float("nan"), "lower95": one_sided_lower(k, n)}

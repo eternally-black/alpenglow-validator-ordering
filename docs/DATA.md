@@ -50,7 +50,7 @@ labelled as such in every table.
 | Status | Meaning |
 |---|---|
 | `landed_target` | in a slot of the targeted window, produced by the target |
-| `spillover_same_validator_later` | produced by the target, but outside the targeted window |
+| `spillover_same_validator_other_window` | produced by the target, but in another of its windows (earlier or later) |
 | `spillover_other_leader` | produced by a different leader |
 | `expired_confirmed` | the blockhash's last valid block height is finalized and the signature is unknown to the cluster |
 | `unresolved` | neither could be proven before the collection timeout (stays charged in the ledger) |

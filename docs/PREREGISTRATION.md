@@ -16,7 +16,12 @@ For each target validator **V**, reached through its advertised ingress endpoint
 2. **Send-order effect** of the same pairs: **O_C = P(the first-sent member lands before the second-sent member)**.
 3. **Inclusion**: P(member lands in V's targeted window), per label.
 
-"Lands before" uses the lexicographic order (slot, index-in-block) over the whole targeted window. A member that did not land in the window (expired, spill-over or unresolved) is ordered **after** every member that did. A pair where neither member landed contributes no ordering observation; it is counted in the funnel.
+"Lands before" uses the lexicographic order (slot, index-in-block) over the whole targeted window.
+
+- **Primary (complete-case):** L and O are estimated over pairs where **both** members landed in the targeted window. This is the conditional question "when both are included, which comes first".
+- **Co-primary inclusion analysis (estimand 3):** detects any key-dependent selection into that subset.
+- **Sensitivity (censored coding, §6):** a member that did not land counts as after every member that did. Simulation (POWER.md) shows this coding dilutes power badly at landing rates ≤ 0.6, because a pair with one landed member carries no label information when landing is independent of the label. That is why it is not primary.
+- Pairs where neither member landed contribute nothing; they are counted in the funnel.
 
 These are statements about our probes' ledger outcomes on that path. They are not observations of the scheduler's internal state.
 
@@ -63,16 +68,18 @@ These are statements about our probes' ledger outcomes on that path. They are no
 
 ## 5. Stopping, sample size
 
-- **Target: 40 K-windows** per core validator, 20 per extended validator.
-- **Stop when any of these happens:**
-  - the target is reached;
+- **Target: 40 informative pairs for each of C1, C2, C3** per core validator, 20 per extended validator. An informative pair = both members landed in the targeted window.
+- **The design holds 80 (core) / 40 (extended) K-window plans**, executed in order, so a low landing rate is compensated by more windows. Probes that do not land cost nothing.
+- **Stop a target when any of these happens:**
+  - its informative target is reached;
+  - its K-window plans run out;
   - the spend ledger's headroom falls below one window's worst-case fee;
   - **2026-10-29 23:59 UTC** (end of Stage 1).
-- **No early stopping on results.** Shortfalls are reported as such.
+- **The rule counts landing only, never ordering outcomes,** so it cannot be steered by results. It is implemented in `itb run` and journalled per window (`informative_pairs` in `state/progress.jsonl`). Shortfalls are reported as such.
 
 ## 6. Pre-specified sensitivity analyses
 
-1. Complete-case: only windows where both members landed in the target window.
+1. Censored coding: all windows where at least one member landed; non-landed members ordered last.
 2. Worst-case bounds: non-landed members placed adversarially (first / last).
 3. Session-cluster bootstrap (sessions = contiguous run invocations): intervals for L and O.
 4. Regime split for direct ingress: buffered vs streaming.

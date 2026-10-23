@@ -221,7 +221,7 @@ These pairs are not used as a "network noise floor".
 
 - **Per probe**, one of:
   - `landed_target` (success | failure);
-  - `spillover_same_validator_later_window`;
+  - `spillover_same_validator_other_window_window`;
   - `spillover_other_leader`;
   - `expired_confirmed` (after `lastValidBlockHeight` is finalized, signature-history lookup is null);
   - `unresolved_observation_failure`;

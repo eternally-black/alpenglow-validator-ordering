@@ -32,9 +32,9 @@ impl LiveAuthorization {
         if ledger.cap() != cap {
             bail!("ledger cap is {} lamports but --max-spend-sol is {cap}; use the same cap for the whole campaign", ledger.cap());
         }
-        if gate.activated_at_slot == 0 {
-            bail!("Alpenglow gate status missing");
-        }
+        // A GateStatus can only be produced by `alpenglow::require_active`, so holding one proves activation
+        // (activation at slot 0 — e.g. a localnet genesis — is valid).
+        let _ = gate;
         Ok(Self { cap_lamports: cap, _private: () })
     }
 

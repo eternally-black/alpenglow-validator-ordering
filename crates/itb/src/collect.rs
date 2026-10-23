@@ -1,6 +1,6 @@
 //! Turns sent signatures into outcomes (PLAN §4.1) and archives the blocks they landed in.
 //!
-//! Status taxonomy: `landed_target`, `spillover_same_validator_later`, `spillover_other_leader`,
+//! Status taxonomy: `landed_target`, `spillover_same_validator_other_window`, `spillover_other_leader`,
 //! `expired_confirmed` (last valid block height finalized and the signature still unknown), `unresolved`
 //! (we could not prove either way before the timeout). Unknown outcomes stay charged in the spend ledger.
 
@@ -28,7 +28,7 @@ pub struct Tracked {
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     LandedTarget,
-    SpilloverSameValidatorLater,
+    SpilloverSameValidatorOtherWindow,
     SpilloverOtherLeader,
     ExpiredConfirmed,
     Unresolved,
@@ -152,7 +152,7 @@ pub async fn resolve(rpc: &Rpc, ledger: Option<&Ledger>, tracked: &[Tracked], ru
             let in_window = (t.window_first_slot..=t.window_last_slot).contains(&slot);
             o.status = match (same_leader, in_window) {
                 (true, true) => Status::LandedTarget,
-                (true, false) => Status::SpilloverSameValidatorLater,
+                (true, false) => Status::SpilloverSameValidatorOtherWindow,
                 _ => Status::SpilloverOtherLeader,
             };
             if let Some(Some(block)) = blocks.get(&slot) {

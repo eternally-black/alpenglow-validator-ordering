@@ -100,7 +100,7 @@ def verify(run_dirs: list[Path], source: str = "archive", rpc_url: str = "https:
         probes = {p["probe_id"]: p for p in read_jsonl(d / "probes.jsonl")}
         for row in read_jsonl(d / "outcomes.jsonl"):
             o = row.get("outcome", row)
-            if o.get("status") in ("landed_target", "spillover_same_validator_later", "spillover_other_leader"):
+            if o.get("status") in ("landed_target", "spillover_same_validator_other_window", "spillover_other_leader"):
                 claims.append((d, probes.get(o["probe_id"]), o))
     if sample is not None and len(claims) > sample:
         random.Random(seed).shuffle(claims)

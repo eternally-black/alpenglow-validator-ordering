@@ -123,6 +123,7 @@ def pair_table(run: Run, kinds: tuple[str, ...] = ("c1", "c2", "c3", "c2_unconte
         else:
             x_first = float(_rank_key(rx) < _rank_key(ry))
         first_sent_first = np.nan if np.isnan(x_first) else float(x_first == float(x_sent_first))
+        both = landed_x and landed_y
         key = (run_id, rx["target_identity"], int(rx["seq"]))
         wrow = w.loc[key] if key in w.index else None
         rows.append(
@@ -141,6 +142,10 @@ def pair_table(run: Run, kinds: tuple[str, ...] = ("c1", "c2", "c3", "c2_unconte
                 "landed_y": landed_y,
                 "both_landed": landed_x and landed_y,
                 "same_slot": landed_x and landed_y and rx["slot"] == ry["slot"],
+                # primary (complete-case): both members landed in the targeted window
+                "x_first_cc": x_first if both else np.nan,
+                "first_sent_first_cc": first_sent_first if both else np.nan,
+                # sensitivity: a member that did not land counts as after every member that did
                 "x_first": x_first,
                 "first_sent_first": first_sent_first,
                 "race_dt_ms": rx.get("race_dt_ms"),

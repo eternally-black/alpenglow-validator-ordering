@@ -75,6 +75,9 @@ pub struct PairPlan {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WindowPlan {
     pub target_identity: String,
+    /// "core" or "extended": sets the stage-1 stopping target (PREREGISTRATION §5).
+    #[serde(default = "default_tier")]
+    pub tier: String,
     pub seq: u32,
     pub stage: u8,
     pub kit: Kit,
@@ -95,6 +98,16 @@ pub struct TargetSpec {
     pub k_windows: u32,
     pub t_windows: u32,
     pub hs_windows: u32,
+}
+
+fn default_tier() -> String {
+    "core".into()
+}
+
+/// Stage-1 stopping: a target is done once each of C1, C2, C3 has this many pairs with both members landed in the
+/// targeted window. The design holds twice as many K-window plans so low landing rates can be compensated.
+pub fn informative_target(tier: &str) -> u32 {
+    if tier == "extended" { 20 } else { 40 }
 }
 
 pub const AGED_BLOCKHASH_SLOTS: u64 = 125;
@@ -182,6 +195,7 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
             pairs.shuffle(&mut rng); // pair order inside the burst
             out.push(WindowPlan {
                 target_identity: t.identity.clone(),
+                tier: t.tier.clone(),
                 seq: seq as u32,
                 stage: 1,
                 kit: Kit::K,
@@ -231,7 +245,7 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
                         p.members[1].label = "A#2".into();
                         pairs.push(p);
                     }
-                    WindowPlan { target_identity: t.identity.clone(), seq, stage: 2, kit, regime: Regime::Streaming,
+                    WindowPlan { target_identity: t.identity.clone(), tier: t.tier.clone(), seq, stage: 2, kit, regime: Regime::Streaming,
                                  burst_offset_ms: 0.0, blockhash_age_slots: AGED_BLOCKHASH_SLOTS, pairs }
                 }
                 Kit::H | Kit::S => {
@@ -247,7 +261,7 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
                             members: vec![MemberPlan { label: "A".into(), template: library::A, send_offset_ms: *off, lock_index: (20 + i) as u32 }],
                         })
                         .collect();
-                    WindowPlan { target_identity: t.identity.clone(), seq, stage: 2, kit, regime: Regime::PreWindow,
+                    WindowPlan { target_identity: t.identity.clone(), tier: t.tier.clone(), seq, stage: 2, kit, regime: Regime::PreWindow,
                                  burst_offset_ms: 0.0,
                                  // H needs the long horizon to observe the −5 s probe; S keeps the aged hash.
                                  blockhash_age_slots: if kit == Kit::H { 0 } else { AGED_BLOCKHASH_SLOTS }, pairs }

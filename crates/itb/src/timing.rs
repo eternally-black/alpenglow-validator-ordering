@@ -289,9 +289,13 @@ async fn follow(url: &str, state: &Arc<Mutex<State>>, tx: &watch::Sender<u64>, c
             _ => continue,
         };
         let Some(slot) = slot else { continue };
-        // Only first-shred (or plain slot) notifications time the clock; later lifecycle events are logged only.
-        let timing_event = kind == "firstShredReceived" || kind == "slotNotification";
+        // First-shred (or plain slot) notifications time the clock. `createdBank` counts only for slots without one —
+        // a leader node (e.g. a single-node localnet) never "receives" its own first shred. Later lifecycle events are
+        // logged only.
         let mut st = state.lock().expect("slot state");
+        let timing_event = kind == "firstShredReceived"
+            || kind == "slotNotification"
+            || (kind == "createdBank" && !st.first_shred.contains_key(&slot));
         if timing_event {
             st.first_shred.entry(slot).or_insert(recv);
             while st.first_shred.len() > 4096 {

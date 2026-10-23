@@ -298,6 +298,9 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
+    // Stage-1 stopping (PREREGISTRATION §5): per target, pairs with both members landed, for C1, C2, C3.
+    let informative: Arc<Mutex<HashMap<String, [u32; 3]>>> = Arc::new(Mutex::new(load_informative(&args.progress)?));
+
     let deadline = tokio::time::Instant::now() + Duration::from_secs(args.max_minutes * 60);
     let semaphore = Arc::new(tokio::sync::Semaphore::new(args.concurrency.max(1)));
     let mut handles = vec![];
@@ -309,7 +312,14 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         // Next upcoming window across all targets that still have plans.
         let now_slot = slot_clock.latest_slot();
         let mut best: Option<(u64, u64, String)> = None;
-        for (t, ps) in &plans {
+        for (t, ps) in plans.iter_mut() {
+            if args.stage == 1 && ps.first().is_some_and(|p| {
+                let need = design::informative_target(&p.tier);
+                informative.lock().expect("informative").get(t).is_some_and(|c| c.iter().all(|n| *n >= need))
+            }) {
+                tracing::info!(target = %t, "stage-1 informative target reached; no more windows for this target");
+                ps.clear();
+            }
             if ps.is_empty() {
                 continue;
             }
@@ -353,6 +363,7 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
             logs: logs.clone(),
             run: run.clone(),
             obs_lag_ms: args.obs_lag_ms,
+            informative: informative.clone(),
         };
         handles.push(tokio::spawn(async move {
             let r = execute_window(ctx, validator, plan, (first, last)).await;
@@ -401,6 +412,24 @@ struct WindowCtx {
     logs: Arc<Logs>,
     run: Arc<RunDir>,
     obs_lag_ms: f64,
+    informative: Arc<Mutex<HashMap<String, [u32; 3]>>>,
+}
+
+/// Rebuilds the stage-1 informative counters from earlier runs' progress records.
+fn load_informative(progress: &PathBuf) -> Result<HashMap<String, [u32; 3]>> {
+    let mut out: HashMap<String, [u32; 3]> = HashMap::new();
+    if let Ok(text) = std::fs::read_to_string(progress) {
+        for line in text.lines().filter(|l| !l.trim().is_empty()) {
+            let v: serde_json::Value = serde_json::from_str(line)?;
+            if let (Some(t), Some(arr)) = (v["target_identity"].as_str(), v["informative_pairs"].as_array()) {
+                let e = out.entry(t.to_string()).or_default();
+                for (i, n) in arr.iter().enumerate().take(3) {
+                    e[i] += n.as_u64().unwrap_or(0) as u32;
+                }
+            }
+        }
+    }
+    Ok(out)
 }
 
 struct Pending {
@@ -620,9 +649,8 @@ async fn execute_window(ctx: WindowCtx, v: Validator, plan: WindowPlan, window: 
         row["sent_ok"] = json!(records.iter().filter(|r| r.error.is_none()).count());
     }
     ctx.logs.windows.append(&row)?;
-    ctx.logs.progress.append(&json!({"run_id": ctx.run_id, "target_identity": v.identity, "seq": plan.seq,
-                                     "live": live.is_some(), "at": utc_now_rfc3339()}))?;
 
+    let mut informative_pairs = [0u32; 3];
     if live.is_some() {
         let (unsent, sent): (Vec<Tracked>, Vec<Tracked>) = tracked.into_iter().partition(|t| not_sent.contains_key(&t.probe_id));
         let mut outcomes = collect::resolve(&ctx.rpc, ctx.ledger.as_deref(), &sent, &ctx.run, Duration::from_secs(90)).await?;
@@ -630,7 +658,33 @@ async fn execute_window(ctx: WindowCtx, v: Validator, plan: WindowPlan, window: 
         for o in &outcomes {
             ctx.logs.outcomes.append(&json!({"run_id": ctx.run_id, "outcome": o}))?;
         }
+        if plan.kit == Kit::K {
+            let landed: HashSet<&str> = outcomes
+                .iter()
+                .filter(|o| o.status == collect::Status::LandedTarget)
+                .map(|o| o.probe_id.as_str())
+                .collect();
+            for pair in &plan.pairs {
+                let idx = match pair.kind {
+                    design::PairKind::C1 => 0,
+                    design::PairKind::C2 => 1,
+                    design::PairKind::C3 => 2,
+                    _ => continue,
+                };
+                if pair.members.iter().all(|m| landed.contains(format!("{}/{}", pair.pair_id, m.label).as_str())) {
+                    informative_pairs[idx] += 1;
+                }
+            }
+            let mut inf = ctx.informative.lock().expect("informative");
+            let e = inf.entry(v.identity.clone()).or_default();
+            for (acc, n) in e.iter_mut().zip(informative_pairs) {
+                *acc += n;
+            }
+        }
     }
+    ctx.logs.progress.append(&json!({"run_id": ctx.run_id, "target_identity": v.identity, "seq": plan.seq,
+                                     "live": live.is_some(), "informative_pairs": informative_pairs,
+                                     "at": utc_now_rfc3339()}))?;
     ctx.pool.release(&payer_idx);
     Ok(())
 }
