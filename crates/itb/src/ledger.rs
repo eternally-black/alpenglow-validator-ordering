@@ -676,6 +676,9 @@ mod tests {
             !l.leased_payers().unwrap().contains("p2"),
             "an expired transaction no longer leases its payer"
         );
+        // The cap check itself counts the expired fee: 30_000 − 12_500 = 17_500 is all that is left.
+        assert!(l.reserve_batch(&[r("s4", 17_501, "p4", "b")]).is_err());
+        l.reserve_batch(&[r("s5", 17_500, "p5", "b")]).unwrap();
         assert!(
             l.expire_charged("s1").is_err(),
             "a landed tx cannot change state"
