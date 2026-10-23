@@ -1,0 +1,100 @@
+"""Operating characteristics of the pre-registered procedure (PLAN §4.4, docs/POWER.md).
+
+For each declared scenario: simulate the frozen design R times, run the real analysis, and tabulate per target how
+often each rule ends SUPPORTED/CONFIRMED, REJECTED or UNDETERMINED. The "right" answer per scenario is stated next to
+it; look-alike scenarios whose correct answer is "unidentified" are included on purpose.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import tempfile
+from collections import Counter, defaultdict
+from pathlib import Path
+
+from . import outcomes, stats
+from .load import load_run
+from .sim import Params, simulate
+
+#: scenario name -> (Params overrides, expected answer for the pre-registered rule set)
+SCENARIOS: dict[str, tuple[dict, str]] = {
+    "reward_cost_greedy": ({}, "reward_cost"),
+    "reward_cost_batch_20": ({"scenario": "reward_cost_batch", "t_ms": 20}, "reward_cost"),
+    "cu_price_batch_20": ({"scenario": "cu_price_batch", "t_ms": 20}, "cu_price"),
+    "cu_price_batch_50": ({"scenario": "cu_price_batch", "t_ms": 50}, "cu_price"),
+    "lamport_fee_batch_50": ({"scenario": "lamport_fee_batch", "t_ms": 50}, "lamport_fee"),
+    "fifo": ({}, "fifo"),
+    "random": ({}, "none"),
+    "streaming_pacing": ({}, "reward_cost"),
+    "fifo_reorder": ({}, "fifo"),
+    "selective_drop_cu_price": ({"scenario": "selective_drop", "base": "cu_price_batch", "drop_q": 0.5}, "cu_price"),
+    "mode_switch_rc_fifo": ({"scenario": "mode_switch", "base": "reward_cost_greedy", "mode_b": "fifo"}, "mixed"),
+    "low_landing_reward_cost": ({"scenario": "reward_cost_greedy", "landing": 0.5}, "reward_cost"),
+}
+
+SUPPORT = ("SUPPORTED", "CONFIRMED")
+
+
+def analyse_dir(run_dir: Path, n_draws: int) -> dict[str, dict]:
+    run = load_run(run_dir)
+    pairs = outcomes.pair_table(run)
+    per_target = {}
+    for target, g in pairs.groupby("target_identity"):
+        eff = stats.validator_effects(g, n_draws=n_draws)
+        per_target[target] = {r: v["status"] for r, v in eff["rules"].items()}
+        per_target[target]["_n"] = {c: eff["label"][c].n for c in ("c1", "c2", "c3")}
+    return per_target
+
+
+def run(design: Path, targets: Path, reps: int, windows_per_target: int | None, n_draws: int, seed0: int = 1000) -> dict:
+    results: dict[str, dict] = {}
+    for name, (over, expected) in SCENARIOS.items():
+        over = dict(over)
+        scenario = over.pop("scenario", name)
+        tally: dict[str, Counter] = defaultdict(Counter)
+        n_obs = []
+        for r in range(reps):
+            params = Params(scenario=scenario, seed=seed0 + r, **over)
+            with tempfile.TemporaryDirectory() as tmp:
+                simulate(design, targets, Path(tmp), params, stage=1, windows_per_target=windows_per_target)
+                per_target = analyse_dir(Path(tmp), n_draws)
+            for target, statuses in per_target.items():
+                n_obs.append(statuses.pop("_n"))
+                supported = [rule for rule, s in statuses.items() if s in SUPPORT and rule != "random"]
+                tally["supported:" + (",".join(sorted(supported)) or "none")][target] += 1
+                if expected in statuses:
+                    tally["expected_rejected"][target] += statuses[expected] == "REJECTED"
+                tally["random_not_rejected"][target] += statuses["random"] != "REJECTED"
+                tally["targets"][target] += 1
+        total = sum(tally["targets"].values())
+        summary = {
+            "expected": expected,
+            "target_runs": total,
+            "outcomes": {k.removeprefix("supported:"): sum(v.values()) / total for k, v in tally.items() if k.startswith("supported:")},
+            "expected_rule_rejected_rate": sum(tally["expected_rejected"].values()) / total,
+            "random_not_rejected_rate": sum(tally["random_not_rejected"].values()) / total,
+            "median_windows_per_contrast": sorted(n["c1"] for n in n_obs)[len(n_obs) // 2] if n_obs else 0,
+        }
+        results[name] = summary
+        print(name, json.dumps(summary))
+    return results
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--design", required=True, type=Path)
+    ap.add_argument("--targets", required=True, type=Path)
+    ap.add_argument("--reps", type=int, default=20)
+    ap.add_argument("--windows-per-target", type=int, default=None)
+    ap.add_argument("--n-draws", type=int, default=2_000)
+    ap.add_argument("--out", type=Path, default=None)
+    a = ap.parse_args()
+    res = run(a.design, a.targets, a.reps, a.windows_per_target, a.n_draws)
+    if a.out:
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        a.out.write_text(json.dumps(res, indent=1))
+
+
+if __name__ == "__main__":
+    main()

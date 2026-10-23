@@ -47,10 +47,13 @@ These are statements about our probes' ledger outcomes on that path. They are no
 - **Directional prediction ("favours x"):** confirmed if the adjusted interval lies entirely above 0.5. Contradicted if it lies entirely below.
 - **Tie prediction:** confirmed by equivalence (TOST): the adjusted interval at level 1 − 2·0.05/36 lies within **[0.35, 0.65]**. Contradicted if the adjusted interval excludes 0.5. Otherwise undetermined.
 - **Rule status per validator:**
-  - **CONFIRMED** = every prediction confirmed;
   - **REJECTED** = any prediction contradicted;
+  - **CONFIRMED** = every prediction confirmed, ties by equivalence;
+  - **SUPPORTED** = every *directional* prediction confirmed and no tie prediction contradicted. At 40 windows a family-level equivalence test is usually too wide to confirm a tie (a perfect 20/40 does not pass), so ties are allowed to be undetermined here;
   - **UNDETERMINED** = otherwise.
-- **Reporting:** we report the full set of non-rejected rules. A validator can have zero confirmed rules ("no rule detectable at our power"), and that is reported as a finding.
+  - The "random" rule makes no directional prediction, so it can only be CONFIRMED, REJECTED or UNDETERMINED (= not rejected).
+  - Every pair of candidate rules differs in at least one directional prediction (§3), so at most one non-random rule can be SUPPORTED for a validator.
+- **Reporting:** we report the full set of non-rejected rules. "No rule detectable at our power" means no non-random rule is SUPPORTED or CONFIRMED; that is reported as a finding.
 - **Randomisation p-values** accompany every estimate, under sharp nulls that respect the actual assignment (the within-pair send order, balanced by design):
   - **Label null** ("outcome depends only on send position"): z_w is fixed; re-draw the balanced send-order assignment; y_w is recomputed.
   - **Order null** ("outcome depends only on label"): y_w is fixed; re-draw the assignment; z_w is recomputed.

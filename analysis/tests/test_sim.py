@@ -1,0 +1,66 @@
+from pathlib import Path
+
+import pytest
+
+from itb_analysis import outcomes
+from itb_analysis.load import load_run
+from itb_analysis.sim import Params, simulate
+
+ROOT = Path(__file__).resolve().parents[2]
+DESIGN = ROOT / "data" / "scratch" / "design.dryrun.jsonl"
+TARGETS = ROOT / "design" / "targets.draft.json"
+
+pytestmark = pytest.mark.skipif(not DESIGN.exists(), reason="scratch design not generated (itb design …)")
+
+
+def _pairs(tmp_path, scenario, **kw):
+    out = simulate(DESIGN, TARGETS, tmp_path / scenario, Params(scenario=scenario, seed=7, landing=1.0, jitter_ms=0.01, **kw), stage=1)
+    run = load_run(out)
+    return run, outcomes.pair_table(run)
+
+
+def _rate(pairs, kind, col="x_first", regime=None):
+    g = pairs[(pairs["pair_kind"] == kind)]
+    if regime:
+        g = g[g["regime"] == regime]
+    return g[col].mean()
+
+
+def test_format_and_join(tmp_path):
+    run, pairs = _pairs(tmp_path, "random")
+    assert set(run.outcomes["probe_id"]) <= set(run.probes["probe_id"])
+    assert len(pairs) == len(run.windows) * 4  # 4 pairs per K window
+    assert pairs["evaluable"].all()
+
+
+def test_deterministic(tmp_path):
+    a = simulate(DESIGN, TARGETS, tmp_path / "a", Params("fifo", seed=3), stage=1)
+    b = simulate(DESIGN, TARGETS, tmp_path / "b", Params("fifo", seed=3), stage=1)
+    assert (a / "outcomes.jsonl").read_text() == (b / "outcomes.jsonl").read_text()
+
+
+def test_reward_cost_ground_truth(tmp_path):
+    _, pairs = _pairs(tmp_path, "reward_cost_greedy")
+    assert _rate(pairs, "c3", regime="buffered") > 0.95  # A (cheap) before A' (64 MiB data limit)
+    assert _rate(pairs, "c2", regime="buffered") < 0.05  # B before A'
+    assert _rate(pairs, "c1", regime="buffered") > 0.95  # A before B
+
+
+def test_cu_price_batch_ground_truth(tmp_path):
+    _, pairs = _pairs(tmp_path, "cu_price_batch", t_ms=50)
+    assert _rate(pairs, "c1") > 0.9
+    assert _rate(pairs, "c2") > 0.9
+    assert 0.3 < _rate(pairs, "c3") < 0.7
+
+
+def test_fifo_ground_truth(tmp_path):
+    _, pairs = _pairs(tmp_path, "fifo")
+    assert _rate(pairs, "c1", col="first_sent_first") > 0.95
+    assert 0.3 < _rate(pairs, "c1") < 0.7
+
+
+def test_random_ground_truth(tmp_path):
+    _, pairs = _pairs(tmp_path, "random")
+    for kind in ("c1", "c2", "c3"):
+        assert 0.3 < _rate(pairs, kind) < 0.7
+        assert 0.3 < _rate(pairs, kind, col="first_sent_first") < 0.7

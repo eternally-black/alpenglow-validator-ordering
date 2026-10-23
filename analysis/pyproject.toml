@@ -1,0 +1,27 @@
+[project]
+name = "itb-analysis"
+version = "0.1.0"
+description = "Inside the Block: analysis, simulation, report and chain verification for the probe campaign"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+  "numpy>=2.1",
+  "scipy>=1.14",
+  "pandas>=2.2",
+  "matplotlib>=3.9",
+  "zstandard>=0.23",
+  "requests>=2.32",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["itb_analysis"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
