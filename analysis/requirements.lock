@@ -1,7 +1,9 @@
 Pygments==2.21.0
 certifi==2026.10.23
+cffi==2.1.1
 charset-normalizer==3.5.2
 contourpy==1.4.0
+cryptography==50.0.2
 cycler==0.12.1
 fonttools==4.67.0
 idna==3.20
@@ -13,6 +15,7 @@ packaging==26.3
 pandas==3.1.0
 pillow==13.0.0
 pluggy==1.7.0
+pycparser==3.12
 pyparsing==3.3.3
 pytest==9.1.1
 python-dateutil==3.0.0

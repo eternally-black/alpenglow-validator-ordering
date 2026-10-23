@@ -49,50 +49,84 @@ def probe_table(run: Run) -> pd.DataFrame:
     return p
 
 
-def _gossip_mode(states: pd.DataFrame, identity: str, t_ns: float, horizon_ns: float = 90e9) -> str:
-    """stable / transition_ambiguous / unknown from the snapshots nearest before and after `t_ns`."""
+def _gossip_mode(states: pd.DataFrame, identity: str, t_ns, used: dict | None = None, horizon_ns: float = 90e9) -> str:
+    """stable / transition_ambiguous / unknown (PREREGISTRATION §2(b)).
+
+    Requires one snapshot at or before `t_ns` and one after it, both within the horizon, agreeing with each other on
+    clientId, tpuQuic and ingress kind, and agreeing with the endpoint the window actually used (`used`). Missing
+    evidence is "unknown", never "stable".
+    """
     if states.empty or t_ns is None or (isinstance(t_ns, float) and math.isnan(t_ns)):
         return "unknown"
     s = states[states["identity"] == identity]
     before = s[(s["at_unix_ns"] <= t_ns) & (s["at_unix_ns"] >= t_ns - horizon_ns)].sort_values("at_unix_ns").tail(1)
     after = s[(s["at_unix_ns"] > t_ns) & (s["at_unix_ns"] <= t_ns + horizon_ns)].sort_values("at_unix_ns").head(1)
-    snaps = pd.concat([before, after])
-    if snaps.empty:
+    if before.empty or after.empty:
         return "unknown"
+    snaps = pd.concat([before, after])
     if not snaps["present"].all():
         return "transition_ambiguous"
     key = snaps[["client_id", "tpu_quic", "ingress"]].astype(str).agg("|".join, axis=1)
     if key.nunique() > 1:
         return "transition_ambiguous"
-    # Only a snapshot on one side (run start/end): accept as stable but say so.
-    return "stable" if len(snaps) == 2 else "stable_one_sided"
+    if used is not None and all(used.get(k) is not None for k in ("client_id", "tpu_quic", "ingress")):
+        if "|".join(str(used[k]) for k in ("client_id", "tpu_quic", "ingress")) != key.iloc[0]:
+            return "transition_ambiguous"
+    return "stable"
 
 
 def window_table(run: Run) -> pd.DataFrame:
-    """One row per attempted window with eligibility flags (PREREGISTRATION §2)."""
+    """One row per attempted window with eligibility flags and the reason for any exclusion (PREREGISTRATION §2)."""
     w = run.windows.copy()
     if w.empty:
         return w
-    p = probe_table(run)
-    planned = p.groupby(["run_id", "target_identity", "seq"]).size().rename("planned")
-    w = w.merge(planned, left_on=["run_id", "target_identity", "seq"], right_index=True, how="left")
-    sent_ok = w["sent_ok"] if "sent_ok" in w else pd.Series(np.nan, index=w.index)
-    not_sent = w["not_sent"] if "not_sent" in w else pd.Series(0, index=w.index)
-    skipped = w["skipped"] if "skipped" in w else pd.Series(np.nan, index=w.index)
-    w["all_sent"] = skipped.isna() & sent_ok.fillna(-1).eq(w["planned"]) & not_sent.fillna(0).eq(0)
+    p = run.probes
+    logged = p.groupby(["run_id", "target_identity", "seq"]).size().rename("probes_logged") if len(p) else pd.Series(dtype=int, name="probes_logged")
+    w = w.merge(logged, left_on=["run_id", "target_identity", "seq"], right_index=True, how="left")
+    w["probes_logged"] = w["probes_logged"].fillna(0).astype(int)
+    col = lambda name, default: w[name] if name in w else pd.Series(default, index=w.index)
+    planned = col("planned_probes", np.nan)
+    skipped = col("skipped", np.nan)
+    sent_ok = col("sent_ok", np.nan)
+    not_sent = col("not_sent", np.nan)
+    transport = col("transport_errors", 0)
+    # Every planned member logged and written without error; missing fields mean "not established".
+    w["all_sent"] = (
+        skipped.isna()
+        & planned.notna()
+        & w["probes_logged"].eq(planned)
+        & sent_ok.eq(planned)
+        & not_sent.fillna(-1).eq(0)
+        & transport.fillna(-1).eq(0)
+    )
     t_col = "estimated_window_start_unix_ns"
-    w["mode"] = [
-        _gossip_mode(run.states, r["target_identity"], r[t_col] if t_col in w and pd.notna(r.get(t_col)) else None)
-        for _, r in w.iterrows()
-    ]
-    if run.states.empty:
-        w["mode"] = "stable_one_sided"
-    if "produced_slots" in w:
-        w["target_produced"] = w["produced_slots"].apply(lambda v: bool(v) if isinstance(v, list) else True)
-    else:
-        w["target_produced"] = True
+    modes = []
+    for _, r in w.iterrows():
+        used = {k: r.get(k) for k in ("client_id", "tpu_quic", "ingress")}
+        modes.append(_gossip_mode(run.states, r["target_identity"], r[t_col] if t_col in w and pd.notna(r.get(t_col)) else None, used))
+    w["mode"] = modes
+
+    def produced(v):
+        if isinstance(v, list):
+            return len(v) > 0
+        return None  # missing or errored lookup: unknown
+
+    w["target_produced"] = col("produced_slots", None).apply(produced)
     w["post_alpenglow"] = w["window_first_slot"] >= FIRST_ALPENGLOW_SLOT
-    w["evaluable"] = w["all_sent"] & w["mode"].isin(["stable", "stable_one_sided"]) & w["target_produced"] & w["post_alpenglow"]
+    reasons = []
+    for _, r in w.iterrows():
+        why = []
+        if not r["all_sent"]:
+            why.append("not_all_sent" if pd.isna(r.get("skipped")) else f"skipped:{r.get('skipped')}")
+        if r["mode"] != "stable":
+            why.append(f"mode:{r['mode']}")
+        if r["target_produced"] is not True:
+            why.append("production_unknown" if r["target_produced"] is None else "target_produced_no_block")
+        if not r["post_alpenglow"]:
+            why.append("pre_alpenglow")
+        reasons.append(",".join(why))
+    w["exclusion"] = reasons
+    w["evaluable"] = w["exclusion"].eq("")
     return w
 
 
@@ -165,10 +199,30 @@ def funnel(run: Run) -> pd.DataFrame:
     if p.empty:
         return pd.DataFrame()
     status = p.pivot_table(index="target_identity", columns="status", values="probe_id", aggfunc="count", fill_value=0)
+    status.columns = [f"probes_{c}" for c in status.columns]
     win = w.groupby("target_identity").agg(
         windows_attempted=("seq", "size"),
         windows_all_sent=("all_sent", "sum"),
         windows_evaluable=("evaluable", "sum"),
     )
+    # Every exclusion reason counted separately (a window can have several).
+    reasons = w.assign(reason=w["exclusion"].str.split(",")).explode("reason")
+    reasons = reasons[reasons["reason"].fillna("") != ""]
+    by_reason = (
+        reasons.assign(reason=reasons["reason"].str.split(":").str[0])
+        .pivot_table(index="target_identity", columns="reason", values="seq", aggfunc="count", fill_value=0)
+        if len(reasons)
+        else pd.DataFrame(index=win.index)
+    )
+    by_reason.columns = [f"excluded_{c}" for c in by_reason.columns]
     probes = p.groupby("target_identity").agg(probes_planned=("probe_id", "size"), probes_landed=("landed", "sum"))
-    return win.join(probes).join(status).reset_index()
+    pairs = pair_table(run)
+    stages = (
+        pairs[pairs["pair_kind"].isin(["c1", "c2", "c3"])]
+        .groupby("target_identity")
+        .agg(pairs_main=("pair_id", "size"), pairs_both_landed=("both_landed", "sum"), pairs_same_slot=("same_slot", "sum"),
+             pairs_evaluable_both=("x_first_cc", lambda s: int(s.notna().sum())))
+        if len(pairs)
+        else pd.DataFrame(index=win.index)
+    )
+    return win.join(by_reason).join(probes).join(stages).join(status).fillna(0).reset_index()

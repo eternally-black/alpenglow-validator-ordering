@@ -1,6 +1,10 @@
 # Inside the Block — Master Plan v2 (2026-10-23)
 
-> **Status:** v2 = v1 + three independent adversarial reviews, now awaiting maintainer approval.
+> **Status:** v2 (approved 2026-10-23), amended after the gate-1 code review ([CODE-gate1-gpt.md](review/CODE-gate1-gpt.md)).
+> **For the analysis, [PREREGISTRATION.md](PREREGISTRATION.md) is normative** (complete-case primary estimand, six
+> per-contrast predictions, selection check, window-level strictness, landing-based stopping). For timing, sends are
+> anchored on observed first shreds (§2.5 note below); races use Δt ∈ {5, 25, 60, 100} ms from the target's first slot;
+> H-kit offsets are −0.5 s, −3 s, −7 s.
 > - GPT-6 Astra (via the Codex orchestrator): [review](review/PLAN-v1-gpt.md)
 > - Claude Fable 5.1, source-checked at the pinned tags: [review](review/PLAN-v1-fable.md)
 > - DeepSeek-V4.1-Flash: [review](review/PLAN-v1-deepseek.md)
@@ -139,8 +143,8 @@ Values from `scripts/contrasts.py`. P = Agave priority.
 | Kit | Probes | Content | Regime |
 |---|---|---|---|
 | **K (primary)** | 8 | C1, C2 and C3 pairs, each on its own shared lock, plus one **uncontended** C2 pair (distinct locks). One burst on one QUIC connection; within-pair order randomised; pair order randomised. | Direct ingress: **buffered** (−150 ms) in 75 % of windows, streaming (+60 ms) in 25 %. Shared ingress: streaming at a random offset in [+40, +500] ms, never straddling a predicted slot boundary. |
-| **T (secondary, Stage 2)** | 8 | 3 dominance races hi/lo with Δt ∈ {5, 25, 60, 150} ms, balanced hi-first/lo-first. One **equal-key pair** (template A, both members) at Δt ∈ {10, 40} ms. Both race members are kept above the marginal priority *on the key identified in Stage 1*. **For Firedancer targets, one race is replaced by a second equal-key pair** (2 races + 2 equal-key pairs), so the LIFO prediction gets ≥ 40 informative pairs. | Buffered regime for direct ingress (equal-key pairs); streaming for races; pairs never straddle a predicted slot start. |
-| **H (direct ingress, exploratory)** | 3 | Identical template-A probes sent at −0.5 s, −3 s, −5 s (fresh blockhash). Predictions: Agave lands −0.5/−3 and drops −5 (the 20-slot cliff); Firedancer lands all three. **6 H-windows per direct core validator.** | pre-window |
+| **T (secondary, Stage 2)** | 8 | 3 dominance races hi/lo with Δt ∈ {5, 25, 60, 100} ms (anchored 5 ms after the target's first shred, inside the ≈130 ms observed slot), balanced hi-first/lo-first. One **equal-key pair** (template A, both members) at Δt ∈ {10, 40} ms. Both race members are kept above the marginal priority *on the key identified in Stage 1*. **For Firedancer targets, one race is replaced by a second equal-key pair** (2 races + 2 equal-key pairs), so the LIFO prediction gets ≥ 40 informative pairs. | Buffered regime for direct ingress (equal-key pairs); streaming for races; pairs never straddle a predicted slot start. |
+| **H (direct ingress, exploratory)** | 3 | Identical template-A probes sent at −0.5 s, −3 s, −7 s (fresh blockhash). Predictions: Agave lands −0.5/−3 and drops −7 (the 20-slot ≈ 4.7 s cliff); Firedancer lands all three. **6 H-windows per direct core validator.** | pre-window |
 | **S (shared ingress, exploratory)** | 2 | Template-A probes at −150 ms and −1 s → **spill-over map**: which leader / ingress / slot actually included it, and after how many ms. **6 S-windows per shared core validator.** | pre-window |
 
 **Hypotheses for the equal-key pairs (Kit C inside T):**
@@ -231,7 +235,7 @@ These pairs are not used as a "network noise floor".
 ### 4.2 Primary (confirmatory) — per core validator × contrast C1, C2, C3
 
 - **Window outcome** ∈ {A first, B first, only A, only B, neither} on (slot, index) over the whole window.
-- **Primary estimand:** P(A before B), with non-landed treated as "after all landed". Sensitivity analyses: complete-case, and worst-case bounds.
+- **Primary estimand:** superseded — see PREREGISTRATION §1 (complete-case primary; censored coding and worst-case bounds are sensitivity analyses).
 - **Inference:** randomisation test on the actual assignment (within-pair send order and labels), with window-level bootstrap CIs. The three contrasts in one window share the window, so resampling is by window.
 - **Inclusion co-primary:** P(land | member), per contrast.
 - **Two codings per contrast:** by label (economic key) and by send order (arrival). Both are in the confirmatory family.
@@ -249,7 +253,7 @@ These pairs are not used as a "network noise floor".
 1. **Uncontended vs contended C2** — parallel workers make the uncontended arm worker-completion order by construction on Agave. On Firedancer it may keep pack order, which would itself discriminate the clients.
 2. **Effective reordering horizon** from T-races, stratified by block fullness (< 60 % vs > 90 %). The model set: step, pending-queue, linear-batch(T ∈ [10, 80] ms), constant. **Equivalent fits are reported as "unidentified".**
 3. **Equal-key order** (Firedancer LIFO test; descriptive otherwise).
-4. **H-cliff** (Agave −5 s drop vs Firedancer keep) and the **S spill-over map**.
+4. **H-cliff** (Agave −7 s drop vs Firedancer keep) and the **S spill-over map**.
 5. **Block-structure:** a Chorus-comparable footrule per validator for the probed windows only (normalisation stated). Sawtooth runs are *descriptive*; BAM's leading plugin run is excluded. Bundle labels are heuristic, shown with and without exclusion.
 6. **Absolute position:** probe block-index percentile vs P percentile ("free priority" figure).
 

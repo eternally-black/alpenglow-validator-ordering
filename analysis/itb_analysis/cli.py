@@ -24,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
         p = sub.add_parser(name)
         p.add_argument("--raw", type=Path, default=Path("data/raw"))
         p.add_argument("--derived", type=Path, default=Path("data/derived"))
+        p.add_argument("--manifest", type=Path, default=Path("design/campaign.json"),
+                       help="campaign manifest; without it every run under --raw is analysed (marked non-confirmatory)")
     v = sub.add_parser("verify")
     v.add_argument("--raw", type=Path, default=Path("data/raw"))
     v.add_argument("--source", choices=["chain", "archive"], default="chain")
@@ -41,11 +43,11 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     if a.cmd == "report":
-        path = report.write(report.compute(a.raw), a.derived)
+        path = report.write(report.compute(a.raw, a.manifest), a.derived)
         print(f"wrote {path}")
         return 0
     if a.cmd == "reproduce":
-        fresh = report.compute(a.raw)
+        fresh = report.compute(a.raw, a.manifest)
         committed_path = a.derived / "results.json"
         if not committed_path.exists():
             print(f"no committed {committed_path}; nothing to compare (run `report` first)")
@@ -63,9 +65,9 @@ def main(argv: list[str] | None = None) -> int:
         verify.print_ledger(rep)
         if a.json:
             a.json.write_text(json.dumps(rep, indent=1))
-        return 0 if rep["claims_ok"] == rep["claims_checked"] else 1
+        return 0 if rep["passed"] else 1
     if a.cmd == "oc":
-        res = oc.run(a.design, a.targets, a.reps, None, a.n_draws)
+        res = oc.run(a.design, a.targets, a.reps, a.n_draws)
         a.out.parent.mkdir(parents=True, exist_ok=True)
         a.out.write_text(json.dumps(res, indent=1))
         return 0
