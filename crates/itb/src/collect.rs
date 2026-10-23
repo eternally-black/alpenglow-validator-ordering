@@ -5,9 +5,11 @@
 //!   confirmed status **and** was found in the archived block (index, fee and metadata known);
 //! - `landed_unverified`: confirmed status, but the block could not be fetched or did not contain the signature —
 //!   charged in the ledger, never used as an ordering observation;
-//! - `expired_confirmed`: proof of non-inclusion — a finalized block height above the transaction's last valid height
-//!   was observed *first*, and a history-capable status lookup answered by a node at or past that finalized slot
-//!   *afterwards* still returned nothing;
+//! - `expired_confirmed`: a finalized block whose height is above the transaction's last valid height was observed
+//!   *first* (slot and height from that one block), and a history-capable status lookup answered at or past that slot
+//!   *afterwards* still returned nothing. This is a measurement status: the ledger keeps the fee charged anyway
+//!   (`Ledger::expire_charged`), because a lookup from a lagging backend cannot prove past non-inclusion. Landings in
+//!   the targeted window are cross-checked against the archived window blocks by the verifier;
 //! - `unresolved`: neither could be proven before the timeout (stays charged in the ledger);
 //! - `not_sent`: never put on the wire.
 
@@ -136,9 +138,8 @@ pub async fn resolve(
                 _ => still.push(t), // unknown or only `processed`: keep waiting
             }
         }
-        // Expiry protocol: barrier first (finalized height, then the finalized slot), fresh lookup second.
-        let fin_height = rpc.get_block_height("finalized").await?;
-        let fin_slot = rpc.get_slot("finalized").await?;
+        // Expiry protocol: barrier first (slot and height of one finalized block), fresh lookup second.
+        let (fin_slot, fin_height) = rpc.finalized_barrier().await?;
         let (cands, keep): (Vec<&Tracked>, Vec<&Tracked>) = still
             .into_iter()
             .partition(|t| fin_height > t.last_valid_block_height);
@@ -233,7 +234,7 @@ pub async fn resolve(
             o.status = Status::ExpiredConfirmed;
             o.expiry_evidence = Some(ev.clone());
             if let Some(l) = ledger {
-                l.resolve_expired(&t.signature)?;
+                l.expire_charged(&t.signature)?; // payer free, fee still charged
             }
         }
         out.push(o);

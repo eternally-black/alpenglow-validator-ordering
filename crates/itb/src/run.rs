@@ -1,20 +1,26 @@
 //! `itb run`: executes the frozen design (PLAN §2) against mainnet leader windows.
 //!
 //! For each target, the k-th window we *attempt* executes the k-th plan of that target in `design.jsonl`. Attempts
-//! are journalled durably *before* anything is sent ("claimed") and again when resolved ("terminal"), so a crash can
-//! never re-run a plan, and dry runs keep a separate journal that can never consume live plans.
+//! are journalled durably *before* anything is sent ("claimed") and again when resolved ("terminal"). Journal records
+//! carry the mode, the design hash and the budget (purpose), so a crash can never re-run a plan, and neither a dry run
+//! nor a pilot can consume campaign plans or count towards campaign stopping.
+//!
+//! A live run holds the campaign guard (`campaign::Campaign`: OS lock, ledger, cap, reconciliation) and requires
+//! `--not-after`. One absolute stop instant (the cutoff or `--max-minutes`, whichever is first) bounds window
+//! preparation and every stream open and write. A failed reconciliation stops every further send of the process; a
+//! failed window makes the whole run exit non-zero after the summary is written.
 //!
 //! Each window: refresh the target's endpoint from the latest gossip snapshot → pre-connect → (aged) blockhash →
 //! distinct, randomly assigned payers not leased in the ledger → sign → claim → for each send phase: wait for its
-//! observed anchor, check the deadline, reserve the phase atomically, send with per-probe deadlines, cancel what was
-//! provably never sent → resolve outcomes → release payers whose outcomes are terminal → journal.
+//! observed anchor, check the deadlines, reserve the phase atomically, send with per-probe deadlines, cancel what was
+//! provably never sent → resolve outcomes → release payers whose outcomes are terminal → journal → reconcile.
 
 use crate::alpenglow;
-use crate::auth::{LiveAuthorization, sol_to_lamports};
+use crate::campaign::{Campaign, OpenArgs};
 use crate::collect::{self, Status, Tracked};
 use crate::design::{self, Kit, WindowPlan};
-use crate::keys::{load_payers, read_keypair};
-use crate::ledger::{Kind, Ledger, Reservation, reconcile};
+use crate::keys::load_payers;
+use crate::ledger::{Kind, Provenance, Reservation};
 use crate::quic::{ConnectReport, Outgoing, QuicClient};
 use crate::rpc::{MAINNET_GENESIS_HASH, Rpc, redact_url};
 use crate::store::{Jsonl, RunDir, new_run_id, utc_now_rfc3339};
@@ -50,7 +56,7 @@ pub struct RunArgs {
     pub targets: Vec<String>,
     pub max_windows: usize,
     pub max_minutes: u64,
-    /// Campaign cutoff (Unix seconds): no window is prepared and nothing is sent after it.
+    /// Campaign cutoff (Unix seconds): no window is prepared and nothing is sent after it. Required for live runs.
     pub not_after_unix: Option<i64>,
     pub concurrency: usize,
     /// Observer-lag compensation from the pilot: sends move this many ms *earlier* than the plan's nominal instant.
@@ -83,8 +89,6 @@ pub enum Anchor {
 /// Sends inside the hand-over gap are anchored on the previous leader's last slot; the gap is ≥ ~280 ms in every
 /// observation so far, so −250 ms is the deepest offset that still lands after the anchor event.
 pub const PREV_SLOT_MAX_LEAD_MS: f64 = 250.0;
-/// Tolerance for on-chain reconciliation vs ledger-committed fees (rounding of in-flight resolution).
-const RECONCILE_TOLERANCE_LAMPORTS: u64 = 10_000;
 
 fn anchor_for(nominal_ms: f64) -> Anchor {
     if nominal_ms >= 0.0 {
@@ -186,27 +190,6 @@ impl PayerPool {
     }
 }
 
-/// One live campaign process at a time per ledger (two processes would not share payer leases in memory).
-struct CampaignLock(PathBuf);
-
-impl CampaignLock {
-    fn acquire(ledger: &Path, run_id: &str) -> Result<Self> {
-        let path = ledger.with_extension("lock");
-        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&path).with_context(|| {
-            format!("{} exists: another live run holds the campaign lock (remove it only if no itb process is running)", path.display())
-        })?;
-        use std::io::Write;
-        writeln!(f, "{run_id} pid {}", std::process::id())?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for CampaignLock {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-    }
-}
-
 fn lock_for(run_id: &str, target: &str, seq: u32, lock_index: u32) -> Pubkey {
     let h = Sha256::digest(format!("itb-lock/{run_id}/{target}/{seq}/{lock_index}").as_bytes());
     Pubkey::new_from_array(h.into())
@@ -270,36 +253,54 @@ struct Progress {
     informative: HashMap<String, [u32; 3]>,
 }
 
-fn load_progress(path: &Path, live: bool) -> Result<Progress> {
-    let mut p = Progress {
-        claimed: HashMap::new(),
-        informative: HashMap::new(),
-    };
+/// Which journal records belong to this execution: same mode (live/dry), same design and same budget (purpose). A
+/// pilot (budget `pilot`) can therefore never consume campaign plans or count towards campaign stopping.
+struct JournalKey<'a> {
+    live: bool,
+    design_sha256: &'a str,
+    budget: &'a str,
+}
+
+fn load_progress(path: &Path, key: &JournalKey) -> Result<Progress> {
+    let mut claimed: HashMap<String, HashSet<u32>> = HashMap::new();
+    // One terminal record per (target, seq): a repeated terminal line can never inflate the stopping count.
+    let mut terminal: HashMap<(String, u32), [u32; 3]> = HashMap::new();
     if let Ok(text) = std::fs::read_to_string(path) {
         for line in text.lines().filter(|l| !l.trim().is_empty()) {
             let v: serde_json::Value = serde_json::from_str(line)?;
-            if v["live"].as_bool() != Some(live) {
-                continue; // dry-run records never consume live plans, and vice versa
+            if v["live"].as_bool() != Some(key.live)
+                || v["design_sha256"].as_str() != Some(key.design_sha256)
+                || v["budget"].as_str() != Some(key.budget)
+            {
+                continue;
             }
             let (Some(t), Some(seq)) = (v["target_identity"].as_str(), v["seq"].as_u64()) else {
                 continue;
             };
-            p.claimed
-                .entry(t.to_string())
-                .or_default()
-                .insert(seq as u32);
+            claimed.entry(t.to_string()).or_default().insert(seq as u32);
             if let ("terminal", Some(arr)) = (
                 v["state"].as_str().unwrap_or(""),
                 v["informative_pairs"].as_array(),
             ) {
-                let e = p.informative.entry(t.to_string()).or_default();
+                let mut c = [0u32; 3];
                 for (i, n) in arr.iter().enumerate().take(3) {
-                    e[i] += n.as_u64().unwrap_or(0) as u32;
+                    c[i] = n.as_u64().unwrap_or(0) as u32;
                 }
+                terminal.entry((t.to_string(), seq as u32)).or_insert(c);
             }
         }
     }
-    Ok(p)
+    let mut informative: HashMap<String, [u32; 3]> = HashMap::new();
+    for ((t, _), c) in terminal {
+        let e = informative.entry(t).or_default();
+        for (acc, n) in e.iter_mut().zip(c) {
+            *acc += n;
+        }
+    }
+    Ok(Progress {
+        claimed,
+        informative,
+    })
 }
 
 struct Logs {
@@ -311,11 +312,7 @@ struct Logs {
 }
 
 struct Live {
-    auth: Arc<LiveAuthorization>,
-    ledger: Arc<Ledger>,
-    budget: String,
-    owned: Vec<String>,
-    opening: u64,
+    campaign: Campaign,
 }
 
 pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
@@ -332,8 +329,16 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
             "RPC genesis {genesis} is not mainnet-beta ({MAINNET_GENESIS_HASH}); pass --allow-non-mainnet only for localnet tests"
         );
     }
-    let not_after_ns = args.not_after_unix.map(|s| s * 1_000_000_000);
-    if not_after_ns.is_some_and(|t| clock.now_unix_ns() >= t) {
+    if args.live && args.not_after_unix.is_none() {
+        bail!("a live run requires --not-after (the pre-registered campaign cutoff)");
+    }
+    // One absolute stop instant for the whole run: the campaign cutoff or the run's own time limit, whichever is first.
+    // It bounds window preparation, every scheduled send and every stream write.
+    let run_limit_ns = clock.now_unix_ns() + args.max_minutes as i64 * 60 * 1_000_000_000;
+    let stop_at_ns = args
+        .not_after_unix
+        .map_or(run_limit_ns, |s| (s * 1_000_000_000).min(run_limit_ns));
+    if clock.now_unix_ns() >= stop_at_ns {
         bail!("campaign cutoff (--not-after) has passed");
     }
 
@@ -362,7 +367,14 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
             plans.entry(p.target_identity.clone()).or_default().push(p);
         }
     }
-    let progress = load_progress(&args.progress, args.live)?;
+    let progress = load_progress(
+        &args.progress,
+        &JournalKey {
+            live: args.live,
+            design_sha256: &design_sha,
+            budget: &args.budget,
+        },
+    )?;
     for (t, ps) in plans.iter_mut() {
         ps.sort_by_key(|p| p.seq);
         let done = progress.claimed.get(t).cloned().unwrap_or_default();
@@ -379,39 +391,25 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         .max()
         .unwrap_or(0);
 
-    // ---- live prerequisites ----
-    let _campaign_lock = if args.live {
-        Some(CampaignLock::acquire(&args.ledger, &run_id)?)
-    } else {
-        None
-    };
-    let run = Arc::new(RunDir::create(args.out.join(&run_id))?);
-    std::fs::create_dir_all(run.path.join("gossip"))?;
+    // ---- live prerequisites: lock, ledger, authorization, reconciliation (campaign::Campaign) ----
     let (live, pool) = if args.live {
-        let cap = sol_to_lamports(
-            args.max_spend_sol
-                .context("--live requires --max-spend-sol")?,
-        )?;
-        let ledger = Arc::new(Ledger::open(&args.ledger, cap)?);
-        let auth = Arc::new(LiveAuthorization::grant(
-            true,
-            args.max_spend_sol,
+        let campaign = Campaign::open(
+            &rpc,
             &gate,
-            &ledger,
-        )?);
-        if let Some(b) = args.budget_cap_sol {
-            ledger.define_budget(&args.budget, sol_to_lamports(b)?)?;
-        }
-        let master = read_keypair(
-            args.keypair
-                .as_deref()
-                .context("--live requires --keypair")?,
-        )?
-        .pubkey();
+            OpenArgs {
+                ledger: &args.ledger,
+                max_spend_sol: args.max_spend_sol,
+                keypair: args.keypair.as_deref(),
+                payer_dir: &args.payer_dir,
+                holder: &run_id,
+            },
+        )
+        .await?;
+        campaign.budget(&args.budget, args.budget_cap_sol)?;
         let pool = PayerPool::new(
             load_payers(&args.payer_dir)?,
-            Some(&master),
-            &ledger.leased_payers()?,
+            Some(&campaign.master),
+            &campaign.ledger.leased_payers()?,
         )?;
         if pool.keys.len() < max_probes * 2 {
             bail!(
@@ -420,34 +418,14 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
                 max_probes * 2
             );
         }
-        let owned: Vec<String> = std::iter::once(master.to_string())
-            .chain(pool.keys.iter().map(|k| k.pubkey().to_string()))
-            .collect();
-        let current: u64 = rpc.balances(&owned).await?.iter().sum();
-        let opening = ledger.campaign_opening(&owned, current)?;
-        reconcile(
-            opening,
-            ledger.external_deposits()?,
-            current,
-            ledger.totals()?.committed(),
-            cap,
-            RECONCILE_TOLERANCE_LAMPORTS,
-        )?;
-        (
-            Some(Live {
-                auth,
-                ledger,
-                budget: args.budget.clone(),
-                owned,
-                opening,
-            }),
-            Arc::new(pool),
-        )
+        (Some(Live { campaign }), Arc::new(pool))
     } else {
         let keys = (0..max_probes * 3).map(|_| Keypair::new()).collect();
         (None, Arc::new(PayerPool::new(keys, None, &HashSet::new())?))
     };
     let live = live.map(Arc::new);
+    let run = Arc::new(RunDir::create(args.out.join(&run_id))?);
+    std::fs::create_dir_all(run.path.join("gossip"))?;
 
     // ---- gossip snapshots every 60 s; the current endpoint of each target is refreshed from them ----
     let target_ids: Vec<String> = plans.keys().cloned().collect();
@@ -520,8 +498,9 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         "started_at": utc_now_rfc3339(), "rpc": redact_url(rpc.url()), "ws": redact_url(ws_url), "genesis_hash": genesis,
         "alpenglow": gate, "design_file": args.design, "design_sha256": design_sha, "obs_lag_ms": args.obs_lag_ms,
         "anchor_event": args.anchor_event, "max_lateness_ms": args.max_lateness_ms, "budget": args.budget,
-        "not_after_unix": args.not_after_unix, "tpu_override": args.tpu_override, "targets": target_ids,
-        "campaign_opening_lamports": live.as_ref().map(|l| l.opening), "itb_version": env!("CARGO_PKG_VERSION"),
+        "not_after_unix": args.not_after_unix, "stop_at_unix_ns": stop_at_ns, "tpu_override": args.tpu_override,
+        "targets": target_ids, "campaign_opening_lamports": live.as_ref().map(|l| l.campaign.opening),
+        "itb_version": env!("CARGO_PKG_VERSION"),
     }))?;
 
     // Warm-up: the cadence estimate needs a few window hand-overs before anchors and estimates are trustworthy.
@@ -533,19 +512,23 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
     let informative: Arc<Mutex<HashMap<String, [u32; 3]>>> =
         Arc::new(Mutex::new(progress.informative));
     let in_flight: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(args.max_minutes * 60);
     let semaphore = Arc::new(tokio::sync::Semaphore::new(args.concurrency.max(1)));
     let mut handles = vec![];
     let mut windows_started = 0usize;
     let mut next_from: HashMap<String, u64> = HashMap::new();
     let mut schedule = ScheduleCache::default();
+    let failures: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![]));
 
     loop {
-        if windows_started >= args.max_windows || tokio::time::Instant::now() >= deadline {
+        if windows_started >= args.max_windows {
             break;
         }
-        if not_after_ns.is_some_and(|t| clock.now_unix_ns() >= t) {
-            tracing::warn!("campaign cutoff reached; no more windows");
+        if clock.now_unix_ns() >= stop_at_ns {
+            tracing::warn!("campaign cutoff / run time limit reached; no more windows");
+            break;
+        }
+        if live.as_ref().is_some_and(|l| l.campaign.stopped()) {
+            tracing::error!("reconciliation failed; no more windows");
             break;
         }
         // Stage-1 stopping (PREREGISTRATION §5).
@@ -591,7 +574,7 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         next_from.insert(target.clone(), last + 1);
         let plan = plans.get_mut(&target).expect("target").remove(0);
         let headroom = match &live {
-            Some(l) => l.ledger.totals()?.headroom(),
+            Some(l) => l.campaign.ledger.totals()?.headroom(),
             None => u64::MAX,
         };
         if headroom < design::max_fee(&plan) {
@@ -613,48 +596,67 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
             run: run.clone(),
             obs_lag_ms: args.obs_lag_ms,
             max_lateness_ms: args.max_lateness_ms,
-            not_after_ns,
+            stop_at_ns,
+            design_sha256: design_sha.clone(),
+            budget: args.budget.clone(),
             informative: informative.clone(),
             current_state: current_state.clone(),
             tpu_override: args.tpu_override,
             require_post_alpenglow: args.require_mainnet,
         };
-        let in_flight = in_flight.clone();
+        let (in_flight, failures) = (in_flight.clone(), failures.clone());
         handles.push(tokio::spawn(async move {
             let t = plan.target_identity.clone();
+            let seq = plan.seq;
             let r = execute_window(ctx, plan, (first, last)).await;
             in_flight.lock().expect("in flight").remove(&t);
             drop(permit);
             if let Err(e) = r {
                 tracing::error!(target = %t, error = %e, "window failed");
+                failures
+                    .lock()
+                    .expect("failures")
+                    .push(format!("{t}/{seq}: {e:#}"));
             }
         }));
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
     for h in handles {
-        let _ = h.await;
+        if let Err(e) = h.await {
+            failures
+                .lock()
+                .expect("failures")
+                .push(format!("window task panicked: {e}"));
+        }
     }
 
+    let failures = failures.lock().expect("failures").clone();
     let mut summary = json!({"run_id": run_id, "windows_started": windows_started, "finished_at": utc_now_rfc3339(),
                              "cadence": slot_clock.cadence(), "anchor_event": slot_clock.anchor_kind(),
-                             "payers_still_leased": pool.busy_count()});
+                             "payers_still_leased": pool.busy_count(), "window_failures": failures});
+    let mut final_check: Result<()> = Ok(());
     if let Some(l) = &live {
-        let current: u64 = rpc.balances(&l.owned).await?.iter().sum();
-        let t = l.ledger.totals()?;
-        summary["owned_lamports_drop_since_campaign_opening"] = json!(reconcile(
-            l.opening,
-            l.ledger.external_deposits()?,
-            current,
-            t.committed(),
-            t.cap,
-            RECONCILE_TOLERANCE_LAMPORTS
-        )?);
-        summary["ledger"] = serde_json::to_value(t)?;
+        match l.campaign.reconcile_now(&rpc).await {
+            Ok(d) => summary["owned_lamports_drop_since_campaign_opening"] = json!(d),
+            Err(e) => {
+                summary["reconciliation_error"] = json!(format!("{e:#}"));
+                final_check = Err(e);
+            }
+        }
+        summary["sending_stopped"] = json!(l.campaign.stopped());
+        summary["ledger"] = serde_json::to_value(l.campaign.ledger.totals()?)?;
     }
     quic.close_all().await;
     run.write_zst("slot_events.json.zst", &slot_clock.take_events())?;
     run.write_json("run_end.json", &summary)?;
     eprintln!("{}", serde_json::to_string_pretty(&summary)?);
+    final_check?;
+    if !failures.is_empty() {
+        bail!(
+            "{} window(s) failed (see run_end.json); outcomes of sent probes are in the run directory or recoverable with `itb reconcile`",
+            failures.len()
+        );
+    }
     Ok(())
 }
 
@@ -670,7 +672,11 @@ struct WindowCtx {
     run: Arc<RunDir>,
     obs_lag_ms: f64,
     max_lateness_ms: f64,
-    not_after_ns: Option<i64>,
+    /// Absolute stop instant (campaign cutoff or run limit): nothing is sent after it.
+    stop_at_ns: i64,
+    design_sha256: String,
+    /// Sub-budget (purpose) of this run: probes are reserved against it and journal records carry it.
+    budget: String,
     informative: Arc<Mutex<HashMap<String, [u32; 3]>>>,
     current_state: Arc<RwLock<HashMap<String, Validator>>>,
     tpu_override: Option<SocketAddr>,
@@ -789,11 +795,7 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
     row["payer_assignment_seed"] = json!(seed);
 
     // Build and sign every probe; log the signed realisation before anything is sent.
-    let budget = ctx
-        .live
-        .as_ref()
-        .map(|l| l.budget.clone())
-        .unwrap_or_default();
+    let budget = ctx.budget.clone();
     let mut pending = vec![];
     let mut k = 0usize;
     for pair in &plan.pairs {
@@ -848,6 +850,13 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
                 payer: payer.pubkey().to_string(),
                 last_valid_block_height: bh.last_valid_block_height,
                 budget: budget.clone(),
+                provenance: Some(Provenance {
+                    run_id: ctx.run_id.clone(),
+                    probe_id: probe_id.clone(),
+                    target_identity: target.clone(),
+                    window_first_slot: window.0,
+                    window_last_slot: window.1,
+                }),
             };
             pending.push(Pending {
                 probe_id,
@@ -862,8 +871,13 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
     }
 
     // Durable claim: from here on this plan is consumed, whatever happens.
-    ctx.logs.progress.append_durable(&json!({"state": "claimed", "run_id": ctx.run_id, "target_identity": target,
-                                             "seq": plan.seq, "live": ctx.live.is_some(), "at": utc_now_rfc3339()}))?;
+    let journal = |state: &str| {
+        json!({"state": state, "run_id": ctx.run_id, "target_identity": target, "seq": plan.seq,
+               "live": ctx.live.is_some(), "design_sha256": ctx.design_sha256, "budget": budget,
+               "at": utc_now_rfc3339()})
+    };
+    ctx.logs.progress.append_durable(&journal("claimed"))?;
+    let stop_at = tokio::time::Instant::from_std(ctx.clock.unix_ns_to_instant(ctx.stop_at_ns));
 
     let mut not_sent: HashMap<String, String> = HashMap::new();
     let mut transport_errors: HashMap<String, String> = HashMap::new();
@@ -916,7 +930,8 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
                     probe_id: p.probe_id.clone(),
                     wire: p.wire.clone(),
                     at,
-                    deadline: at + max_late,
+                    // Never after the campaign cutoff / run limit, even for a send scheduled before it.
+                    deadline: (at + max_late).min(stop_at),
                 }
             })
             .collect();
@@ -925,22 +940,28 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
             mark("late", &mut not_sent);
             continue;
         }
-        if ctx
-            .not_after_ns
-            .is_some_and(|t| ctx.clock.now_unix_ns() >= t)
-        {
+        if tokio::time::Instant::now() >= stop_at || outgoing.iter().all(|o| o.at > stop_at) {
             mark("campaign_cutoff", &mut not_sent);
             continue;
         }
         match &ctx.live {
             Some(l) => {
+                if let Err(e) = l.campaign.ensure_running() {
+                    tracing::error!(error = %e, "phase not sent");
+                    mark("sending_stopped", &mut not_sent);
+                    continue;
+                }
+                let ledger = &l.campaign.ledger;
                 let batch: Vec<Reservation> = items.iter().map(|p| p.reservation.clone()).collect();
-                if let Err(e) = l.ledger.reserve_batch(&batch) {
+                if let Err(e) = ledger.reserve_batch(&batch) {
                     tracing::warn!(error = %e, "phase not reserved; not sending it");
                     mark("not_reserved", &mut not_sent);
                     continue;
                 }
-                let records = ctx.quic.send_scheduled(&l.auth, addr, outgoing).await;
+                let records = ctx
+                    .quic
+                    .send_scheduled(&l.campaign.auth, addr, outgoing)
+                    .await;
                 for r in &records {
                     ctx.logs
                         .sends
@@ -952,7 +973,7 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
                         .signature;
                     if r.never_opened {
                         // Provably never left this process: release its reservation.
-                        l.ledger.cancel_unsent(sig)?;
+                        ledger.cancel_unsent(sig)?;
                         not_sent.insert(
                             r.probe_id.clone(),
                             r.error.clone().unwrap_or_else(|| "never_opened".into()),
@@ -1023,7 +1044,7 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
             .partition(|t| not_sent.contains_key(&t.probe_id));
         let mut outcomes = collect::resolve(
             &ctx.rpc,
-            Some(&l.ledger),
+            Some(&l.campaign.ledger),
             &sent,
             Some(&ctx.run),
             Duration::from_secs(90),
@@ -1074,23 +1095,19 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
                 *acc += n;
             }
         }
-        let current: u64 = ctx.rpc.balances(&l.owned).await?.iter().sum();
-        let t = l.ledger.totals()?;
-        reconcile(
-            l.opening,
-            l.ledger.external_deposits()?,
-            current,
-            t.committed(),
-            t.cap,
-            RECONCILE_TOLERANCE_LAMPORTS,
-        )?;
-    } else {
-        release.extend(pending.iter().map(|p| p.payer_idx));
+        ctx.pool.release(release);
+        let mut terminal = journal("terminal");
+        terminal["informative_pairs"] = json!(informative_pairs);
+        ctx.logs.progress.append_durable(&terminal)?;
+        // A discrepancy stops every further send of this process (Campaign::reconcile_now) and fails this window.
+        l.campaign.reconcile_now(&ctx.rpc).await?;
+        return Ok(());
     }
+    release.extend(pending.iter().map(|p| p.payer_idx));
     ctx.pool.release(release);
-    ctx.logs.progress.append_durable(&json!({"state": "terminal", "run_id": ctx.run_id, "target_identity": target, "seq": plan.seq,
-                                             "live": ctx.live.is_some(), "informative_pairs": informative_pairs,
-                                             "at": utc_now_rfc3339()}))?;
+    let mut terminal = journal("terminal");
+    terminal["informative_pairs"] = json!(informative_pairs);
+    ctx.logs.progress.append_durable(&terminal)?;
     Ok(())
 }
 
@@ -1137,40 +1154,50 @@ mod tests {
     }
 
     #[test]
-    fn progress_separates_dry_and_live_and_counts_only_terminal() {
+    fn progress_is_bound_to_mode_design_and_purpose_and_counts_each_window_once() {
         let dir = std::env::temp_dir().join(format!("itb-progress-{}", rand::random::<u64>()));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("progress.jsonl");
+        let rec = |state: &str, seq: u32, live: bool, design: &str, budget: &str, inf: &str| {
+            format!(
+                r#"{{"state":"{state}","target_identity":"T","seq":{seq},"live":{live},"design_sha256":"{design}","budget":"{budget}"{inf}}}"#
+            )
+        };
+        let terminal = r#","informative_pairs":[1,1,0]"#;
         std::fs::write(
             &p,
             [
-                r#"{"state":"claimed","target_identity":"T","seq":0,"live":false}"#,
-                r#"{"state":"claimed","target_identity":"T","seq":1,"live":true}"#,
-                r#"{"state":"claimed","target_identity":"T","seq":2,"live":true}"#,
-                r#"{"state":"terminal","target_identity":"T","seq":2,"live":true,"informative_pairs":[1,1,0]}"#,
+                rec("claimed", 0, false, "D", "campaign", ""),
+                rec("claimed", 1, true, "D", "campaign", ""),
+                rec("claimed", 2, true, "D", "campaign", ""),
+                rec("terminal", 2, true, "D", "campaign", terminal),
+                rec("terminal", 2, true, "D", "campaign", terminal), // duplicate terminal line
+                rec("claimed", 3, true, "D", "pilot", ""),
+                rec("terminal", 3, true, "D", "pilot", terminal),
+                rec("claimed", 4, true, "OTHER", "campaign", ""),
             ]
             .join("\n"),
         )
         .unwrap();
-        let live = load_progress(&p, true).unwrap();
+        let key = |live, budget| JournalKey {
+            live,
+            design_sha256: "D",
+            budget,
+        };
+        let live = load_progress(&p, &key(true, "campaign")).unwrap();
         assert_eq!(
             live.claimed["T"],
             [1, 2].into(),
-            "dry-run claims never consume live plans; a crashed claim does"
+            "dry, pilot and other-design claims never consume campaign plans; a crashed claim does"
         );
-        assert_eq!(live.informative["T"], [1, 1, 0]);
-        let dry = load_progress(&p, false).unwrap();
+        assert_eq!(
+            live.informative["T"],
+            [1, 1, 0],
+            "a repeated terminal record counts once; pilot counts never"
+        );
+        let dry = load_progress(&p, &key(false, "campaign")).unwrap();
         assert_eq!(dry.claimed["T"], [0].into());
-    }
-
-    #[test]
-    fn campaign_lock_is_exclusive() {
-        let dir = std::env::temp_dir().join(format!("itb-lock-{}", rand::random::<u64>()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let ledger = dir.join("ledger.sqlite");
-        let a = CampaignLock::acquire(&ledger, "run-a").unwrap();
-        assert!(CampaignLock::acquire(&ledger, "run-b").is_err());
-        drop(a);
-        assert!(CampaignLock::acquire(&ledger, "run-c").is_ok());
+        let pilot = load_progress(&p, &key(true, "pilot")).unwrap();
+        assert_eq!(pilot.claimed["T"], [3].into());
     }
 }

@@ -3,12 +3,14 @@
 
 mod alpenglow;
 mod auth;
+mod campaign;
 mod collect;
 mod design;
 mod keys;
 mod ledger;
 mod probe;
 mod quic;
+mod recover;
 mod rpc;
 mod run;
 mod setup;
@@ -68,6 +70,9 @@ enum Cmd {
         ledger: PathBuf,
         #[arg(long, env = "ITB_KEYPAIR_PATH")]
         keypair: Option<PathBuf>,
+        /// Payer directory (part of the campaign's owned-account set; smoke itself signs with the master).
+        #[arg(long, env = "ITB_PAYER_DIR", default_value = "/keys/payers")]
+        payer_dir: PathBuf,
         #[arg(long, default_value = "data/smoke")]
         out: PathBuf,
         /// Explicit target identities (default: top validators per mechanism group).
@@ -174,12 +179,23 @@ enum Cmd {
         #[arg(long, env = "ITB_TPU_OVERRIDE")]
         tpu_override: Option<std::net::SocketAddr>,
     },
-    /// Resolve every open reservation in the ledger on chain evidence (after a crash or timeout).
+    /// Resolve every open reservation on chain evidence (after a crash or timeout) and restore each probe's outcome and
+    /// landing block into its original run directory.
     Reconcile {
         #[arg(long, env = "ITB_LEDGER", default_value = "state/ledger.sqlite")]
         ledger: PathBuf,
         #[arg(long)]
         max_spend_sol: f64,
+        #[arg(long, env = "ITB_KEYPAIR_PATH")]
+        keypair: Option<PathBuf>,
+        #[arg(long, env = "ITB_PAYER_DIR", default_value = "/keys/payers")]
+        payer_dir: PathBuf,
+        /// Where the original runs live (`data/raw` for `itb run`, `data/smoke` for smoke runs).
+        #[arg(long, value_delimiter = ',', default_value = "data/raw,data/smoke")]
+        runs: Vec<PathBuf>,
+        /// Attempt journal that receives a terminal record for each restored window.
+        #[arg(long, env = "ITB_PROGRESS", default_value = "state/progress.jsonl")]
+        progress: PathBuf,
     },
     /// Write the frozen experimental design (design.jsonl) for a target list. Refuses to overwrite.
     Design {
@@ -335,6 +351,7 @@ async fn main() -> Result<()> {
             max_spend_sol,
             ledger,
             keypair,
+            payer_dir,
             out,
             targets,
             per_group,
@@ -347,9 +364,6 @@ async fn main() -> Result<()> {
             if probes == 0 || probes > quic::MAX_STREAMS_PER_100MS {
                 bail!("--probes must be 1..={}", quic::MAX_STREAMS_PER_100MS);
             }
-            if live {
-                ensure_parent(&ledger)?;
-            }
             smoke::run(
                 rpc,
                 &ws_url,
@@ -358,6 +372,7 @@ async fn main() -> Result<()> {
                     max_spend_sol,
                     ledger,
                     keypair,
+                    payer_dir,
                     out,
                     targets,
                     per_group,
@@ -446,34 +461,29 @@ async fn main() -> Result<()> {
         Cmd::Reconcile {
             ledger,
             max_spend_sol,
+            keypair,
+            payer_dir,
+            runs,
+            progress,
         } => {
-            let l = ledger::Ledger::open(&ledger, auth::sol_to_lamports(max_spend_sol)?)?;
-            let open = l.open_reservations()?;
-            let tracked: Vec<collect::Tracked> = open
-                .iter()
-                .map(|r| collect::Tracked {
-                    probe_id: r.label.clone(),
-                    signature: r.signature.clone(),
-                    target_identity: String::new(),
-                    window_first_slot: 0,
-                    window_last_slot: 0,
-                    last_valid_block_height: r.last_valid_block_height,
-                    max_fee: r.max_fee,
-                    transport_error: None,
-                })
-                .collect();
-            let outcomes = collect::resolve(
+            let gate = alpenglow::require_active(&rpc).await?;
+            ensure_parent(&progress)?;
+            // Reconciliation is itself checked: a balance drop the ledger cannot explain is charged before anything.
+            let c = campaign::Campaign::open(
                 &rpc,
-                Some(&l),
-                &tracked,
-                None,
-                std::time::Duration::from_secs(180),
+                &gate,
+                campaign::OpenArgs {
+                    ledger: &ledger,
+                    max_spend_sol: Some(max_spend_sol),
+                    keypair: keypair.as_deref(),
+                    payer_dir: &payer_dir,
+                    holder: "reconcile",
+                },
             )
             .await?;
-            for o in &outcomes {
-                println!("{} {:?}", o.signature, o.status);
-            }
-            println!("{}", serde_json::to_string_pretty(&l.totals()?)?);
+            let report = recover::reconcile(&rpc, &c, &runs, &progress).await?;
+            c.reconcile_now(&rpc).await?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
         Cmd::InitPayers { dir, count } => {
             for pk in setup::init_payers(&dir, count)? {
@@ -488,23 +498,35 @@ async fn main() -> Result<()> {
             keypair,
             payer_dir,
         } => {
+            if !live {
+                bail!("setup sends transactions: it requires --live");
+            }
             let gate = alpenglow::require_active(&rpc).await?;
-            let cap = auth::sol_to_lamports(
-                max_spend_sol.ok_or_else(|| anyhow::anyhow!("setup requires --max-spend-sol"))?,
-            )?;
-            ensure_parent(&ledger)?;
-            let l = ledger::Ledger::open(&ledger, cap)?;
-            let live_auth = auth::LiveAuthorization::grant(live, max_spend_sol, &gate, &l)?;
+            let c = campaign::Campaign::open(
+                &rpc,
+                &gate,
+                campaign::OpenArgs {
+                    ledger: &ledger,
+                    max_spend_sol,
+                    keypair: keypair.as_deref(),
+                    payer_dir: &payer_dir,
+                    holder: "setup",
+                },
+            )
+            .await?;
+            c.budget("setup", Some(setup::SETUP_BUDGET_SOL))?;
             let master =
                 keys::read_keypair(&keypair.ok_or_else(|| {
                     anyhow::anyhow!("setup requires --keypair / ITB_KEYPAIR_PATH")
                 })?)?;
             match action {
                 SetupAction::Fund { lamports_per_payer } => {
+                    // A transfer to a payer with a pending probe would write-lock an account that probe uses.
+                    c.refuse_if_payers_leased()?;
                     setup::fund(
                         &rpc,
-                        &l,
-                        &live_auth,
+                        &c.ledger,
+                        &c.auth,
                         &master,
                         &payer_dir,
                         lamports_per_payer,
@@ -512,15 +534,16 @@ async fn main() -> Result<()> {
                     .await?
                 }
                 SetupAction::Sweep => {
-                    use solana_signer::Signer;
-                    setup::sweep(&rpc, &l, &live_auth, &master.pubkey(), &payer_dir).await?
+                    c.refuse_if_payers_leased()?;
+                    setup::sweep(&rpc, &c.ledger, &c.auth, &c.master, &payer_dir).await?
                 }
                 SetupAction::Memo { text } => println!(
                     "{}",
-                    setup::memo(&rpc, &l, &live_auth, &master, &text).await?
+                    setup::memo(&rpc, &c.ledger, &c.auth, &master, &text).await?
                 ),
             }
-            println!("{}", serde_json::to_string_pretty(&l.totals()?)?);
+            c.reconcile_now(&rpc).await?;
+            println!("{}", serde_json::to_string_pretty(&c.ledger.totals()?)?);
         }
         Cmd::Design { targets, seed, out } => {
             let specs: Vec<design::TargetSpec> =
@@ -561,6 +584,10 @@ async fn main() -> Result<()> {
             max_spend_sol,
             add_deposit_lamports,
         } => {
+            // Recording a deposit writes the ledger: hold the campaign lock for it.
+            let _lock = add_deposit_lamports
+                .map(|_| campaign::CampaignLock::acquire(&ledger, "ledger-deposit"))
+                .transpose()?;
             let l = ledger::Ledger::open(&ledger, auth::sol_to_lamports(max_spend_sol)?)?;
             if let Some(d) = add_deposit_lamports {
                 println!(

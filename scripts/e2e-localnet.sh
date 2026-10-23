@@ -41,7 +41,8 @@ live design --targets $E2E/targets.json --seed 1 --out $E2E/design.jsonl
 echo "== wait for 200 slots of history (aged blockhashes)"
 until [ "$(rpc '{"jsonrpc":"2.0","id":1,"method":"getSlot"}' | python -c 'import json,sys;print(json.load(sys.stdin)["result"])')" -gt 200 ]; do sleep 5; done
 
-RUN=(--design $E2E/design.jsonl --out $E2E/raw --progress /work/$E2E/progress.jsonl --nominal-slot-ms 400 --concurrency 1 --anchor-event created-bank --allow-non-mainnet --budget e2e)
+NOT_AFTER=$(date -u -d "+3 hours" +%Y-%m-%dT%H:%M:%SZ) # live runs require the campaign cutoff
+RUN=(--design $E2E/design.jsonl --out $E2E/raw --progress /work/$E2E/progress.jsonl --nominal-slot-ms 400 --concurrency 1 --anchor-event created-bank --allow-non-mainnet --budget e2e --budget-sol 0.02 --not-after "$NOT_AFTER")
 echo "== stage 1 (K windows), live over QUIC"
 live run "${COMMON[@]}" "${RUN[@]}" --stage 1 --max-windows 6
 echo "== stage 2 (T + H windows), live over QUIC"

@@ -169,11 +169,6 @@ impl Rpc {
             .await
     }
 
-    pub async fn get_block_height(&self, commitment: &str) -> Result<u64> {
-        self.call_as("getBlockHeight", json!([{"commitment": commitment}]))
-            .await
-    }
-
     pub async fn get_epoch_info(&self) -> Result<EpochInfo> {
         self.call_as("getEpochInfo", json!([{"commitment": "processed"}]))
             .await
@@ -247,8 +242,25 @@ impl Rpc {
     }
 
     /// Block header only (no transactions): used to date blockhashes.
+    /// Expiry barrier: a finalized slot and the block height *of that same block*, so the two numbers can never come
+    /// from backends at different points (a single `getBlock` answer). Walks back over a slot the answering node has
+    /// not stored yet.
+    pub async fn finalized_barrier(&self) -> Result<(u64, u64)> {
+        let tip = self.get_slot("finalized").await?;
+        for slot in (tip.saturating_sub(32)..=tip).rev() {
+            if let Some((_, height)) = self.block_header_at(slot, "finalized").await? {
+                return Ok((slot, height));
+            }
+        }
+        bail!("no finalized block found at or below slot {tip}")
+    }
+
     pub async fn block_header(&self, slot: u64) -> Result<Option<(Hash, u64)>> {
-        let params = json!([slot, {"transactionDetails": "none", "rewards": false, "commitment": "confirmed",
+        self.block_header_at(slot, "confirmed").await
+    }
+
+    async fn block_header_at(&self, slot: u64, commitment: &str) -> Result<Option<(Hash, u64)>> {
+        let params = json!([slot, {"transactionDetails": "none", "rewards": false, "commitment": commitment,
                                    "maxSupportedTransactionVersion": 1}]);
         let v = match self.call("getBlock", params).await {
             Ok(v) if v.is_null() => return Ok(None),
@@ -359,8 +371,25 @@ impl Rpc {
                 .call("getMultipleAccounts", json!([chunk, {"encoding": "base64", "commitment": "confirmed",
                                                             "dataSlice": {"offset": 0, "length": 0}}]))
                 .await?;
-            for acc in v["value"].as_array().cloned().unwrap_or_default() {
-                out.push(acc["lamports"].as_u64().unwrap_or(0));
+            // Fail closed: one entry per requested account, each either null (no account: 0 lamports) or an account
+            // with a lamport count. Anything else would make reconciliation silently wrong.
+            let accs = v["value"]
+                .as_array()
+                .filter(|a| a.len() == chunk.len())
+                .ok_or_else(|| {
+                    anyhow!(
+                        "getMultipleAccounts: malformed answer for {} accounts",
+                        chunk.len()
+                    )
+                })?;
+            for acc in accs {
+                out.push(if acc.is_null() {
+                    0
+                } else {
+                    acc["lamports"]
+                        .as_u64()
+                        .ok_or_else(|| anyhow!("getMultipleAccounts: account without lamports"))?
+                });
             }
         }
         Ok(out)

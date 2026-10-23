@@ -23,6 +23,14 @@ impl RunDir {
         Ok(Self { path })
     }
 
+    /// Re-opens an existing run directory for appending (crash recovery by `itb reconcile`).
+    pub fn open_existing(path: PathBuf) -> Result<Self> {
+        if !path.join("blocks").is_dir() {
+            anyhow::bail!("{} is not a run directory", path.display());
+        }
+        Ok(Self { path })
+    }
+
     pub fn jsonl(&self, name: &str) -> Result<Jsonl> {
         Jsonl::open(&self.path.join(name))
     }

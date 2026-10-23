@@ -20,6 +20,8 @@ use std::str::FromStr;
 use std::time::Duration;
 
 pub const MEMO_PROGRAM: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+/// Allowance for all setup transactions of the campaign (funding, sweeping, the Memo): 200 one-signature fees.
+pub const SETUP_BUDGET_SOL: f64 = 0.001;
 /// System transfers per funding transaction (well under the 1232-byte packet limit).
 const TRANSFERS_PER_TX: usize = 16;
 
@@ -70,6 +72,7 @@ async fn send_setup(
         payer: payer.to_string(),
         last_valid_block_height: bh.last_valid_block_height,
         budget: "setup".into(),
+        provenance: None,
     }])?;
     let wire = base64::engine::general_purpose::STANDARD.encode(bincode::serialize(&tx)?);
     if let Err(e) = rpc.send_transaction(auth, &wire).await {
@@ -97,7 +100,7 @@ async fn send_setup(
     .remove(0);
     match outcome.status {
         Status::ExpiredConfirmed => {
-            bail!("{label}: {sig} expired without landing (reservation released)")
+            bail!("{label}: {sig} expired without landing (its fee stays charged)")
         }
         Status::Unresolved => {
             bail!("{label}: {sig} unresolved (reservation kept; run `itb reconcile` later)")

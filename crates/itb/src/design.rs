@@ -390,7 +390,7 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
                         kit,
                         regime: Regime::PreWindow,
                         burst_offset_ms: 0.0,
-                        // H needs the long horizon to observe the −5 s probe; S keeps the aged hash.
+                        // H needs the long horizon to observe the −7 s probe; S keeps the aged hash.
                         blockhash_age_slots: if kit == Kit::H {
                             0
                         } else {
@@ -407,8 +407,30 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
     out
 }
 
-/// Structural checks before a design may be frozen or executed: unique (target, stage, seq) and pair ids, the
-/// expected member count per pair kind, and templates above the CU floor.
+/// The labels a pair kind must contain (as a sorted multiset); each label names one library template.
+fn expected_labels(kind: PairKind) -> &'static [&'static str] {
+    match kind {
+        PairKind::C1 => &["A", "B"],
+        PairKind::C2 | PairKind::C2Uncontended => &["A'", "B"],
+        PairKind::C3 => &["A", "A'"],
+        PairKind::Race => &["hi", "lo"],
+        PairKind::EqualKey => &["A", "A#2"],
+        PairKind::Single => &["A"],
+    }
+}
+
+fn template_of(label: &str) -> Option<Template> {
+    let base = label.split('#').next().unwrap_or(label);
+    library::ALL
+        .iter()
+        .find(|(name, _)| *name == base)
+        .map(|(_, t)| *t)
+}
+
+/// Checks before a design may be frozen or executed: unique (target, stage, seq) and pair ids; per pair kind the exact
+/// label set, each label carrying exactly its library template (so a swapped template cannot hide behind a label);
+/// `first_sent_label` equal to the first member; conflicting pairs sharing one lock, uncontended pairs not; no lock
+/// shared between pairs of a window; templates above the CU floor; bursts within the stream budget.
 pub fn validate(plans: &[WindowPlan]) -> anyhow::Result<()> {
     use std::collections::HashSet;
     let mut keys = HashSet::new();
@@ -417,6 +439,7 @@ pub fn validate(plans: &[WindowPlan]) -> anyhow::Result<()> {
         if !keys.insert((p.target_identity.clone(), p.stage, p.seq)) {
             anyhow::bail!("duplicate plan {}/{}/{}", p.target_identity, p.stage, p.seq);
         }
+        let mut window_locks: HashSet<u32> = HashSet::new();
         for q in &p.pairs {
             if !pair_ids.insert((p.target_identity.clone(), q.pair_id.clone())) {
                 anyhow::bail!("duplicate pair id {}", q.pair_id);
@@ -428,6 +451,45 @@ pub fn validate(plans: &[WindowPlan]) -> anyhow::Result<()> {
                     q.pair_id,
                     q.members.len()
                 );
+            }
+            let mut labels: Vec<&str> = q.members.iter().map(|m| m.label.as_str()).collect();
+            labels.sort_unstable();
+            if labels != expected_labels(q.kind) {
+                anyhow::bail!(
+                    "pair {} ({:?}) has labels {labels:?}, expected {:?}",
+                    q.pair_id,
+                    q.kind,
+                    expected_labels(q.kind)
+                );
+            }
+            for m in &q.members {
+                if template_of(&m.label) != Some(m.template) {
+                    anyhow::bail!(
+                        "pair {}: label {} does not carry its library template",
+                        q.pair_id,
+                        m.label
+                    );
+                }
+            }
+            if q.members[0].label != q.first_sent_label {
+                anyhow::bail!(
+                    "pair {}: first_sent_label {} is not the first member",
+                    q.pair_id,
+                    q.first_sent_label
+                );
+            }
+            let locks: HashSet<u32> = q.members.iter().map(|m| m.lock_index).collect();
+            let shared = locks.len() == 1;
+            if q.members.len() == 2 && shared == (q.kind == PairKind::C2Uncontended) {
+                anyhow::bail!(
+                    "pair {}: {:?} must {} its lock",
+                    q.pair_id,
+                    q.kind,
+                    if shared { "not share" } else { "share" }
+                );
+            }
+            if locks.iter().any(|l| !window_locks.insert(*l)) {
+                anyhow::bail!("pair {}: lock shared with another pair", q.pair_id);
             }
             for m in &q.members {
                 if m.template.cu_limit < crate::probe::ATOM_EXECUTED_CU {

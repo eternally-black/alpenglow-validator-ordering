@@ -6,10 +6,10 @@
 //! QUIC handshakes (reachability + RTT), signed probes, and a full would-send log.
 
 use crate::alpenglow;
-use crate::auth::{LiveAuthorization, sol_to_lamports};
+use crate::campaign::{Campaign, OpenArgs};
 use crate::collect::{self, Tracked};
 use crate::keys::read_keypair;
-use crate::ledger::{Kind, Ledger, Reservation};
+use crate::ledger::{Kind, Provenance, Reservation};
 use crate::probe::library;
 use crate::quic::{Outgoing, QuicClient};
 use crate::rpc::{Rpc, redact_url};
@@ -33,6 +33,8 @@ pub struct SmokeArgs {
     pub max_spend_sol: Option<f64>,
     pub ledger: PathBuf,
     pub keypair: Option<PathBuf>,
+    /// Payer directory: part of the campaign's owned-account set even though smoke signs with the master.
+    pub payer_dir: PathBuf,
     pub out: PathBuf,
     pub targets: Vec<String>,
     pub per_group: usize,
@@ -78,23 +80,30 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
 
     let gate = alpenglow::require_active(&rpc).await?;
 
-    // Live mode: cap, ledger and keypair are all mandatory; dry mode signs with a throwaway key.
-    let (payer, ledger, auth) = if args.live {
-        let cap = sol_to_lamports(
-            args.max_spend_sol
-                .context("--live requires --max-spend-sol")?,
-        )?;
-        let ledger = Ledger::open(&args.ledger, cap)?;
-        ledger.define_budget("smoke", sol_to_lamports(args.budget_sol)?)?;
-        let auth = LiveAuthorization::grant(true, args.max_spend_sol, &gate, &ledger)?;
+    // Live mode: the campaign guard (lock, ledger, cap, reconciliation) and the master keypair; dry mode signs with a
+    // throwaway key.
+    let (payer, campaign) = if args.live {
+        let campaign = Campaign::open(
+            &rpc,
+            &gate,
+            OpenArgs {
+                ledger: &args.ledger,
+                max_spend_sol: args.max_spend_sol,
+                keypair: args.keypair.as_deref(),
+                payer_dir: &args.payer_dir,
+                holder: &run_id,
+            },
+        )
+        .await?;
+        campaign.budget("smoke", Some(args.budget_sol))?;
         let kp = read_keypair(
             args.keypair
                 .as_deref()
                 .context("--live requires --keypair (or ITB_KEYPAIR_PATH)")?,
         )?;
-        (Arc::new(kp), Some(Arc::new(ledger)), Some(Arc::new(auth)))
+        (Arc::new(kp), Some(Arc::new(campaign)))
     } else {
-        (Arc::new(Keypair::new()), None, None)
+        (Arc::new(Keypair::new()), None)
     };
 
     let (validators, raw_gossip) = targets::snapshot(&rpc).await?;
@@ -155,13 +164,12 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
 
     let mut tasks = vec![];
     for (v, window) in plan {
-        let (rpc, quic, slot_clock, payer, ledger, auth, run_id) = (
+        let (rpc, quic, slot_clock, payer, campaign, run_id) = (
             rpc.clone(),
             quic.clone(),
             slot_clock.clone(),
             payer.clone(),
-            ledger.clone(),
-            auth.clone(),
+            campaign.clone(),
             run_id.clone(),
         );
         let (planned, sends, connects) = (planned.clone(), sends.clone(), connects.clone());
@@ -222,14 +230,15 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
                     })
                     .unwrap_or_else(tokio::time::Instant::now);
 
-                match (&auth, &ledger) {
-                    (Some(auth), Some(ledger)) => {
+                match &campaign {
+                    Some(campaign) => {
                         if report.error.is_some() {
                             for t in &mut tracked {
                                 t.transport_error = Some(format!("connect: {}", report.error.clone().unwrap_or_default()));
                             }
                             return Ok(vec![]); // nothing reserved, nothing sent
                         }
+                        campaign.ensure_running()?;
                         let batch: Vec<Reservation> = tracked
                             .iter()
                             .map(|t| Reservation {
@@ -240,12 +249,20 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
                                 payer: payer.pubkey().to_string(),
                                 last_valid_block_height: t.last_valid_block_height,
                                 budget: "smoke".into(),
+                                provenance: Some(Provenance {
+                                    run_id: run_id.clone(),
+                                    probe_id: t.probe_id.clone(),
+                                    target_identity: t.target_identity.clone(),
+                                    window_first_slot: t.window_first_slot,
+                                    window_last_slot: t.window_last_slot,
+                                }),
                             })
                             .collect();
+                        let ledger = &campaign.ledger;
                         ledger.reserve_batch(&batch)?;
                         let deadline = at + Duration::from_millis(200);
                         let outgoing = items.into_iter().map(|(probe_id, wire)| Outgoing { probe_id, wire, at, deadline }).collect();
-                        let records = quic.send_scheduled(auth, addr, outgoing).await;
+                        let records = quic.send_scheduled(&campaign.auth, addr, outgoing).await;
                         for (t, r) in tracked.iter_mut().zip(&records) {
                             t.transport_error = r.error.clone();
                             if r.never_opened {
@@ -284,10 +301,10 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
 
     let mut summary = json!({"run_id": run_id, "mode": if args.live { "live" } else { "dry_run" }, "started_at": started_at,
                              "rpc": redact_url(rpc.url()), "alpenglow": gate, "probes_planned": tracked.len()});
-    if args.live {
+    if let Some(campaign) = &campaign {
         let outcomes = collect::resolve(
             &rpc,
-            ledger.as_deref(),
+            Some(&campaign.ledger),
             &tracked,
             Some(&run),
             Duration::from_secs(120),
@@ -315,9 +332,9 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
                     .unwrap_or_default()
             );
         }
-        if let Some(l) = &ledger {
-            summary["ledger"] = serde_json::to_value(l.totals()?)?;
-        }
+        summary["owned_lamports_drop_since_campaign_opening"] =
+            serde_json::to_value(campaign.reconcile_now(&rpc).await?)?;
+        summary["ledger"] = serde_json::to_value(campaign.ledger.totals()?)?;
         summary["outcomes"] = serde_json::to_value(&outcomes)?;
     }
     quic.close_all().await;

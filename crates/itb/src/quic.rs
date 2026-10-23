@@ -31,6 +31,8 @@ const PACKET_DATA_SIZE: u64 = 1232;
 const INITIAL_CONGESTION_WINDOW: u64 = 128 * PACKET_DATA_SIZE;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 const STREAM_TIMEOUT: Duration = Duration::from_millis(500);
+/// A transaction is one packet: once a stream is open in time, writing it cannot legitimately take longer than this.
+const STREAM_WRITE_GRACE: Duration = Duration::from_millis(50);
 /// Half of the server's 8/min per-IP allowance, so retries and shared builder IPs never trip it.
 pub const MAX_NEW_CONNECTIONS_PER_IP_PER_MINUTE: usize = 4;
 /// Below the 20-streams-per-100-ms unstaked throttle with margin; enforced per connection at runtime.
@@ -259,11 +261,23 @@ impl QuicClient {
                 continue;
             }
             st.recent_streams.push_back(Instant::now());
-            match tokio::time::timeout(STREAM_TIMEOUT, st.conn.open_uni()).await {
+            // The deadline bounds the open itself: a stream that is not open by then is never opened (no bytes left).
+            let open_by = o.deadline.min(tokio::time::Instant::now() + STREAM_TIMEOUT);
+            match tokio::time::timeout_at(open_by, st.conn.open_uni()).await {
                 Ok(Ok(mut s)) => {
                     rec.never_opened = false;
                     rec.open_unix_ns = Some(self.clock.now_unix_ns());
-                    match tokio::time::timeout(STREAM_TIMEOUT, s.write_all(&o.wire)).await {
+                    if tokio::time::Instant::now() > o.deadline {
+                        // Opened, but too late to write: reset the stream without sending the transaction.
+                        let _ = s.reset(0u32.into());
+                        rec.error =
+                            Some("deadline passed after open; stream reset unwritten".into());
+                        out.push(rec);
+                        continue;
+                    }
+                    // Bytes may leave from here on, so the reservation is kept whatever happens next.
+                    let write_by = o.deadline.max(tokio::time::Instant::now()) + STREAM_WRITE_GRACE;
+                    match tokio::time::timeout_at(write_by, s.write_all(&o.wire)).await {
                         Ok(Ok(())) => {
                             rec.written_unix_ns = Some(self.clock.now_unix_ns());
                             match s.finish() {
