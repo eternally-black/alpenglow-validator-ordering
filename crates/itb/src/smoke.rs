@@ -80,11 +80,18 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
 
     // Live mode: cap, ledger and keypair are all mandatory; dry mode signs with a throwaway key.
     let (payer, ledger, auth) = if args.live {
-        let cap = sol_to_lamports(args.max_spend_sol.context("--live requires --max-spend-sol")?)?;
+        let cap = sol_to_lamports(
+            args.max_spend_sol
+                .context("--live requires --max-spend-sol")?,
+        )?;
         let ledger = Ledger::open(&args.ledger, cap)?;
         ledger.define_budget("smoke", sol_to_lamports(args.budget_sol)?)?;
         let auth = LiveAuthorization::grant(true, args.max_spend_sol, &gate, &ledger)?;
-        let kp = read_keypair(args.keypair.as_deref().context("--live requires --keypair (or ITB_KEYPAIR_PATH)")?)?;
+        let kp = read_keypair(
+            args.keypair
+                .as_deref()
+                .context("--live requires --keypair (or ITB_KEYPAIR_PATH)")?,
+        )?;
         (Arc::new(kp), Some(Arc::new(ledger)), Some(Arc::new(auth)))
     } else {
         (Arc::new(Keypair::new()), None, None)
@@ -93,11 +100,20 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
     let (validators, raw_gossip) = targets::snapshot(&rpc).await?;
     run.write_zst("gossip.json.zst", &raw_gossip)?;
     let chosen: Vec<Validator> = if args.targets.is_empty() {
-        targets::top_per_group(&validators, args.per_group.saturating_sub(1)).into_iter().take(args.max_targets).collect()
+        targets::top_per_group(&validators, args.per_group.saturating_sub(1))
+            .into_iter()
+            .take(args.max_targets)
+            .collect()
     } else {
         args.targets
             .iter()
-            .map(|id| validators.iter().find(|v| &v.identity == id).cloned().with_context(|| format!("{id} not staked / not in gossip")))
+            .map(|id| {
+                validators
+                    .iter()
+                    .find(|v| &v.identity == id)
+                    .cloned()
+                    .with_context(|| format!("{id} not staked / not in gossip"))
+            })
             .collect::<Result<_>>()?
     };
     if chosen.is_empty() {
@@ -108,10 +124,17 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
     let now_slot = epoch.absolute_slot;
     let mut plan: Vec<(Validator, (u64, u64))> = vec![];
     for v in chosen {
-        let slots = rpc.leader_slots(now_slot, &v.identity, epoch.first_slot_of_epoch()).await?;
-        match targets::windows(slots).into_iter().find(|(s, _)| *s > now_slot + 25) {
+        let slots = rpc
+            .leader_slots(now_slot, &v.identity, epoch.first_slot_of_epoch())
+            .await?;
+        match targets::windows(slots)
+            .into_iter()
+            .find(|(s, _)| *s > now_slot + 25)
+        {
             Some(w) => plan.push((v, w)),
-            None => tracing::warn!(identity = %v.identity, "no upcoming window in this epoch; skipped"),
+            None => {
+                tracing::warn!(identity = %v.identity, "no upcoming window in this epoch; skipped")
+            }
         }
     }
     plan.sort_by_key(|(_, w)| w.0);
@@ -123,7 +146,8 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
         .collect();
     eprintln!("{}", serde_json::to_string_pretty(&preview)?);
 
-    let slot_clock = SlotClock::start(ws_url, clock, 200.0, crate::timing::AnchorEvent::FirstShred).await?;
+    let slot_clock =
+        SlotClock::start(ws_url, clock, 200.0, crate::timing::AnchorEvent::FirstShred).await?;
     let quic = Arc::new(QuicClient::new(clock)?);
     let planned = Arc::new(run.jsonl("plan.jsonl")?);
     let sends = Arc::new(run.jsonl("sends.jsonl")?);
@@ -131,8 +155,15 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
 
     let mut tasks = vec![];
     for (v, window) in plan {
-        let (rpc, quic, slot_clock, payer, ledger, auth, run_id) =
-            (rpc.clone(), quic.clone(), slot_clock.clone(), payer.clone(), ledger.clone(), auth.clone(), run_id.clone());
+        let (rpc, quic, slot_clock, payer, ledger, auth, run_id) = (
+            rpc.clone(),
+            quic.clone(),
+            slot_clock.clone(),
+            payer.clone(),
+            ledger.clone(),
+            auth.clone(),
+            run_id.clone(),
+        );
         let (planned, sends, connects) = (planned.clone(), sends.clone(), connects.clone());
         let (probes, offset_ms, age) = (args.probes, args.offset_ms, args.blockhash_age_slots);
         tasks.push(tokio::spawn(async move {
@@ -254,20 +285,34 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: SmokeArgs) -> Result<()> {
     let mut summary = json!({"run_id": run_id, "mode": if args.live { "live" } else { "dry_run" }, "started_at": started_at,
                              "rpc": redact_url(rpc.url()), "alpenglow": gate, "probes_planned": tracked.len()});
     if args.live {
-        let outcomes = collect::resolve(&rpc, ledger.as_deref(), &tracked, Some(&run), Duration::from_secs(120)).await?;
+        let outcomes = collect::resolve(
+            &rpc,
+            ledger.as_deref(),
+            &tracked,
+            Some(&run),
+            Duration::from_secs(120),
+        )
+        .await?;
         let out = run.jsonl("outcomes.jsonl")?;
         for o in &outcomes {
             out.append(o)?;
         }
-        eprintln!("\n{:<10} {:<14} {:<28} {:>6} {:>8}", "target", "status", "signature", "slot", "index");
+        eprintln!(
+            "\n{:<10} {:<14} {:<28} {:>6} {:>8}",
+            "target", "status", "signature", "slot", "index"
+        );
         for o in &outcomes {
             eprintln!(
                 "{:<10} {:<14} {:<28} {:>6} {:>8}",
                 &o.probe_id[..8],
                 serde_json::to_value(o.status)?.as_str().unwrap_or("?"),
                 &o.signature[..24],
-                o.slot.map(|s| (s % 1_000_000).to_string()).unwrap_or_default(),
-                o.index_in_block.map(|i| format!("{i}/{}", o.block_tx_count.unwrap_or(0))).unwrap_or_default()
+                o.slot
+                    .map(|s| (s % 1_000_000).to_string())
+                    .unwrap_or_default(),
+                o.index_in_block
+                    .map(|i| format!("{i}/{}", o.block_tx_count.unwrap_or(0)))
+                    .unwrap_or_default()
             );
         }
         if let Some(l) = &ledger {

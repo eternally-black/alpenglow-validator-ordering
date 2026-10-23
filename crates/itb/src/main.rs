@@ -23,10 +23,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Parser)]
-#[command(name = "itb", version, about = "Inside the Block — Solana intra-block ordering measurement")]
+#[command(
+    name = "itb",
+    version,
+    about = "Inside the Block — Solana intra-block ordering measurement"
+)]
 struct Cli {
     /// JSON-RPC endpoint. Only `scheme://host` of it ever reaches a log or data file.
-    #[arg(long, env = "RPC_URL", default_value = "https://api.mainnet-beta.solana.com", global = true)]
+    #[arg(
+        long,
+        env = "RPC_URL",
+        default_value = "https://api.mainnet-beta.solana.com",
+        global = true
+    )]
     rpc_url: String,
     /// WebSocket endpoint for slot updates (defaults to the RPC URL with ws/wss).
     #[arg(long, env = "WS_URL", global = true)]
@@ -94,11 +103,21 @@ enum Cmd {
         live: bool,
         #[arg(long, global = true)]
         max_spend_sol: Option<f64>,
-        #[arg(long, env = "ITB_LEDGER", default_value = "state/ledger.sqlite", global = true)]
+        #[arg(
+            long,
+            env = "ITB_LEDGER",
+            default_value = "state/ledger.sqlite",
+            global = true
+        )]
         ledger: PathBuf,
         #[arg(long, env = "ITB_KEYPAIR_PATH", global = true)]
         keypair: Option<PathBuf>,
-        #[arg(long, env = "ITB_PAYER_DIR", default_value = "/keys/payers", global = true)]
+        #[arg(
+            long,
+            env = "ITB_PAYER_DIR",
+            default_value = "/keys/payers",
+            global = true
+        )]
         payer_dir: PathBuf,
     },
     /// Execute one stage of the frozen design against mainnet leader windows (dry-run by default).
@@ -207,8 +226,13 @@ fn init_logging(json: Option<&PathBuf>) -> Result<()> {
     let registry = tracing_subscriber::registry().with(filter).with(stderr);
     match json {
         Some(path) => {
-            let file = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
-            registry.with(fmt::layer().json().with_writer(std::sync::Mutex::new(file))).init();
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?;
+            registry
+                .with(fmt::layer().json().with_writer(std::sync::Mutex::new(file)))
+                .init();
         }
         None => registry.init(),
     }
@@ -216,7 +240,9 @@ fn init_logging(json: Option<&PathBuf>) -> Result<()> {
 }
 
 fn derive_ws(rpc_url: &str) -> String {
-    rpc_url.replacen("https://", "wss://", 1).replacen("http://", "ws://", 1)
+    rpc_url
+        .replacen("https://", "wss://", 1)
+        .replacen("http://", "ws://", 1)
 }
 
 fn ensure_parent(p: &std::path::Path) -> Result<()> {
@@ -231,14 +257,23 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     init_logging(cli.log_json.as_ref())?;
     let rpc = Arc::new(rpc::Rpc::new(&cli.rpc_url));
-    let ws_url = cli.ws_url.clone().unwrap_or_else(|| derive_ws(&cli.rpc_url));
+    let ws_url = cli
+        .ws_url
+        .clone()
+        .unwrap_or_else(|| derive_ws(&cli.rpc_url));
 
     match cli.cmd {
         Cmd::Check => {
             let gate = alpenglow::require_active(&rpc).await?;
             let version = rpc.call("getVersion", serde_json::json!([])).await?;
             let genesis = rpc.genesis_hash().await?;
-            let clock = timing::SlotClock::start(&ws_url, timing::RunClock::new(), 200.0, timing::AnchorEvent::FirstShred).await?;
+            let clock = timing::SlotClock::start(
+                &ws_url,
+                timing::RunClock::new(),
+                200.0,
+                timing::AnchorEvent::FirstShred,
+            )
+            .await?;
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             println!(
                 "{}",
@@ -270,6 +305,18 @@ async fn main() -> Result<()> {
             }
         }
         Cmd::ProbeTable => {
+            use probe::library::*;
+            for (c, x, y) in [
+                ("C1", ("A", A), ("B", B)),
+                ("C2", ("A'", A_PRIME), ("B", B)),
+                ("C3", ("A", A), ("A'", A_PRIME)),
+            ] {
+                let preds: Vec<String> = probe::Rule::ALL
+                    .iter()
+                    .map(|r| format!("{r:?}={:?}", probe::predict(*r, &x.1, &y.1)))
+                    .collect();
+                println!("{c} {} vs {}: {}", x.0, y.0, preds.join(" "));
+            }
             for (name, t) in probe::library::ALL {
                 println!(
                     "{name:3} L={:5} p={:>9} D={:>9} prio_fee={:5} total_fee={:5} cost={:6} P={:>9}",
@@ -283,7 +330,20 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Cmd::Smoke { live, max_spend_sol, ledger, keypair, out, targets, per_group, probes, offset_ms, blockhash_age_slots, max_targets, budget_sol } => {
+        Cmd::Smoke {
+            live,
+            max_spend_sol,
+            ledger,
+            keypair,
+            out,
+            targets,
+            per_group,
+            probes,
+            offset_ms,
+            blockhash_age_slots,
+            max_targets,
+            budget_sol,
+        } => {
             if probes == 0 || probes > quic::MAX_STREAMS_PER_100MS {
                 bail!("--probes must be 1..={}", quic::MAX_STREAMS_PER_100MS);
             }
@@ -335,7 +395,13 @@ async fn main() -> Result<()> {
             allow_non_mainnet,
             tpu_override,
         } => {
-            let progress = progress.unwrap_or_else(|| PathBuf::from(if live { "state/progress.jsonl" } else { "state/progress.dryrun.jsonl" }));
+            let progress = progress.unwrap_or_else(|| {
+                PathBuf::from(if live {
+                    "state/progress.jsonl"
+                } else {
+                    "state/progress.dryrun.jsonl"
+                })
+            });
             let not_after_unix = not_after
                 .map(|s| {
                     time::OffsetDateTime::parse(&s, &time::format_description::well_known::Rfc3339)
@@ -377,7 +443,10 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-        Cmd::Reconcile { ledger, max_spend_sol } => {
+        Cmd::Reconcile {
+            ledger,
+            max_spend_sol,
+        } => {
             let l = ledger::Ledger::open(&ledger, auth::sol_to_lamports(max_spend_sol)?)?;
             let open = l.open_reservations()?;
             let tracked: Vec<collect::Tracked> = open
@@ -393,7 +462,14 @@ async fn main() -> Result<()> {
                     transport_error: None,
                 })
                 .collect();
-            let outcomes = collect::resolve(&rpc, Some(&l), &tracked, None, std::time::Duration::from_secs(180)).await?;
+            let outcomes = collect::resolve(
+                &rpc,
+                Some(&l),
+                &tracked,
+                None,
+                std::time::Duration::from_secs(180),
+            )
+            .await?;
             for o in &outcomes {
                 println!("{} {:?}", o.signature, o.status);
             }
@@ -404,25 +480,51 @@ async fn main() -> Result<()> {
                 println!("{pk}");
             }
         }
-        Cmd::Setup { action, live, max_spend_sol, ledger, keypair, payer_dir } => {
+        Cmd::Setup {
+            action,
+            live,
+            max_spend_sol,
+            ledger,
+            keypair,
+            payer_dir,
+        } => {
             let gate = alpenglow::require_active(&rpc).await?;
-            let cap = auth::sol_to_lamports(max_spend_sol.ok_or_else(|| anyhow::anyhow!("setup requires --max-spend-sol"))?)?;
+            let cap = auth::sol_to_lamports(
+                max_spend_sol.ok_or_else(|| anyhow::anyhow!("setup requires --max-spend-sol"))?,
+            )?;
             ensure_parent(&ledger)?;
             let l = ledger::Ledger::open(&ledger, cap)?;
             let live_auth = auth::LiveAuthorization::grant(live, max_spend_sol, &gate, &l)?;
-            let master = keys::read_keypair(&keypair.ok_or_else(|| anyhow::anyhow!("setup requires --keypair / ITB_KEYPAIR_PATH"))?)?;
+            let master =
+                keys::read_keypair(&keypair.ok_or_else(|| {
+                    anyhow::anyhow!("setup requires --keypair / ITB_KEYPAIR_PATH")
+                })?)?;
             match action {
-                SetupAction::Fund { lamports_per_payer } => setup::fund(&rpc, &l, &live_auth, &master, &payer_dir, lamports_per_payer).await?,
+                SetupAction::Fund { lamports_per_payer } => {
+                    setup::fund(
+                        &rpc,
+                        &l,
+                        &live_auth,
+                        &master,
+                        &payer_dir,
+                        lamports_per_payer,
+                    )
+                    .await?
+                }
                 SetupAction::Sweep => {
                     use solana_signer::Signer;
                     setup::sweep(&rpc, &l, &live_auth, &master.pubkey(), &payer_dir).await?
                 }
-                SetupAction::Memo { text } => println!("{}", setup::memo(&rpc, &l, &live_auth, &master, &text).await?),
+                SetupAction::Memo { text } => println!(
+                    "{}",
+                    setup::memo(&rpc, &l, &live_auth, &master, &text).await?
+                ),
             }
             println!("{}", serde_json::to_string_pretty(&l.totals()?)?);
         }
         Cmd::Design { targets, seed, out } => {
-            let specs: Vec<design::TargetSpec> = serde_json::from_str(&std::fs::read_to_string(&targets)?)?;
+            let specs: Vec<design::TargetSpec> =
+                serde_json::from_str(&std::fs::read_to_string(&targets)?)?;
             let plans = design::generate(seed, &specs);
             design::validate(&plans)?;
             let mut text = String::new();
@@ -432,7 +534,16 @@ async fn main() -> Result<()> {
             }
             // Never append: a design is written once, whole, and then frozen.
             use std::io::Write;
-            let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&out).with_context(|| format!("{} exists; a design is never overwritten or appended", out.display()))?;
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&out)
+                .with_context(|| {
+                    format!(
+                        "{} exists; a design is never overwritten or appended",
+                        out.display()
+                    )
+                })?;
             f.write_all(text.as_bytes())?;
             f.sync_all()?;
             let worst: u64 = plans.iter().map(design::max_fee).sum();
@@ -445,14 +556,24 @@ async fn main() -> Result<()> {
                 sha2::Sha256::digest(text.as_bytes())
             );
         }
-        Cmd::Ledger { ledger, max_spend_sol, add_deposit_lamports } => {
+        Cmd::Ledger {
+            ledger,
+            max_spend_sol,
+            add_deposit_lamports,
+        } => {
             let l = ledger::Ledger::open(&ledger, auth::sol_to_lamports(max_spend_sol)?)?;
             if let Some(d) = add_deposit_lamports {
-                println!("external deposits now {} lamports", l.add_external_deposit(d)?);
+                println!(
+                    "external deposits now {} lamports",
+                    l.add_external_deposit(d)?
+                );
             }
             println!("{}", serde_json::to_string_pretty(&l.totals()?)?);
             for r in l.open_reservations()? {
-                println!("open: {} {} payer {} lvbh {}", r.signature, r.label, r.payer, r.last_valid_block_height);
+                println!(
+                    "open: {} {} payer {} lvbh {}",
+                    r.signature, r.label, r.payer, r.last_valid_block_height
+                );
             }
         }
     }

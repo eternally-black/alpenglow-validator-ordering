@@ -2,8 +2,8 @@
 //! They go through RPC `sendTransaction` (their timing is irrelevant) but through the same spend ledger as probes.
 
 use crate::auth::LiveAuthorization;
-use crate::keys::{read_keypair, write_keypair};
 use crate::collect::{self, Status, Tracked};
+use crate::keys::{read_keypair, write_keypair};
 use crate::ledger::{Kind, Ledger, Reservation};
 use crate::probe::LAMPORTS_PER_SIGNATURE;
 use crate::rpc::Rpc;
@@ -27,7 +27,11 @@ pub fn init_payers(dir: &Path, count: usize) -> Result<Vec<Pubkey>> {
     std::fs::create_dir_all(dir)?;
     let existing = crate::keys::payer_paths(dir)?;
     if !existing.is_empty() {
-        bail!("{} already contains {} payer keypairs; refusing to create more", dir.display(), existing.len());
+        bail!(
+            "{} already contains {} payer keypairs; refusing to create more",
+            dir.display(),
+            existing.len()
+        );
     }
     let mut out = vec![];
     for i in 0..count {
@@ -41,10 +45,21 @@ pub fn init_payers(dir: &Path, count: usize) -> Result<Vec<Pubkey>> {
 /// Sends one setup transaction (reserved at its worst-case fee, against the "setup" budget) and resolves it with the
 /// same evidence rules as probes. Success requires a confirmed block containing the transaction with `err == null`;
 /// an on-chain failure, an expiry or an unresolved outcome is an error (the fee accounting is kept either way).
-async fn send_setup(rpc: &Rpc, ledger: &Ledger, auth: &LiveAuthorization, signers: &[&Keypair], ixs: &[Instruction], label: &str) -> Result<String> {
+async fn send_setup(
+    rpc: &Rpc,
+    ledger: &Ledger,
+    auth: &LiveAuthorization,
+    signers: &[&Keypair],
+    ixs: &[Instruction],
+    label: &str,
+) -> Result<String> {
     let bh = rpc.latest_blockhash().await?;
     let payer = signers[0].pubkey();
-    let tx = Transaction::new(signers, Message::new(ixs, Some(&payer)), bh.blockhash.clone());
+    let tx = Transaction::new(
+        signers,
+        Message::new(ixs, Some(&payer)),
+        bh.blockhash.clone(),
+    );
     let sig = tx.signatures[0].to_string();
     let max_fee = LAMPORTS_PER_SIGNATURE * tx.signatures.len() as u64;
     ledger.reserve_batch(&[Reservation {
@@ -71,11 +86,25 @@ async fn send_setup(rpc: &Rpc, ledger: &Ledger, auth: &LiveAuthorization, signer
         max_fee,
         transport_error: None,
     };
-    let outcome = collect::resolve(rpc, Some(ledger), &[tracked], None, Duration::from_secs(150)).await?.remove(0);
+    let outcome = collect::resolve(
+        rpc,
+        Some(ledger),
+        &[tracked],
+        None,
+        Duration::from_secs(150),
+    )
+    .await?
+    .remove(0);
     match outcome.status {
-        Status::ExpiredConfirmed => bail!("{label}: {sig} expired without landing (reservation released)"),
-        Status::Unresolved => bail!("{label}: {sig} unresolved (reservation kept; run `itb reconcile` later)"),
-        Status::LandedUnverified => bail!("{label}: {sig} landed but its block could not be verified; check it before relying on it"),
+        Status::ExpiredConfirmed => {
+            bail!("{label}: {sig} expired without landing (reservation released)")
+        }
+        Status::Unresolved => {
+            bail!("{label}: {sig} unresolved (reservation kept; run `itb reconcile` later)")
+        }
+        Status::LandedUnverified => bail!(
+            "{label}: {sig} landed but its block could not be verified; check it before relying on it"
+        ),
         Status::NotSent => unreachable!("setup transactions are always handed to the RPC"),
         _ => match outcome.err {
             Some(err) => bail!("{label}: {sig} landed but FAILED on-chain: {err}"),
@@ -85,10 +114,20 @@ async fn send_setup(rpc: &Rpc, ledger: &Ledger, auth: &LiveAuthorization, signer
 }
 
 /// Tops every payer up to `target_lamports` from the master.
-pub async fn fund(rpc: &Rpc, ledger: &Ledger, auth: &LiveAuthorization, master: &Keypair, payer_dir: &Path, target_lamports: u64) -> Result<()> {
+pub async fn fund(
+    rpc: &Rpc,
+    ledger: &Ledger,
+    auth: &LiveAuthorization,
+    master: &Keypair,
+    payer_dir: &Path,
+    target_lamports: u64,
+) -> Result<()> {
     let payers = crate::keys::load_payers(payer_dir)?;
     if payers.is_empty() {
-        bail!("no payers in {}; run `itb init-payers` first", payer_dir.display());
+        bail!(
+            "no payers in {}; run `itb init-payers` first",
+            payer_dir.display()
+        );
     }
     let keys: Vec<String> = payers.iter().map(|p| p.pubkey().to_string()).collect();
     let balances = rpc.balances(&keys).await?;
@@ -104,7 +143,9 @@ pub async fn fund(rpc: &Rpc, ledger: &Ledger, auth: &LiveAuthorization, master: 
         .collect();
     let total: u64 = need.iter().map(|(_, l)| l).sum();
     let master_balance = rpc.balances(&[master.pubkey().to_string()]).await?[0];
-    if master_balance < total + LAMPORTS_PER_SIGNATURE * (need.len() as u64 / TRANSFERS_PER_TX as u64 + 1) {
+    if master_balance
+        < total + LAMPORTS_PER_SIGNATURE * (need.len() as u64 / TRANSFERS_PER_TX as u64 + 1)
+    {
         bail!("master holds {master_balance} lamports, needs {total} plus fees");
     }
     for (i, chunk) in need.chunks(TRANSFERS_PER_TX).enumerate() {
@@ -119,22 +160,46 @@ pub async fn fund(rpc: &Rpc, ledger: &Ledger, auth: &LiveAuthorization, master: 
 }
 
 /// Returns every payer's entire balance to the master; payer accounts close (rent comes back).
-pub async fn sweep(rpc: &Rpc, ledger: &Ledger, auth: &LiveAuthorization, master: &Pubkey, payer_dir: &Path) -> Result<()> {
+pub async fn sweep(
+    rpc: &Rpc,
+    ledger: &Ledger,
+    auth: &LiveAuthorization,
+    master: &Pubkey,
+    payer_dir: &Path,
+) -> Result<()> {
     for path in crate::keys::payer_paths(payer_dir)? {
         let kp = read_keypair(&path)?;
         let bal = rpc.balances(&[kp.pubkey().to_string()]).await?[0];
         if bal <= LAMPORTS_PER_SIGNATURE {
             continue;
         }
-        let ix = solana_system_interface::instruction::transfer(&kp.pubkey(), master, bal - LAMPORTS_PER_SIGNATURE);
-        let sig = send_setup(rpc, ledger, auth, &[&kp], &[ix], &format!("sweep-{}", kp.pubkey())).await?;
+        let ix = solana_system_interface::instruction::transfer(
+            &kp.pubkey(),
+            master,
+            bal - LAMPORTS_PER_SIGNATURE,
+        );
+        let sig = send_setup(
+            rpc,
+            ledger,
+            auth,
+            &[&kp],
+            &[ix],
+            &format!("sweep-{}", kp.pubkey()),
+        )
+        .await?;
         tracing::info!(%sig, payer = %kp.pubkey(), lamports = bal - LAMPORTS_PER_SIGNATURE, "swept");
     }
     Ok(())
 }
 
 /// Posts `text` as an SPL Memo signed by the master — used to timestamp the pre-registration hash on-chain.
-pub async fn memo(rpc: &Rpc, ledger: &Ledger, auth: &LiveAuthorization, master: &Keypair, text: &str) -> Result<String> {
+pub async fn memo(
+    rpc: &Rpc,
+    ledger: &Ledger,
+    auth: &LiveAuthorization,
+    master: &Keypair,
+    text: &str,
+) -> Result<String> {
     if text.len() > 566 {
         bail!("memo too long");
     }

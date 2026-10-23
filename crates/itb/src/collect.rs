@@ -95,17 +95,30 @@ pub fn not_sent_outcome(t: &Tracked) -> Outcome {
 
 /// Finds `signature` in a raw `getBlock` result: (index, meta).
 pub fn locate(block: &Value, signature: &str) -> Option<(usize, Value)> {
-    block["transactions"].as_array()?.iter().enumerate().find_map(|(i, tx)| {
-        let sig = tx["transaction"]["signatures"].get(0)?.as_str()?;
-        (sig == signature).then(|| (i, tx["meta"].clone()))
-    })
+    block["transactions"]
+        .as_array()?
+        .iter()
+        .enumerate()
+        .find_map(|(i, tx)| {
+            let sig = tx["transaction"]["signatures"].get(0)?.as_str()?;
+            (sig == signature).then(|| (i, tx["meta"].clone()))
+        })
 }
 
 fn confirmed(st: &crate::rpc::SignatureStatus) -> bool {
-    matches!(st.confirmation_status.as_deref(), Some("confirmed") | Some("finalized"))
+    matches!(
+        st.confirmation_status.as_deref(),
+        Some("confirmed") | Some("finalized")
+    )
 }
 
-pub async fn resolve(rpc: &Rpc, ledger: Option<&Ledger>, tracked: &[Tracked], run: Option<&RunDir>, timeout: Duration) -> Result<Vec<Outcome>> {
+pub async fn resolve(
+    rpc: &Rpc,
+    ledger: Option<&Ledger>,
+    tracked: &[Tracked],
+    run: Option<&RunDir>,
+    timeout: Duration,
+) -> Result<Vec<Outcome>> {
     let mut pending: Vec<&Tracked> = tracked.iter().collect();
     let mut landed: HashMap<String, (u64, Option<String>)> = HashMap::new();
     let mut expired: HashMap<String, Value> = HashMap::new();
@@ -126,7 +139,9 @@ pub async fn resolve(rpc: &Rpc, ledger: Option<&Ledger>, tracked: &[Tracked], ru
         // Expiry protocol: barrier first (finalized height, then the finalized slot), fresh lookup second.
         let fin_height = rpc.get_block_height("finalized").await?;
         let fin_slot = rpc.get_slot("finalized").await?;
-        let (cands, keep): (Vec<&Tracked>, Vec<&Tracked>) = still.into_iter().partition(|t| fin_height > t.last_valid_block_height);
+        let (cands, keep): (Vec<&Tracked>, Vec<&Tracked>) = still
+            .into_iter()
+            .partition(|t| fin_height > t.last_valid_block_height);
         pending = keep;
         if !cands.is_empty() {
             let sigs: Vec<String> = cands.iter().map(|t| t.signature.clone()).collect();
@@ -185,7 +200,10 @@ pub async fn resolve(rpc: &Rpc, ledger: Option<&Ledger>, tracked: &[Tracked], ru
             o.slot = Some(*slot);
             o.confirmation_status = conf.clone();
             o.leader = leaders.get(slot).cloned();
-            let found = blocks.get(slot).and_then(|b| b.as_ref()).and_then(|b| locate(b, &t.signature).map(|(i, m)| (i, m, b)));
+            let found = blocks
+                .get(slot)
+                .and_then(|b| b.as_ref())
+                .and_then(|b| locate(b, &t.signature).map(|(i, m)| (i, m, b)));
             match found {
                 Some((idx, meta, block)) => {
                     let same_leader = o.leader.as_deref() == Some(t.target_identity.as_str());
@@ -242,7 +260,12 @@ mod tests {
 
     #[test]
     fn only_confirmed_statuses_count_as_landed() {
-        let st = |c: &str| crate::rpc::SignatureStatus { slot: 1, confirmations: None, err: None, confirmation_status: Some(c.into()) };
+        let st = |c: &str| crate::rpc::SignatureStatus {
+            slot: 1,
+            confirmations: None,
+            err: None,
+            confirmation_status: Some(c.into()),
+        };
         assert!(confirmed(&st("confirmed")) && confirmed(&st("finalized")));
         assert!(!confirmed(&st("processed")));
     }

@@ -33,8 +33,6 @@ pub struct Rpc {
 #[serde(rename_all = "camelCase")]
 pub struct EpochInfo {
     pub absolute_slot: u64,
-    pub block_height: u64,
-    pub epoch: u64,
     pub slot_index: u64,
     pub slots_in_epoch: u64,
 }
@@ -78,7 +76,6 @@ pub struct SignatureStatus {
 pub struct DatedBlockhash {
     pub blockhash: Hash,
     pub slot: u64,
-    pub block_height: u64,
     pub last_valid_block_height: u64,
 }
 
@@ -88,7 +85,12 @@ impl Rpc {
             .timeout(Duration::from_secs(60))
             .build()
             .expect("reqwest client");
-        Self { http, url: url.into(), next_id: AtomicU64::new(1), max_attempts: 6 }
+        Self {
+            http,
+            url: url.into(),
+            next_id: AtomicU64::new(1),
+            max_attempts: 6,
+        }
     }
 
     pub fn url(&self) -> &str {
@@ -137,35 +139,56 @@ impl Rpc {
             if let Some(err) = v.get("error") {
                 return Err(RpcError {
                     code: err.get("code").and_then(Value::as_i64).unwrap_or(0),
-                    message: err.get("message").and_then(Value::as_str).unwrap_or("").to_string(),
+                    message: err
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
                 }
                 .into());
             }
-            return v.get("result").cloned().ok_or_else(|| anyhow!("{method}: response without result"));
+            return v
+                .get("result")
+                .cloned()
+                .ok_or_else(|| anyhow!("{method}: response without result"));
         }
         unreachable!("loop returns on the last attempt")
     }
 
-    async fn call_as<T: serde::de::DeserializeOwned>(&self, method: &str, params: Value) -> Result<T> {
+    async fn call_as<T: serde::de::DeserializeOwned>(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<T> {
         let v = self.call(method, params).await?;
         serde_json::from_value(v).with_context(|| format!("{method}: unexpected result shape"))
     }
 
     pub async fn get_slot(&self, commitment: &str) -> Result<u64> {
-        self.call_as("getSlot", json!([{"commitment": commitment}])).await
+        self.call_as("getSlot", json!([{"commitment": commitment}]))
+            .await
     }
 
     pub async fn get_block_height(&self, commitment: &str) -> Result<u64> {
-        self.call_as("getBlockHeight", json!([{"commitment": commitment}])).await
+        self.call_as("getBlockHeight", json!([{"commitment": commitment}]))
+            .await
     }
 
     pub async fn get_epoch_info(&self) -> Result<EpochInfo> {
-        self.call_as("getEpochInfo", json!([{"commitment": "processed"}])).await
+        self.call_as("getEpochInfo", json!([{"commitment": "processed"}]))
+            .await
     }
 
     /// Absolute leader slots of `identity` in the epoch containing `slot`.
-    pub async fn leader_slots(&self, slot: u64, identity: &str, epoch_first_slot: u64) -> Result<Vec<u64>> {
-        let v = self.call("getLeaderSchedule", json!([slot, {"identity": identity}])).await?;
+    pub async fn leader_slots(
+        &self,
+        slot: u64,
+        identity: &str,
+        epoch_first_slot: u64,
+    ) -> Result<Vec<u64>> {
+        let v = self
+            .call("getLeaderSchedule", json!([slot, {"identity": identity}]))
+            .await?;
         if v.is_null() {
             return Ok(vec![]);
         }
@@ -179,7 +202,11 @@ impl Rpc {
 
     /// Slots in `[start, end]` that have a confirmed block (skipped slots are absent).
     pub async fn blocks_in_range(&self, start: u64, end: u64) -> Result<Vec<u64>> {
-        self.call_as("getBlocks", json!([start, end, {"commitment": "confirmed"}])).await
+        self.call_as(
+            "getBlocks",
+            json!([start, end, {"commitment": "confirmed"}]),
+        )
+        .await
     }
 
     pub async fn slot_leaders(&self, start: u64, limit: u64) -> Result<Vec<String>> {
@@ -231,49 +258,68 @@ impl Rpc {
                 _ => return Err(e),
             },
         };
-        let hash = v["blockhash"].as_str().ok_or_else(|| anyhow!("block {slot}: no blockhash"))?;
-        let height = v["blockHeight"].as_u64().ok_or_else(|| anyhow!("block {slot}: no blockHeight"))?;
-        Ok(Some((Hash::from_str(hash).map_err(|e| anyhow!("{e:?}"))?, height)))
+        let hash = v["blockhash"]
+            .as_str()
+            .ok_or_else(|| anyhow!("block {slot}: no blockhash"))?;
+        let height = v["blockHeight"]
+            .as_u64()
+            .ok_or_else(|| anyhow!("block {slot}: no blockHeight"))?;
+        Ok(Some((
+            Hash::from_str(hash).map_err(|e| anyhow!("{e:?}"))?,
+            height,
+        )))
     }
 
     /// A blockhash roughly `age_slots` old, with its exact last valid block height. Walks forward over skipped slots.
     pub async fn aged_blockhash(&self, age_slots: u64) -> Result<DatedBlockhash> {
         let tip = self.get_slot("confirmed").await?;
-        let mut slot = tip.saturating_sub(age_slots);
-        for _ in 0..16 {
+        let start = tip.saturating_sub(age_slots);
+        for slot in start..start + 16 {
             if let Some((blockhash, block_height)) = self.block_header(slot).await? {
                 return Ok(DatedBlockhash {
                     blockhash,
                     slot,
-                    block_height,
                     last_valid_block_height: block_height + MAX_PROCESSING_AGE,
                 });
             }
-            slot += 1;
         }
-        bail!("no block found in 16 slots from {}", tip.saturating_sub(age_slots))
+        bail!(
+            "no block found in 16 slots from {}",
+            tip.saturating_sub(age_slots)
+        )
     }
 
     pub async fn latest_blockhash(&self) -> Result<DatedBlockhash> {
-        let v = self.call("getLatestBlockhash", json!([{"commitment": "confirmed"}])).await?;
-        let hash = v["value"]["blockhash"].as_str().ok_or_else(|| anyhow!("no blockhash"))?;
-        let last_valid = v["value"]["lastValidBlockHeight"].as_u64().ok_or_else(|| anyhow!("no lastValidBlockHeight"))?;
+        let v = self
+            .call("getLatestBlockhash", json!([{"commitment": "confirmed"}]))
+            .await?;
+        let hash = v["value"]["blockhash"]
+            .as_str()
+            .ok_or_else(|| anyhow!("no blockhash"))?;
+        let last_valid = v["value"]["lastValidBlockHeight"]
+            .as_u64()
+            .ok_or_else(|| anyhow!("no lastValidBlockHeight"))?;
         Ok(DatedBlockhash {
             blockhash: Hash::from_str(hash).map_err(|e| anyhow!("{e:?}"))?,
             slot: v["context"]["slot"].as_u64().unwrap_or(0),
-            block_height: last_valid - MAX_PROCESSING_AGE,
             last_valid_block_height: last_valid,
         })
     }
 
     /// History-capable status lookup. Returns the minimum response context slot over all chunks (the slot the
     /// answering node had processed), so callers can prove the answer is not older than an expiry barrier.
-    pub async fn signature_statuses(&self, sigs: &[String]) -> Result<(u64, Vec<Option<SignatureStatus>>)> {
+    pub async fn signature_statuses(
+        &self,
+        sigs: &[String],
+    ) -> Result<(u64, Vec<Option<SignatureStatus>>)> {
         let mut out = Vec::with_capacity(sigs.len());
         let mut context_slot = u64::MAX;
         for chunk in sigs.chunks(256) {
             let v = self
-                .call("getSignatureStatuses", json!([chunk, {"searchTransactionHistory": true}]))
+                .call(
+                    "getSignatureStatuses",
+                    json!([chunk, {"searchTransactionHistory": true}]),
+                )
                 .await?;
             context_slot = context_slot.min(v["context"]["slot"].as_u64().unwrap_or(0));
             let part: Vec<Option<SignatureStatus>> = serde_json::from_value(v["value"].clone())?;
@@ -290,7 +336,10 @@ impl Rpc {
     pub async fn account(&self, pubkey: &str) -> Result<Option<(String, Vec<u8>, u64)>> {
         use base64::Engine;
         let v = self
-            .call("getAccountInfo", json!([pubkey, {"encoding": "base64", "commitment": "confirmed"}]))
+            .call(
+                "getAccountInfo",
+                json!([pubkey, {"encoding": "base64", "commitment": "confirmed"}]),
+            )
             .await?;
         let value = &v["value"];
         if value.is_null() {
@@ -320,27 +369,27 @@ impl Rpc {
     /// Fee charged to a landed transaction (`meta.fee`), or `None` if the RPC does not have it yet.
     pub async fn transaction_fee(&self, signature: &str) -> Result<Option<u64>> {
         let v = self
-            .call("getTransaction", json!([signature, {"encoding": "json", "commitment": "confirmed",
-                                                       "maxSupportedTransactionVersion": 1}]))
+            .call(
+                "getTransaction",
+                json!([signature, {"encoding": "json", "commitment": "confirmed",
+                                                       "maxSupportedTransactionVersion": 1}]),
+            )
             .await?;
         Ok(v["meta"]["fee"].as_u64())
     }
 
     pub async fn minimum_balance_for_rent_exemption(&self, size: usize) -> Result<u64> {
-        self.call_as("getMinimumBalanceForRentExemption", json!([size])).await
-    }
-
-    pub async fn simulate(&self, tx_base64: &str) -> Result<Value> {
-        self.call(
-            "simulateTransaction",
-            json!([tx_base64, {"encoding": "base64", "sigVerify": true, "commitment": "confirmed"}]),
-        )
-        .await
+        self.call_as("getMinimumBalanceForRentExemption", json!([size]))
+            .await
     }
 
     /// Used only for setup transactions (funding, sweeping, the pre-registration Memo) — never for probes.
     /// Requires the same live authorization as the QUIC sender.
-    pub async fn send_transaction(&self, _auth: &crate::auth::LiveAuthorization, tx_base64: &str) -> Result<String> {
+    pub async fn send_transaction(
+        &self,
+        _auth: &crate::auth::LiveAuthorization,
+        tx_base64: &str,
+    ) -> Result<String> {
         self.call_as(
             "sendTransaction",
             json!([tx_base64, {"encoding": "base64", "skipPreflight": false, "preflightCommitment": "confirmed",
@@ -374,10 +423,22 @@ mod tests {
 
     #[test]
     fn redaction_drops_every_credential_location() {
-        assert_eq!(redact_url("https://api.mainnet-beta.solana.com"), "https://api.mainnet-beta.solana.com");
-        assert_eq!(redact_url("https://mainnet.helius-rpc.com/?api-key=SECRET"), "https://mainnet.helius-rpc.com/<redacted>");
-        assert_eq!(redact_url("https://rpc.example/v2/TEST_API_TOKEN"), "https://rpc.example/<redacted>");
-        assert_eq!(redact_url("wss://user:pass@rpc.example:8900/ws"), "wss://rpc.example:8900/<redacted>");
+        assert_eq!(
+            redact_url("https://api.mainnet-beta.solana.com"),
+            "https://api.mainnet-beta.solana.com"
+        );
+        assert_eq!(
+            redact_url("https://mainnet.helius-rpc.com/?api-key=SECRET"),
+            "https://mainnet.helius-rpc.com/<redacted>"
+        );
+        assert_eq!(
+            redact_url("https://rpc.example/v2/TEST_API_TOKEN"),
+            "https://rpc.example/<redacted>"
+        );
+        assert_eq!(
+            redact_url("wss://user:pass@rpc.example:8900/ws"),
+            "wss://rpc.example:8900/<redacted>"
+        );
         assert!(!redact_url("https://x.io/abc?k=SECRET").contains("SECRET"));
         assert_eq!(redact_url("not a url SECRET"), "<redacted-endpoint>");
     }

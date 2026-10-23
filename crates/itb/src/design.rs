@@ -140,17 +140,41 @@ fn balanced_flags(n: usize, rng: &mut ChaCha20Rng) -> Vec<bool> {
     v
 }
 
-fn pair(pair_id: String, kind: PairKind, x: (&str, Template), y: (&str, Template), x_first: bool, dt_ms: f64, shared_lock: bool, lock_base: u32) -> PairPlan {
+#[allow(clippy::too_many_arguments)] // one call site per pair kind; a builder would only add noise
+fn pair(
+    pair_id: String,
+    kind: PairKind,
+    x: (&str, Template),
+    y: (&str, Template),
+    x_first: bool,
+    dt_ms: f64,
+    shared_lock: bool,
+    lock_base: u32,
+) -> PairPlan {
     let (first, second) = if x_first { (x, y) } else { (y, x) };
-    let second_lock = if shared_lock { lock_base } else { lock_base + 1 };
+    let second_lock = if shared_lock {
+        lock_base
+    } else {
+        lock_base + 1
+    };
     PairPlan {
         pair_id,
         kind,
         first_sent_label: first.0.to_string(),
         race_dt_ms: matches!(kind, PairKind::Race | PairKind::EqualKey).then_some(dt_ms),
         members: vec![
-            MemberPlan { label: first.0.into(), template: first.1, send_offset_ms: 0.0, lock_index: lock_base },
-            MemberPlan { label: second.0.into(), template: second.1, send_offset_ms: dt_ms, lock_index: second_lock },
+            MemberPlan {
+                label: first.0.into(),
+                template: first.1,
+                send_offset_ms: 0.0,
+                lock_index: lock_base,
+            },
+            MemberPlan {
+                label: second.0.into(),
+                template: second.1,
+                send_offset_ms: dt_ms,
+                lock_index: second_lock,
+            },
         ],
     }
 }
@@ -159,7 +183,11 @@ fn pair(pair_id: String, kind: PairKind, x: (&str, Template), y: (&str, Template
 pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
     let mut out = vec![];
     for t in targets {
-        let tseed = u64::from_le_bytes(Sha256::digest(format!("{seed}/{}", t.identity).as_bytes())[..8].try_into().expect("8 bytes"));
+        let tseed = u64::from_le_bytes(
+            Sha256::digest(format!("{seed}/{}", t.identity).as_bytes())[..8]
+                .try_into()
+                .expect("8 bytes"),
+        );
         let mut rng = ChaCha20Rng::seed_from_u64(tseed);
         let direct = is_direct(t.ingress);
         let n_k = t.k_windows as usize;
@@ -167,7 +195,13 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
         // ---- Stage 1: K windows ----
         // Regime blocks of 4 for direct ingress: 3 buffered + 1 streaming.
         let mut regimes: Vec<Regime> = (0..n_k)
-            .map(|i| if direct && i % 4 != 3 { Regime::Buffered } else { Regime::Streaming })
+            .map(|i| {
+                if direct && i % 4 != 3 {
+                    Regime::Buffered
+                } else {
+                    Regime::Streaming
+                }
+            })
             .collect();
         for block in regimes.chunks_mut(4) {
             block.shuffle(&mut rng);
@@ -184,17 +218,56 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
                 // observed in-window slot boundaries (k·130 ms).
                 (_, false) => loop {
                     let x: f64 = rng.gen_range(40.0..500.0);
-                    if [1.0, 2.0, 3.0].iter().all(|k| (x - k * OBSERVED_INSIDE_SLOT_MS).abs() > 15.0) {
+                    if [1.0, 2.0, 3.0]
+                        .iter()
+                        .all(|k| (x - k * OBSERVED_INSIDE_SLOT_MS).abs() > 15.0)
+                    {
                         break x.round();
                     }
                 },
             };
             let id = |p: &str| format!("{}/{seq:03}/{p}", &t.identity[..8]);
             let mut pairs = vec![
-                pair(id("c1"), PairKind::C1, ("A", library::A), ("B", library::B), order_c1.pop().unwrap(), 0.0, true, 0),
-                pair(id("c2"), PairKind::C2, ("A'", library::A_PRIME), ("B", library::B), order_c2.pop().unwrap(), 0.0, true, 2),
-                pair(id("c3"), PairKind::C3, ("A", library::A), ("A'", library::A_PRIME), order_c3.pop().unwrap(), 0.0, true, 4),
-                pair(id("c2u"), PairKind::C2Uncontended, ("A'", library::A_PRIME), ("B", library::B), order_c2u.pop().unwrap(), 0.0, false, 6),
+                pair(
+                    id("c1"),
+                    PairKind::C1,
+                    ("A", library::A),
+                    ("B", library::B),
+                    order_c1.pop().unwrap(),
+                    0.0,
+                    true,
+                    0,
+                ),
+                pair(
+                    id("c2"),
+                    PairKind::C2,
+                    ("A'", library::A_PRIME),
+                    ("B", library::B),
+                    order_c2.pop().unwrap(),
+                    0.0,
+                    true,
+                    2,
+                ),
+                pair(
+                    id("c3"),
+                    PairKind::C3,
+                    ("A", library::A),
+                    ("A'", library::A_PRIME),
+                    order_c3.pop().unwrap(),
+                    0.0,
+                    true,
+                    4,
+                ),
+                pair(
+                    id("c2u"),
+                    PairKind::C2Uncontended,
+                    ("A'", library::A_PRIME),
+                    ("B", library::B),
+                    order_c2u.pop().unwrap(),
+                    0.0,
+                    false,
+                    6,
+                ),
             ];
             pairs.shuffle(&mut rng); // pair order inside the burst
             out.push(WindowPlan {
@@ -212,7 +285,10 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
 
         // ---- Stage 2: T windows, then H (direct) or S (shared) windows, interleaved at random ----
         let mut stage2: Vec<Kit> = std::iter::repeat_n(Kit::T, t.t_windows as usize)
-            .chain(std::iter::repeat_n(if direct { Kit::H } else { Kit::S }, t.hs_windows as usize))
+            .chain(std::iter::repeat_n(
+                if direct { Kit::H } else { Kit::S },
+                t.hs_windows as usize,
+            ))
             .collect();
         stage2.shuffle(&mut rng);
         let fd = is_firedancer(&t.client_id);
@@ -220,7 +296,9 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
         let n_equal = if fd { 2 } else { 1 };
         let n_t = t.t_windows as usize;
         let mut race_hi_first = balanced_flags(n_t * n_races, &mut rng);
-        let mut equal_dt_cycle = (0..n_t * n_equal).map(|i| EQUAL_KEY_DTS_MS[i % 2]).collect::<Vec<_>>();
+        let mut equal_dt_cycle = (0..n_t * n_equal)
+            .map(|i| EQUAL_KEY_DTS_MS[i % 2])
+            .collect::<Vec<_>>();
         equal_dt_cycle.shuffle(&mut rng);
         for (k, kit) in stage2.into_iter().enumerate() {
             let seq = (n_k + k) as u32;
@@ -231,8 +309,16 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
                     dts.shuffle(&mut rng);
                     let mut pairs = vec![];
                     for (r, dt) in dts.into_iter().take(n_races).enumerate() {
-                        let mut p = pair(id(&format!("race{r}")), PairKind::Race, ("hi", library::HI), ("lo", library::LO),
-                                         race_hi_first.pop().unwrap(), dt, true, (r * 2) as u32);
+                        let mut p = pair(
+                            id(&format!("race{r}")),
+                            PairKind::Race,
+                            ("hi", library::HI),
+                            ("lo", library::LO),
+                            race_hi_first.pop().unwrap(),
+                            dt,
+                            true,
+                            (r * 2) as u32,
+                        );
                         for m in &mut p.members {
                             m.send_offset_ms += RACE_START_OFFSET_MS;
                         }
@@ -240,20 +326,46 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
                     }
                     for e in 0..n_equal {
                         let dt = equal_dt_cycle.pop().unwrap();
-                        let mut p = pair(id(&format!("eq{e}")), PairKind::EqualKey, ("A", library::A), ("A", library::A), true, dt, true, (10 + e * 2) as u32);
+                        let mut p = pair(
+                            id(&format!("eq{e}")),
+                            PairKind::EqualKey,
+                            ("A", library::A),
+                            ("A", library::A),
+                            true,
+                            dt,
+                            true,
+                            (10 + e * 2) as u32,
+                        );
                         // Equal-key pairs go out in the buffered regime for direct ingress (both pending at slot start).
-                        let base = if direct { BUFFERED_OFFSET_MS } else { RACE_START_OFFSET_MS };
+                        let base = if direct {
+                            BUFFERED_OFFSET_MS
+                        } else {
+                            RACE_START_OFFSET_MS
+                        };
                         for m in &mut p.members {
                             m.send_offset_ms += base;
                         }
                         p.members[1].label = "A#2".into();
                         pairs.push(p);
                     }
-                    WindowPlan { target_identity: t.identity.clone(), tier: t.tier.clone(), seq, stage: 2, kit, regime: Regime::Streaming,
-                                 burst_offset_ms: 0.0, blockhash_age_slots: AGED_BLOCKHASH_SLOTS, pairs }
+                    WindowPlan {
+                        target_identity: t.identity.clone(),
+                        tier: t.tier.clone(),
+                        seq,
+                        stage: 2,
+                        kit,
+                        regime: Regime::Streaming,
+                        burst_offset_ms: 0.0,
+                        blockhash_age_slots: AGED_BLOCKHASH_SLOTS,
+                        pairs,
+                    }
                 }
                 Kit::H | Kit::S => {
-                    let offsets: &[f64] = if kit == Kit::H { &H_OFFSETS_MS } else { &S_OFFSETS_MS };
+                    let offsets: &[f64] = if kit == Kit::H {
+                        &H_OFFSETS_MS
+                    } else {
+                        &S_OFFSETS_MS
+                    };
                     let pairs = offsets
                         .iter()
                         .enumerate()
@@ -262,13 +374,30 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
                             kind: PairKind::Single,
                             first_sent_label: "A".into(),
                             race_dt_ms: None,
-                            members: vec![MemberPlan { label: "A".into(), template: library::A, send_offset_ms: *off, lock_index: (20 + i) as u32 }],
+                            members: vec![MemberPlan {
+                                label: "A".into(),
+                                template: library::A,
+                                send_offset_ms: *off,
+                                lock_index: (20 + i) as u32,
+                            }],
                         })
                         .collect();
-                    WindowPlan { target_identity: t.identity.clone(), tier: t.tier.clone(), seq, stage: 2, kit, regime: Regime::PreWindow,
-                                 burst_offset_ms: 0.0,
-                                 // H needs the long horizon to observe the −5 s probe; S keeps the aged hash.
-                                 blockhash_age_slots: if kit == Kit::H { 0 } else { AGED_BLOCKHASH_SLOTS }, pairs }
+                    WindowPlan {
+                        target_identity: t.identity.clone(),
+                        tier: t.tier.clone(),
+                        seq,
+                        stage: 2,
+                        kit,
+                        regime: Regime::PreWindow,
+                        burst_offset_ms: 0.0,
+                        // H needs the long horizon to observe the −5 s probe; S keeps the aged hash.
+                        blockhash_age_slots: if kit == Kit::H {
+                            0
+                        } else {
+                            AGED_BLOCKHASH_SLOTS
+                        },
+                        pairs,
+                    }
                 }
                 Kit::K => unreachable!(),
             };
@@ -294,16 +423,31 @@ pub fn validate(plans: &[WindowPlan]) -> anyhow::Result<()> {
             }
             let expected = if q.kind == PairKind::Single { 1 } else { 2 };
             if q.members.len() != expected {
-                anyhow::bail!("pair {} has {} members, expected {expected}", q.pair_id, q.members.len());
+                anyhow::bail!(
+                    "pair {} has {} members, expected {expected}",
+                    q.pair_id,
+                    q.members.len()
+                );
             }
             for m in &q.members {
                 if m.template.cu_limit < crate::probe::ATOM_EXECUTED_CU {
-                    anyhow::bail!("pair {}: CU limit {} below the atom's {} CU", q.pair_id, m.template.cu_limit, crate::probe::ATOM_EXECUTED_CU);
+                    anyhow::bail!(
+                        "pair {}: CU limit {} below the atom's {} CU",
+                        q.pair_id,
+                        m.template.cu_limit,
+                        crate::probe::ATOM_EXECUTED_CU
+                    );
                 }
             }
         }
         if probe_count(p) > crate::quic::MAX_STREAMS_PER_100MS {
-            anyhow::bail!("plan {}/{} has {} probes > {} per burst", p.target_identity, p.seq, probe_count(p), crate::quic::MAX_STREAMS_PER_100MS);
+            anyhow::bail!(
+                "plan {}/{} has {} probes > {} per burst",
+                p.target_identity,
+                p.seq,
+                probe_count(p),
+                crate::quic::MAX_STREAMS_PER_100MS
+            );
         }
     }
     Ok(())
@@ -311,7 +455,11 @@ pub fn validate(plans: &[WindowPlan]) -> anyhow::Result<()> {
 
 /// Worst-case fee of a plan: what the ledger will reserve.
 pub fn max_fee(plan: &WindowPlan) -> u64 {
-    plan.pairs.iter().flat_map(|p| &p.members).map(|m| m.template.total_fee()).sum()
+    plan.pairs
+        .iter()
+        .flat_map(|p| &p.members)
+        .map(|m| m.template.total_fee())
+        .sum()
 }
 
 pub fn probe_count(plan: &WindowPlan) -> usize {
@@ -323,14 +471,34 @@ mod tests {
     use super::*;
 
     fn spec(id: &str, client: &str, ingress: IngressKind) -> TargetSpec {
-        TargetSpec { identity: id.into(), client_id: client.into(), ingress, tier: "core".into(), k_windows: 40, t_windows: 16, hs_windows: 6 }
+        TargetSpec {
+            identity: id.into(),
+            client_id: client.into(),
+            ingress,
+            tier: "core".into(),
+            k_windows: 40,
+            t_windows: 16,
+            hs_windows: 6,
+        }
     }
 
     fn targets() -> Vec<TargetSpec> {
         vec![
-            spec("AGAVExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1", "Agave", IngressKind::Direct),
-            spec("FIREDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1", "Firedancer", IngressKind::Direct),
-            spec("BAMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1", "AgaveBam", IngressKind::BamNode),
+            spec(
+                "AGAVExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1",
+                "Agave",
+                IngressKind::Direct,
+            ),
+            spec(
+                "FIREDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1",
+                "Firedancer",
+                IngressKind::Direct,
+            ),
+            spec(
+                "BAMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1",
+                "AgaveBam",
+                IngressKind::BamNode,
+            ),
         ]
     }
 
@@ -345,13 +513,23 @@ mod tests {
         let plans = generate(1, &targets());
         assert_eq!(plans.len(), 3 * (40 + 16 + 6));
         for p in &plans {
-            assert!(probe_count(p) <= crate::quic::MAX_STREAMS_PER_100MS, "{} probes", probe_count(p));
+            assert!(
+                probe_count(p) <= crate::quic::MAX_STREAMS_PER_100MS,
+                "{} probes",
+                probe_count(p)
+            );
         }
         let k = plans.iter().find(|p| p.kit == Kit::K).unwrap();
         assert_eq!(max_fee(k), 49_500);
-        let t_agave = plans.iter().find(|p| p.kit == Kit::T && p.target_identity.starts_with("AGAVE")).unwrap();
+        let t_agave = plans
+            .iter()
+            .find(|p| p.kit == Kit::T && p.target_identity.starts_with("AGAVE"))
+            .unwrap();
         assert_eq!(max_fee(t_agave), 54_000);
-        let t_fd = plans.iter().find(|p| p.kit == Kit::T && p.target_identity.starts_with("FIRED")).unwrap();
+        let t_fd = plans
+            .iter()
+            .find(|p| p.kit == Kit::T && p.target_identity.starts_with("FIRED"))
+            .unwrap();
         assert_eq!(max_fee(t_fd), 52_000);
     }
 
@@ -359,11 +537,21 @@ mod tests {
     fn send_order_is_balanced_per_contrast() {
         let plans = generate(3, &targets());
         // x = the label listed first in the contrast table (PLAN §2.3).
-        for (kind, x) in [(PairKind::C1, "A"), (PairKind::C2, "A'"), (PairKind::C3, "A"), (PairKind::C2Uncontended, "A'")] {
+        for (kind, x) in [
+            (PairKind::C1, "A"),
+            (PairKind::C2, "A'"),
+            (PairKind::C3, "A"),
+            (PairKind::C2Uncontended, "A'"),
+        ] {
             let firsts: Vec<&str> = plans
                 .iter()
                 .filter(|p| p.target_identity.starts_with("BAM") && p.kit == Kit::K)
-                .flat_map(|p| p.pairs.iter().filter(|q| q.kind == kind).map(|q| q.first_sent_label.as_str()))
+                .flat_map(|p| {
+                    p.pairs
+                        .iter()
+                        .filter(|q| q.kind == kind)
+                        .map(|q| q.first_sent_label.as_str())
+                })
                 .collect();
             let x_first = firsts.iter().filter(|l| **l == x).count();
             assert_eq!(x_first * 2, firsts.len(), "{kind:?} not balanced");
@@ -373,11 +561,27 @@ mod tests {
     #[test]
     fn regimes_follow_ingress_kind() {
         let plans = generate(5, &targets());
-        let k_direct: Vec<_> = plans.iter().filter(|p| p.kit == Kit::K && p.target_identity.starts_with("AGAVE")).collect();
-        let buffered = k_direct.iter().filter(|p| p.regime == Regime::Buffered).count();
+        let k_direct: Vec<_> = plans
+            .iter()
+            .filter(|p| p.kit == Kit::K && p.target_identity.starts_with("AGAVE"))
+            .collect();
+        let buffered = k_direct
+            .iter()
+            .filter(|p| p.regime == Regime::Buffered)
+            .count();
         assert_eq!(buffered, 30); // 3 of every 4
-        assert!(plans.iter().filter(|p| p.target_identity.starts_with("BAM")).all(|p| p.regime != Regime::Buffered));
-        assert!(plans.iter().filter(|p| p.target_identity.starts_with("BAM")).all(|p| p.kit != Kit::H));
+        assert!(
+            plans
+                .iter()
+                .filter(|p| p.target_identity.starts_with("BAM"))
+                .all(|p| p.regime != Regime::Buffered)
+        );
+        assert!(
+            plans
+                .iter()
+                .filter(|p| p.target_identity.starts_with("BAM"))
+                .all(|p| p.kit != Kit::H)
+        );
     }
 
     #[test]
@@ -388,7 +592,11 @@ mod tests {
                 let same = q.members[0].lock_index == q.members[1].lock_index;
                 assert_eq!(same, q.kind != PairKind::C2Uncontended, "{:?}", q.kind);
             }
-            let mut locks: Vec<u32> = p.pairs.iter().flat_map(|q| q.members.iter().map(|m| m.lock_index)).collect();
+            let mut locks: Vec<u32> = p
+                .pairs
+                .iter()
+                .flat_map(|q| q.members.iter().map(|m| m.lock_index))
+                .collect();
             locks.sort();
             locks.dedup();
             assert_eq!(locks.len(), 5, "pairs must not share locks with each other");
@@ -399,7 +607,11 @@ mod tests {
     fn races_stay_inside_one_observed_slot() {
         for p in generate(11, &targets()).iter().filter(|p| p.kit == Kit::T) {
             for q in p.pairs.iter().filter(|q| q.kind == PairKind::Race) {
-                let end = q.members.iter().map(|m| m.send_offset_ms).fold(f64::MIN, f64::max);
+                let end = q
+                    .members
+                    .iter()
+                    .map(|m| m.send_offset_ms)
+                    .fold(f64::MIN, f64::max);
                 assert!(end < OBSERVED_INSIDE_SLOT_MS, "race ends at {end} ms");
             }
         }
@@ -416,7 +628,10 @@ mod tests {
 
     #[test]
     fn shared_offsets_avoid_observed_slot_boundaries() {
-        for p in generate(17, &targets()).iter().filter(|p| p.kit == Kit::K && p.target_identity.starts_with("BAM")) {
+        for p in generate(17, &targets())
+            .iter()
+            .filter(|p| p.kit == Kit::K && p.target_identity.starts_with("BAM"))
+        {
             for k in 1..=3 {
                 assert!((p.burst_offset_ms - k as f64 * OBSERVED_INSIDE_SLOT_MS).abs() > 15.0);
             }

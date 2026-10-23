@@ -6,12 +6,19 @@ use std::path::{Path, PathBuf};
 
 /// Reads a Solana CLI keypair file (a JSON array of 64 bytes).
 pub fn read_keypair(path: &Path) -> Result<Keypair> {
-    let text = std::fs::read_to_string(path).with_context(|| format!("reading keypair {}", path.display()))?;
-    let bytes: Vec<u8> = serde_json::from_str(&text).with_context(|| format!("{} is not a keypair JSON array", path.display()))?;
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("reading keypair {}", path.display()))?;
+    let bytes: Vec<u8> = serde_json::from_str(&text)
+        .with_context(|| format!("{} is not a keypair JSON array", path.display()))?;
     if bytes.len() != 64 {
-        bail!("{}: expected 64 bytes, found {}", path.display(), bytes.len());
+        bail!(
+            "{}: expected 64 bytes, found {}",
+            path.display(),
+            bytes.len()
+        );
     }
-    Keypair::try_from(bytes.as_slice()).map_err(|e| anyhow::anyhow!("{}: invalid keypair: {e}", path.display()))
+    Keypair::try_from(bytes.as_slice())
+        .map_err(|e| anyhow::anyhow!("{}: invalid keypair: {e}", path.display()))
 }
 
 pub fn write_keypair(path: &Path, kp: &Keypair) -> Result<()> {
@@ -33,7 +40,11 @@ pub fn payer_paths(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
         .with_context(|| format!("reading payer dir {}", dir.display()))?
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("payer-") && n.ends_with(".json")))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("payer-") && n.ends_with(".json"))
+        })
         .collect();
     paths.sort();
     Ok(paths)

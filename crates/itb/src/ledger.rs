@@ -21,7 +21,9 @@ use std::path::Path;
 use std::sync::Mutex;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-#[error("spend cap exceeded ({scope}): committed {committed} + requested {requested} > cap {cap} lamports")]
+#[error(
+    "spend cap exceeded ({scope}): committed {committed} + requested {requested} > cap {cap} lamports"
+)]
 pub struct CapExceeded {
     pub scope: String,
     pub committed: u64,
@@ -103,7 +105,8 @@ impl Ledger {
     /// Opens (or creates) the ledger. The cap is fixed at creation; re-opening with a different cap is refused, so a
     /// later run cannot silently raise it.
     pub fn open(path: &Path, cap_lamports: u64) -> Result<Self> {
-        let conn = Connection::open(path).with_context(|| format!("opening ledger {}", path.display()))?;
+        let conn =
+            Connection::open(path).with_context(|| format!("opening ledger {}", path.display()))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "FULL")?;
         conn.execute_batch(
@@ -123,15 +126,30 @@ impl Ledger {
                  resolved_at TEXT
              );",
         )?;
-        let stored: Option<String> = conn.query_row("SELECT value FROM meta WHERE key = 'cap_lamports'", [], |r| r.get(0)).optional()?;
+        let stored: Option<String> = conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'cap_lamports'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
         match stored {
             None => {
-                conn.execute("INSERT INTO meta (key, value) VALUES ('cap_lamports', ?1)", params![cap_lamports.to_string()])?;
+                conn.execute(
+                    "INSERT INTO meta (key, value) VALUES ('cap_lamports', ?1)",
+                    params![cap_lamports.to_string()],
+                )?;
             }
             Some(s) if s.parse::<u64>().ok() == Some(cap_lamports) => {}
-            Some(s) => bail!("ledger {} was created with cap {s} lamports; refusing to reopen it with {cap_lamports}", path.display()),
+            Some(s) => bail!(
+                "ledger {} was created with cap {s} lamports; refusing to reopen it with {cap_lamports}",
+                path.display()
+            ),
         }
-        Ok(Self { conn: Mutex::new(conn), cap: cap_lamports })
+        Ok(Self {
+            conn: Mutex::new(conn),
+            cap: cap_lamports,
+        })
     }
 
     pub fn cap(&self) -> u64 {
@@ -141,14 +159,25 @@ impl Ledger {
     /// Defines a named sub-budget once. Re-defining it with a different cap is refused.
     pub fn define_budget(&self, name: &str, cap: u64) -> Result<()> {
         let conn = self.conn.lock().expect("ledger mutex");
-        let existing: Option<i64> = conn.query_row("SELECT cap FROM budgets WHERE name = ?1", params![name], |r| r.get(0)).optional()?;
+        let existing: Option<i64> = conn
+            .query_row(
+                "SELECT cap FROM budgets WHERE name = ?1",
+                params![name],
+                |r| r.get(0),
+            )
+            .optional()?;
         match existing {
             None => {
-                conn.execute("INSERT INTO budgets (name, cap) VALUES (?1, ?2)", params![name, cap as i64])?;
+                conn.execute(
+                    "INSERT INTO budgets (name, cap) VALUES (?1, ?2)",
+                    params![name, cap as i64],
+                )?;
                 Ok(())
             }
             Some(c) if c as u64 == cap => Ok(()),
-            Some(c) => bail!("budget `{name}` already defined with cap {c}; refusing to change it to {cap}"),
+            Some(c) => bail!(
+                "budget `{name}` already defined with cap {c}; refusing to change it to {cap}"
+            ),
         }
     }
 
@@ -163,11 +192,21 @@ impl Ledger {
         let committed: i64 = tx.query_row(COMMITTED_SQL, [], |r| r.get(0))?;
         let requested: u64 = items.iter().map(|i| i.max_fee).sum();
         if committed as u64 + requested > self.cap {
-            return Err(CapExceeded { scope: "campaign".into(), committed: committed as u64, requested, cap: self.cap }.into());
+            return Err(CapExceeded {
+                scope: "campaign".into(),
+                committed: committed as u64,
+                requested,
+                cap: self.cap,
+            }
+            .into());
         }
         let budgets: HashSet<&str> = items.iter().map(|i| i.budget.as_str()).collect();
         for b in budgets {
-            let cap: Option<i64> = tx.query_row("SELECT cap FROM budgets WHERE name = ?1", params![b], |r| r.get(0)).optional()?;
+            let cap: Option<i64> = tx
+                .query_row("SELECT cap FROM budgets WHERE name = ?1", params![b], |r| {
+                    r.get(0)
+                })
+                .optional()?;
             if let Some(cap) = cap {
                 let used: i64 = tx.query_row(
                     "SELECT COALESCE(SUM(CASE WHEN status = 'landed' THEN actual_fee
@@ -176,9 +215,19 @@ impl Ledger {
                     params![b],
                     |r| r.get(0),
                 )?;
-                let req: u64 = items.iter().filter(|i| i.budget == b).map(|i| i.max_fee).sum();
+                let req: u64 = items
+                    .iter()
+                    .filter(|i| i.budget == b)
+                    .map(|i| i.max_fee)
+                    .sum();
                 if used as u64 + req > cap as u64 {
-                    return Err(CapExceeded { scope: format!("budget {b}"), committed: used as u64, requested: req, cap: cap as u64 }.into());
+                    return Err(CapExceeded {
+                        scope: format!("budget {b}"),
+                        committed: used as u64,
+                        requested: req,
+                        cap: cap as u64,
+                    }
+                    .into());
                 }
             }
         }
@@ -202,11 +251,19 @@ impl Ledger {
             params![signature, to, fee as i64],
         )?;
         if n == 0 {
-            let cur: Option<String> = conn.query_row("SELECT status FROM reservations WHERE signature = ?1", params![signature], |r| r.get(0)).optional()?;
+            let cur: Option<String> = conn
+                .query_row(
+                    "SELECT status FROM reservations WHERE signature = ?1",
+                    params![signature],
+                    |r| r.get(0),
+                )
+                .optional()?;
             match (cur.as_deref(), to) {
                 // A landing observed again (e.g. a re-run of reconciliation) is idempotent.
                 (Some("landed"), "landed") => return Ok(()),
-                (None, _) => bail!("{to}: unknown signature {signature} (every send must be reserved first)"),
+                (None, _) => {
+                    bail!("{to}: unknown signature {signature} (every send must be reserved first)")
+                }
                 (Some(s), _) => bail!("{to}: {signature} is already {s}"),
             }
         }
@@ -250,16 +307,32 @@ impl Ledger {
 
     /// Payers that must not be reused: they have a reservation whose outcome is not yet proven.
     pub fn leased_payers(&self) -> Result<HashSet<String>> {
-        Ok(self.open_reservations()?.into_iter().map(|r| r.payer).collect())
+        Ok(self
+            .open_reservations()?
+            .into_iter()
+            .map(|r| r.payer)
+            .collect())
     }
 
     pub fn totals(&self) -> Result<Totals> {
         let conn = self.conn.lock().expect("ledger mutex");
         let count = |status: &str| -> rusqlite::Result<i64> {
-            conn.query_row("SELECT COUNT(*) FROM reservations WHERE status = ?1", params![status], |r| r.get(0))
+            conn.query_row(
+                "SELECT COUNT(*) FROM reservations WHERE status = ?1",
+                params![status],
+                |r| r.get(0),
+            )
         };
-        let spent: i64 = conn.query_row("SELECT COALESCE(SUM(actual_fee), 0) FROM reservations WHERE status = 'landed'", [], |r| r.get(0))?;
-        let reserved: i64 = conn.query_row("SELECT COALESCE(SUM(max_fee), 0) FROM reservations WHERE status = 'reserved'", [], |r| r.get(0))?;
+        let spent: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(actual_fee), 0) FROM reservations WHERE status = 'landed'",
+            [],
+            |r| r.get(0),
+        )?;
+        let reserved: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(max_fee), 0) FROM reservations WHERE status = 'reserved'",
+            [],
+            |r| r.get(0),
+        )?;
         Ok(Totals {
             cap: self.cap,
             spent: spent as u64,
@@ -276,11 +349,23 @@ impl Ledger {
     pub fn campaign_opening(&self, owned: &[String], current_total: u64) -> Result<u64> {
         let conn = self.conn.lock().expect("ledger mutex");
         let accounts = serde_json::to_string(owned)?;
-        let stored: Option<String> = conn.query_row("SELECT value FROM meta WHERE key = 'owned_accounts'", [], |r| r.get(0)).optional()?;
+        let stored: Option<String> = conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'owned_accounts'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
         match stored {
             None => {
-                conn.execute("INSERT INTO meta (key, value) VALUES ('owned_accounts', ?1)", params![accounts])?;
-                conn.execute("INSERT INTO meta (key, value) VALUES ('opening_total', ?1)", params![current_total.to_string()])?;
+                conn.execute(
+                    "INSERT INTO meta (key, value) VALUES ('owned_accounts', ?1)",
+                    params![accounts],
+                )?;
+                conn.execute(
+                    "INSERT INTO meta (key, value) VALUES ('opening_total', ?1)",
+                    params![current_total.to_string()],
+                )?;
                 Ok(current_total)
             }
             Some(s) => {
@@ -289,9 +374,15 @@ impl Ledger {
                 a.sort();
                 b.sort();
                 if a != b {
-                    bail!("owned-account set differs from the one recorded at campaign start; refusing to reconcile against a different set");
+                    bail!(
+                        "owned-account set differs from the one recorded at campaign start; refusing to reconcile against a different set"
+                    );
                 }
-                let v: String = conn.query_row("SELECT value FROM meta WHERE key = 'opening_total'", [], |r| r.get(0))?;
+                let v: String = conn.query_row(
+                    "SELECT value FROM meta WHERE key = 'opening_total'",
+                    [],
+                    |r| r.get(0),
+                )?;
                 Ok(v.parse()?)
             }
         }
@@ -299,7 +390,13 @@ impl Ledger {
 
     pub fn external_deposits(&self) -> Result<u64> {
         let conn = self.conn.lock().expect("ledger mutex");
-        let v: Option<String> = conn.query_row("SELECT value FROM meta WHERE key = 'external_deposits'", [], |r| r.get(0)).optional()?;
+        let v: Option<String> = conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'external_deposits'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
         Ok(v.and_then(|s| s.parse().ok()).unwrap_or(0))
     }
 
@@ -319,13 +416,24 @@ impl Ledger {
 /// Layer 2 of the cap: cumulative on-chain reconciliation over *all* owned accounts since the campaign opened.
 /// Transfers between owned accounts cancel out; only fees and external deposits change the sum. The on-chain drop must
 /// not exceed the cap, nor exceed what the ledger has accounted for (committed) by more than `tolerance`.
-pub fn reconcile(opening_total: u64, external_deposits: u64, current_total: u64, committed: u64, cap: u64, tolerance: u64) -> Result<u64> {
+pub fn reconcile(
+    opening_total: u64,
+    external_deposits: u64,
+    current_total: u64,
+    committed: u64,
+    cap: u64,
+    tolerance: u64,
+) -> Result<u64> {
     let dropped = (opening_total + external_deposits).saturating_sub(current_total);
     if dropped > cap {
-        bail!("on-chain reconciliation: owned balance fell by {dropped} lamports > cap {cap} — aborting");
+        bail!(
+            "on-chain reconciliation: owned balance fell by {dropped} lamports > cap {cap} — aborting"
+        );
     }
     if dropped > committed + tolerance {
-        bail!("on-chain reconciliation: owned balance fell by {dropped} lamports but the ledger accounts for only {committed} — unaccounted spend, aborting");
+        bail!(
+            "on-chain reconciliation: owned balance fell by {dropped} lamports but the ledger accounts for only {committed} — unaccounted spend, aborting"
+        );
     }
     Ok(dropped)
 }
@@ -342,16 +450,30 @@ mod tests {
     }
 
     fn r(sig: &str, fee: u64, payer: &str, budget: &str) -> Reservation {
-        Reservation { signature: sig.into(), kind: Kind::Probe, label: sig.into(), max_fee: fee, payer: payer.into(), last_valid_block_height: 100, budget: budget.into() }
+        Reservation {
+            signature: sig.into(),
+            kind: Kind::Probe,
+            label: sig.into(),
+            max_fee: fee,
+            payer: payer.into(),
+            last_valid_block_height: 100,
+            budget: budget.into(),
+        }
     }
 
     #[test]
     fn refuses_a_batch_that_would_cross_the_cap_atomically() {
         let (l, _) = temp_ledger(10_000);
         l.reserve_batch(&[r("s1", 6_000, "p1", "run")]).unwrap();
-        let err = l.reserve_batch(&[r("s2", 2_000, "p2", "run"), r("s3", 3_000, "p3", "run")]).unwrap_err();
+        let err = l
+            .reserve_batch(&[r("s2", 2_000, "p2", "run"), r("s3", 3_000, "p3", "run")])
+            .unwrap_err();
         assert!(err.downcast_ref::<CapExceeded>().is_some());
-        assert_eq!(l.totals().unwrap().open_count, 1, "nothing of the failed batch was reserved");
+        assert_eq!(
+            l.totals().unwrap().open_count,
+            1,
+            "nothing of the failed batch was reserved"
+        );
         l.reserve_batch(&[r("s4", 4_000, "p4", "run")]).unwrap(); // exactly at the cap is allowed
         assert_eq!(l.totals().unwrap().committed(), 10_000);
     }
@@ -361,23 +483,49 @@ mod tests {
         let (l, _) = temp_ledger(50_000);
         l.define_budget("smoke", 10_000).unwrap();
         l.reserve_batch(&[r("s1", 6_000, "p1", "smoke")]).unwrap();
-        let err = l.reserve_batch(&[r("s2", 6_000, "p2", "smoke")]).unwrap_err();
-        assert_eq!(err.downcast_ref::<CapExceeded>().unwrap().scope, "budget smoke");
+        let err = l
+            .reserve_batch(&[r("s2", 6_000, "p2", "smoke")])
+            .unwrap_err();
+        assert_eq!(
+            err.downcast_ref::<CapExceeded>().unwrap().scope,
+            "budget smoke"
+        );
         l.reserve_batch(&[r("s3", 6_000, "p3", "stage1")]).unwrap(); // other budgets unaffected
-        assert!(l.define_budget("smoke", 20_000).is_err(), "a defined sub-budget cannot be raised");
+        assert!(
+            l.define_budget("smoke", 20_000).is_err(),
+            "a defined sub-budget cannot be raised"
+        );
     }
 
     #[test]
     fn transitions_and_their_guards() {
         let (l, _) = temp_ledger(30_000);
-        l.reserve_batch(&[r("s1", 6_500, "p1", "b"), r("s2", 6_500, "p2", "b"), r("s3", 6_500, "p3", "b")]).unwrap();
+        l.reserve_batch(&[
+            r("s1", 6_500, "p1", "b"),
+            r("s2", 6_500, "p2", "b"),
+            r("s3", 6_500, "p3", "b"),
+        ])
+        .unwrap();
         l.resolve_landed("s1", 6_000).unwrap();
         l.resolve_landed("s1", 6_000).unwrap(); // idempotent
         l.resolve_expired("s2").unwrap();
         l.cancel_unsent("s3").unwrap();
         let t = l.totals().unwrap();
-        assert_eq!((t.spent, t.reserved, t.landed_count, t.open_count, t.released_count, t.cancelled_count), (6_000, 0, 1, 0, 1, 1));
-        assert!(l.resolve_expired("s1").is_err(), "a landed tx can never be released");
+        assert_eq!(
+            (
+                t.spent,
+                t.reserved,
+                t.landed_count,
+                t.open_count,
+                t.released_count,
+                t.cancelled_count
+            ),
+            (6_000, 0, 1, 0, 1, 1)
+        );
+        assert!(
+            l.resolve_expired("s1").is_err(),
+            "a landed tx can never be released"
+        );
         assert!(l.cancel_unsent("s2").is_err());
         assert!(l.resolve_landed("nope", 1).is_err());
     }
@@ -391,7 +539,10 @@ mod tests {
         assert_eq!(l.totals().unwrap().reserved, 9_000);
         assert!(l.reserve_batch(&[r("s2", 5_000, "payerB", "b")]).is_err());
         assert!(l.leased_payers().unwrap().contains("payerA"));
-        assert_eq!(l.open_reservations().unwrap()[0].last_valid_block_height, 100);
+        assert_eq!(
+            l.open_reservations().unwrap()[0].last_valid_block_height,
+            100
+        );
     }
 
     #[test]
@@ -415,9 +566,21 @@ mod tests {
 
     #[test]
     fn reconciliation_detects_overspend_and_unaccounted_spend() {
-        assert_eq!(reconcile(100_000, 0, 90_000, 10_000, 50_000, 0).unwrap(), 10_000);
-        assert!(reconcile(100_000, 0, 40_000, 60_000, 50_000, 0).is_err(), "over the cap");
-        assert!(reconcile(100_000, 0, 90_000, 2_000, 50_000, 1_000).is_err(), "more lost than accounted");
-        assert_eq!(reconcile(100_000, 20_000, 110_000, 10_000, 50_000, 0).unwrap(), 10_000);
+        assert_eq!(
+            reconcile(100_000, 0, 90_000, 10_000, 50_000, 0).unwrap(),
+            10_000
+        );
+        assert!(
+            reconcile(100_000, 0, 40_000, 60_000, 50_000, 0).is_err(),
+            "over the cap"
+        );
+        assert!(
+            reconcile(100_000, 0, 90_000, 2_000, 50_000, 1_000).is_err(),
+            "more lost than accounted"
+        );
+        assert_eq!(
+            reconcile(100_000, 20_000, 110_000, 10_000, 50_000, 0).unwrap(),
+            10_000
+        );
     }
 }

@@ -22,8 +22,8 @@ use crate::targets::{self, Validator};
 use crate::timing::{AnchorEvent, RunClock, SlotClock};
 use anyhow::{Context, Result, bail};
 use base64::Engine;
-use rand::seq::SliceRandom;
 use rand::SeedableRng;
+use rand::seq::SliceRandom;
 use serde::Serialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -149,8 +149,16 @@ impl PayerPool {
                 bail!("the master key must not also be a payer");
             }
         }
-        let busy = keys.iter().enumerate().filter(|(_, k)| leased.contains(&k.pubkey().to_string())).map(|(i, _)| i).collect();
-        Ok(Self { keys: keys.into_iter().map(Arc::new).collect(), busy: Mutex::new(busy) })
+        let busy = keys
+            .iter()
+            .enumerate()
+            .filter(|(_, k)| leased.contains(&k.pubkey().to_string()))
+            .map(|(i, _)| i)
+            .collect();
+        Ok(Self {
+            keys: keys.into_iter().map(Arc::new).collect(),
+            busy: Mutex::new(busy),
+        })
     }
 
     /// `n` distinct free payers in random order (seeded per window, recorded).
@@ -205,7 +213,11 @@ fn lock_for(run_id: &str, target: &str, seq: u32, lock_index: u32) -> Pubkey {
 }
 
 fn window_seed(run_id: &str, target: &str, seq: u32) -> u64 {
-    u64::from_le_bytes(Sha256::digest(format!("itb-payers/{run_id}/{target}/{seq}").as_bytes())[..8].try_into().expect("8 bytes"))
+    u64::from_le_bytes(
+        Sha256::digest(format!("itb-payers/{run_id}/{target}/{seq}").as_bytes())[..8]
+            .try_into()
+            .expect("8 bytes"),
+    )
 }
 
 /// Leader windows per target, fetched once per epoch (the schedule is fixed for an epoch).
@@ -216,8 +228,16 @@ struct ScheduleCache {
 }
 
 impl ScheduleCache {
-    async fn upcoming(&mut self, rpc: &Rpc, identity: &str, from_slot: u64) -> Result<Option<(u64, u64)>> {
-        let stale = self.epoch.as_ref().is_none_or(|e| from_slot >= e.first_slot_of_epoch() + e.slots_in_epoch);
+    async fn upcoming(
+        &mut self,
+        rpc: &Rpc,
+        identity: &str,
+        from_slot: u64,
+    ) -> Result<Option<(u64, u64)>> {
+        let stale = self
+            .epoch
+            .as_ref()
+            .is_none_or(|e| from_slot >= e.first_slot_of_epoch() + e.slots_in_epoch);
         if stale {
             self.epoch = Some(rpc.get_epoch_info().await?);
         }
@@ -230,7 +250,10 @@ impl ScheduleCache {
         for ep_first in epochs {
             let key = (identity.to_string(), ep_first);
             if !self.windows.contains_key(&key) {
-                let slots = rpc.leader_slots(ep_first, identity, ep_first).await.unwrap_or_default();
+                let slots = rpc
+                    .leader_slots(ep_first, identity, ep_first)
+                    .await
+                    .unwrap_or_default();
                 self.windows.insert(key.clone(), targets::windows(slots));
             }
             if let Some(w) = self.windows[&key].iter().find(|(s, _)| *s > from_slot) {
@@ -248,21 +271,30 @@ struct Progress {
 }
 
 fn load_progress(path: &Path, live: bool) -> Result<Progress> {
-    let mut p = Progress { claimed: HashMap::new(), informative: HashMap::new() };
+    let mut p = Progress {
+        claimed: HashMap::new(),
+        informative: HashMap::new(),
+    };
     if let Ok(text) = std::fs::read_to_string(path) {
         for line in text.lines().filter(|l| !l.trim().is_empty()) {
             let v: serde_json::Value = serde_json::from_str(line)?;
             if v["live"].as_bool() != Some(live) {
                 continue; // dry-run records never consume live plans, and vice versa
             }
-            let (Some(t), Some(seq)) = (v["target_identity"].as_str(), v["seq"].as_u64()) else { continue };
-            p.claimed.entry(t.to_string()).or_default().insert(seq as u32);
-            if v["state"] == "terminal" {
-                if let Some(arr) = v["informative_pairs"].as_array() {
-                    let e = p.informative.entry(t.to_string()).or_default();
-                    for (i, n) in arr.iter().enumerate().take(3) {
-                        e[i] += n.as_u64().unwrap_or(0) as u32;
-                    }
+            let (Some(t), Some(seq)) = (v["target_identity"].as_str(), v["seq"].as_u64()) else {
+                continue;
+            };
+            p.claimed
+                .entry(t.to_string())
+                .or_default()
+                .insert(seq as u32);
+            if let ("terminal", Some(arr)) = (
+                v["state"].as_str().unwrap_or(""),
+                v["informative_pairs"].as_array(),
+            ) {
+                let e = p.informative.entry(t.to_string()).or_default();
+                for (i, n) in arr.iter().enumerate().take(3) {
+                    e[i] += n.as_u64().unwrap_or(0) as u32;
                 }
             }
         }
@@ -288,31 +320,45 @@ struct Live {
 
 pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
     let clock = RunClock::new();
-    let run_id = new_run_id(&format!("s{}-{}", args.stage, if args.live { "live" } else { "dry" }));
+    let run_id = new_run_id(&format!(
+        "s{}-{}",
+        args.stage,
+        if args.live { "live" } else { "dry" }
+    ));
     let gate = alpenglow::require_active(&rpc).await?;
     let genesis = rpc.genesis_hash().await?;
     if args.require_mainnet && genesis != MAINNET_GENESIS_HASH {
-        bail!("RPC genesis {genesis} is not mainnet-beta ({MAINNET_GENESIS_HASH}); pass --allow-non-mainnet only for localnet tests");
+        bail!(
+            "RPC genesis {genesis} is not mainnet-beta ({MAINNET_GENESIS_HASH}); pass --allow-non-mainnet only for localnet tests"
+        );
     }
-    let not_after_ns = args.not_after_unix.map(|s| s as i64 * 1_000_000_000);
+    let not_after_ns = args.not_after_unix.map(|s| s * 1_000_000_000);
     if not_after_ns.is_some_and(|t| clock.now_unix_ns() >= t) {
         bail!("campaign cutoff (--not-after) has passed");
     }
 
     // ---- the frozen design ----
-    let design_bytes = std::fs::read(&args.design).with_context(|| format!("reading {}", args.design.display()))?;
+    let design_bytes = std::fs::read(&args.design)
+        .with_context(|| format!("reading {}", args.design.display()))?;
     let design_sha = format!("{:x}", Sha256::digest(&design_bytes));
-    if let Some(expected) = &args.design_sha256 {
-        if !expected.eq_ignore_ascii_case(&design_sha) {
-            bail!("design sha256 {design_sha} does not match the pre-registered {expected}");
-        }
+    if let Some(expected) = args
+        .design_sha256
+        .as_ref()
+        .filter(|e| !e.eq_ignore_ascii_case(&design_sha))
+    {
+        bail!("design sha256 {design_sha} does not match the pre-registered {expected}");
     }
-    let all_plans: Vec<WindowPlan> =
-        String::from_utf8(design_bytes)?.lines().filter(|l| !l.trim().is_empty()).map(serde_json::from_str).collect::<std::result::Result<_, _>>()?;
+    let all_plans: Vec<WindowPlan> = String::from_utf8(design_bytes)?
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(serde_json::from_str)
+        .collect::<std::result::Result<_, _>>()?;
     design::validate(&all_plans)?;
     let mut plans: BTreeMap<String, Vec<WindowPlan>> = BTreeMap::new();
     for p in all_plans {
-        if p.stage == args.stage && (args.targets.is_empty() || args.targets.contains(&p.target_identity)) {
+        if p.stage == args.stage
+            && (args.targets.is_empty() || args.targets.contains(&p.target_identity))
+        {
             plans.entry(p.target_identity.clone()).or_default().push(p);
         }
     }
@@ -326,29 +372,77 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
     if plans.is_empty() {
         bail!("nothing left to run for stage {}", args.stage);
     }
-    let max_probes = plans.values().flatten().map(design::probe_count).max().unwrap_or(0);
+    let max_probes = plans
+        .values()
+        .flatten()
+        .map(design::probe_count)
+        .max()
+        .unwrap_or(0);
 
     // ---- live prerequisites ----
-    let _campaign_lock = if args.live { Some(CampaignLock::acquire(&args.ledger, &run_id)?) } else { None };
+    let _campaign_lock = if args.live {
+        Some(CampaignLock::acquire(&args.ledger, &run_id)?)
+    } else {
+        None
+    };
     let run = Arc::new(RunDir::create(args.out.join(&run_id))?);
     std::fs::create_dir_all(run.path.join("gossip"))?;
     let (live, pool) = if args.live {
-        let cap = sol_to_lamports(args.max_spend_sol.context("--live requires --max-spend-sol")?)?;
+        let cap = sol_to_lamports(
+            args.max_spend_sol
+                .context("--live requires --max-spend-sol")?,
+        )?;
         let ledger = Arc::new(Ledger::open(&args.ledger, cap)?);
-        let auth = Arc::new(LiveAuthorization::grant(true, args.max_spend_sol, &gate, &ledger)?);
+        let auth = Arc::new(LiveAuthorization::grant(
+            true,
+            args.max_spend_sol,
+            &gate,
+            &ledger,
+        )?);
         if let Some(b) = args.budget_cap_sol {
             ledger.define_budget(&args.budget, sol_to_lamports(b)?)?;
         }
-        let master = read_keypair(args.keypair.as_deref().context("--live requires --keypair")?)?.pubkey();
-        let pool = PayerPool::new(load_payers(&args.payer_dir)?, Some(&master), &ledger.leased_payers()?)?;
+        let master = read_keypair(
+            args.keypair
+                .as_deref()
+                .context("--live requires --keypair")?,
+        )?
+        .pubkey();
+        let pool = PayerPool::new(
+            load_payers(&args.payer_dir)?,
+            Some(&master),
+            &ledger.leased_payers()?,
+        )?;
         if pool.keys.len() < max_probes * 2 {
-            bail!("payer pool has {} keys; need at least {} (two windows in flight)", pool.keys.len(), max_probes * 2);
+            bail!(
+                "payer pool has {} keys; need at least {} (two windows in flight)",
+                pool.keys.len(),
+                max_probes * 2
+            );
         }
-        let owned: Vec<String> = std::iter::once(master.to_string()).chain(pool.keys.iter().map(|k| k.pubkey().to_string())).collect();
+        let owned: Vec<String> = std::iter::once(master.to_string())
+            .chain(pool.keys.iter().map(|k| k.pubkey().to_string()))
+            .collect();
         let current: u64 = rpc.balances(&owned).await?.iter().sum();
         let opening = ledger.campaign_opening(&owned, current)?;
-        reconcile(opening, ledger.external_deposits()?, current, ledger.totals()?.committed(), cap, RECONCILE_TOLERANCE_LAMPORTS)?;
-        (Some(Live { auth, ledger, budget: args.budget.clone(), owned, opening }), Arc::new(pool))
+        reconcile(
+            opening,
+            ledger.external_deposits()?,
+            current,
+            ledger.totals()?.committed(),
+            cap,
+            RECONCILE_TOLERANCE_LAMPORTS,
+        )?;
+        (
+            Some(Live {
+                auth,
+                ledger,
+                budget: args.budget.clone(),
+                owned,
+                opening,
+            }),
+            Arc::new(pool),
+        )
     } else {
         let keys = (0..max_probes * 3).map(|_| Keypair::new()).collect();
         (None, Arc::new(PayerPool::new(keys, None, &HashSet::new())?))
@@ -357,12 +451,25 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
 
     // ---- gossip snapshots every 60 s; the current endpoint of each target is refreshed from them ----
     let target_ids: Vec<String> = plans.keys().cloned().collect();
-    let current_state: Arc<RwLock<HashMap<String, Validator>>> = Arc::new(RwLock::new(HashMap::new()));
+    let current_state: Arc<RwLock<HashMap<String, Validator>>> =
+        Arc::new(RwLock::new(HashMap::new()));
     let states = Arc::new(run.jsonl("target_states.jsonl")?);
     let snapshot_once = {
-        let (rpc, run, states, ids, cur) = (rpc.clone(), run.clone(), states.clone(), target_ids.clone(), current_state.clone());
+        let (rpc, run, states, ids, cur) = (
+            rpc.clone(),
+            run.clone(),
+            states.clone(),
+            target_ids.clone(),
+            current_state.clone(),
+        );
         move || {
-            let (rpc, run, states, ids, cur) = (rpc.clone(), run.clone(), states.clone(), ids.clone(), cur.clone());
+            let (rpc, run, states, ids, cur) = (
+                rpc.clone(),
+                run.clone(),
+                states.clone(),
+                ids.clone(),
+                cur.clone(),
+            );
             async move {
                 let (vals, raw) = targets::snapshot(&rpc).await?;
                 let at = clock.now_unix_ns();
@@ -397,7 +504,8 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         });
     }
 
-    let slot_clock = SlotClock::start(ws_url, clock, args.nominal_slot_ms, args.anchor_event).await?;
+    let slot_clock =
+        SlotClock::start(ws_url, clock, args.nominal_slot_ms, args.anchor_event).await?;
     let quic = Arc::new(QuicClient::new(clock)?);
     let logs = Arc::new(Logs {
         probes: run.jsonl("probes.jsonl")?,
@@ -422,7 +530,8 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
-    let informative: Arc<Mutex<HashMap<String, [u32; 3]>>> = Arc::new(Mutex::new(progress.informative));
+    let informative: Arc<Mutex<HashMap<String, [u32; 3]>>> =
+        Arc::new(Mutex::new(progress.informative));
     let in_flight: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
     let deadline = tokio::time::Instant::now() + Duration::from_secs(args.max_minutes * 60);
     let semaphore = Arc::new(tokio::sync::Semaphore::new(args.concurrency.max(1)));
@@ -444,7 +553,11 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
             if args.stage == 1
                 && ps.first().is_some_and(|p| {
                     let need = design::informative_target(&p.tier);
-                    informative.lock().expect("informative").get(t).is_some_and(|c| c.iter().all(|n| *n >= need))
+                    informative
+                        .lock()
+                        .expect("informative")
+                        .get(t)
+                        .is_some_and(|c| c.iter().all(|n| *n >= need))
                 })
             {
                 tracing::info!(target = %t, "stage-1 informative target reached; no more windows for this target");
@@ -463,10 +576,12 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
                 continue;
             }
             let from = (*next_from.get(t).unwrap_or(&0)).max(now_slot + 40);
-            if let Some((s, e)) = schedule.upcoming(&rpc, t, from).await? {
-                if best.as_ref().is_none_or(|b| s < b.0) {
-                    best = Some((s, e, t.clone()));
-                }
+            if let Some((s, e)) = schedule
+                .upcoming(&rpc, t, from)
+                .await?
+                .filter(|(s, _)| best.as_ref().is_none_or(|b| *s < b.0))
+            {
+                best = Some((s, e, t.clone()));
             }
         }
         let Some((first, last, target)) = best else {
@@ -475,6 +590,14 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         };
         next_from.insert(target.clone(), last + 1);
         let plan = plans.get_mut(&target).expect("target").remove(0);
+        let headroom = match &live {
+            Some(l) => l.ledger.totals()?.headroom(),
+            None => u64::MAX,
+        };
+        if headroom < design::max_fee(&plan) {
+            tracing::warn!(headroom, "spend cap headroom below one window; stopping");
+            break;
+        }
         let permit = semaphore.clone().acquire_owned().await?;
         in_flight.lock().expect("in flight").insert(target.clone());
         windows_started += 1;
@@ -494,6 +617,7 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
             informative: informative.clone(),
             current_state: current_state.clone(),
             tpu_override: args.tpu_override,
+            require_post_alpenglow: args.require_mainnet,
         };
         let in_flight = in_flight.clone();
         handles.push(tokio::spawn(async move {
@@ -517,8 +641,14 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
     if let Some(l) = &live {
         let current: u64 = rpc.balances(&l.owned).await?.iter().sum();
         let t = l.ledger.totals()?;
-        summary["owned_lamports_drop_since_campaign_opening"] =
-            json!(reconcile(l.opening, l.ledger.external_deposits()?, current, t.committed(), t.cap, RECONCILE_TOLERANCE_LAMPORTS)?);
+        summary["owned_lamports_drop_since_campaign_opening"] = json!(reconcile(
+            l.opening,
+            l.ledger.external_deposits()?,
+            current,
+            t.committed(),
+            t.cap,
+            RECONCILE_TOLERANCE_LAMPORTS
+        )?);
         summary["ledger"] = serde_json::to_value(t)?;
     }
     quic.close_all().await;
@@ -544,6 +674,7 @@ struct WindowCtx {
     informative: Arc<Mutex<HashMap<String, [u32; 3]>>>,
     current_state: Arc<RwLock<HashMap<String, Validator>>>,
     tpu_override: Option<SocketAddr>,
+    require_post_alpenglow: bool,
 }
 
 struct Pending {
@@ -557,10 +688,17 @@ struct Pending {
 }
 
 async fn wait_slot_bounded(sc: &SlotClock, slot: u64) -> Result<()> {
-    let expected_ms = sc.estimate_unix_ns(slot).map(|t| (t - sc_now(sc)) / 1_000_000).unwrap_or(0).max(0) as u64;
-    tokio::time::timeout(Duration::from_millis(expected_ms + 30_000), sc.wait_for_slot(slot))
-        .await
-        .map_err(|_| anyhow::anyhow!("slot stream stalled waiting for slot {slot}"))?
+    let expected_ms = sc
+        .estimate_unix_ns(slot)
+        .map(|t| (t - sc_now(sc)) / 1_000_000)
+        .unwrap_or(0)
+        .max(0) as u64;
+    tokio::time::timeout(
+        Duration::from_millis(expected_ms + 30_000),
+        sc.wait_for_slot(slot),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("slot stream stalled waiting for slot {slot}"))?
 }
 
 fn sc_now(_sc: &SlotClock) -> i64 {
@@ -572,8 +710,16 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
     let cadence = ctx.slot_clock.cadence();
     let slot_ms = cadence.mean_slot_ms();
     let nominal = |offset: f64| plan.burst_offset_ms + offset - ctx.obs_lag_ms;
-    let earliest_ms = plan.pairs.iter().flat_map(|p| &p.members).map(|m| nominal(m.send_offset_ms)).fold(0.0f64, f64::min);
+    let earliest_ms = plan
+        .pairs
+        .iter()
+        .flat_map(|p| &p.members)
+        .map(|m| nominal(m.send_offset_ms))
+        .fold(0.0f64, f64::min);
     let prep_slots = (((-earliest_ms).max(0.0) + 1_500.0) / slot_ms).ceil() as u64;
+    if ctx.require_post_alpenglow && !alpenglow::is_post_alpenglow(window.0) {
+        bail!("window {} precedes the first Alpenglow block", window.0);
+    }
     let mut row = json!({
         "run_id": ctx.run_id, "target_identity": target, "tier": plan.tier, "seq": plan.seq, "stage": plan.stage,
         "kit": plan.kit, "regime": plan.regime, "burst_offset_ms": plan.burst_offset_ms, "obs_lag_ms": ctx.obs_lag_ms,
@@ -585,11 +731,19 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
         ctx.logs.windows.append(row)
     };
 
-    if let Err(e) = wait_slot_bounded(&ctx.slot_clock, window.0.saturating_sub(prep_slots + 12)).await {
+    if let Err(e) =
+        wait_slot_bounded(&ctx.slot_clock, window.0.saturating_sub(prep_slots + 12)).await
+    {
         return skip(&mut row, &format!("before_connect: {e}"));
     }
     // The endpoint actually used comes from the latest gossip snapshot, not the run's start.
-    let Some(mut v) = ctx.current_state.read().expect("state lock").get(&target).cloned() else {
+    let Some(mut v) = ctx
+        .current_state
+        .read()
+        .expect("state lock")
+        .get(&target)
+        .cloned()
+    else {
         return skip(&mut row, "target_not_in_latest_gossip");
     };
     if let Some(o) = ctx.tpu_override {
@@ -599,7 +753,9 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
     row["ingress"] = json!(v.ingress);
     row["tpu_quic"] = json!(v.tpu_quic);
     row["version"] = json!(v.version);
-    let Some(addr) = v.tpu_addr() else { return skip(&mut row, "no_tpu_quic") };
+    let Some(addr) = v.tpu_addr() else {
+        return skip(&mut row, "no_tpu_quic");
+    };
     let connect: ConnectReport = ctx.quic.connect(addr).await;
     row["connect"] = serde_json::to_value(&connect)?;
     if ctx.live.is_some() && connect.error.is_some() {
@@ -610,11 +766,16 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
         return skip(&mut row, &format!("before_prepare: {e}"));
     }
     let bh = if plan.blockhash_age_slots > 0 {
-        ctx.rpc.aged_blockhash(plan.blockhash_age_slots.saturating_sub(prep_slots)).await?
+        ctx.rpc
+            .aged_blockhash(plan.blockhash_age_slots.saturating_sub(prep_slots))
+            .await?
     } else {
         ctx.rpc.latest_blockhash().await?
     };
-    let est_start = ctx.slot_clock.estimate_unix_ns(window.0).context("no slot estimate")?;
+    let est_start = ctx
+        .slot_clock
+        .estimate_unix_ns(window.0)
+        .context("no slot estimate")?;
     row["estimated_window_start_unix_ns"] = json!(est_start);
     row["blockhash_slot"] = json!(bh.slot);
     row["last_valid_block_height"] = json!(bh.last_valid_block_height);
@@ -622,11 +783,17 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
     let n = design::probe_count(&plan);
     let seed = window_seed(&ctx.run_id, &target, plan.seq);
     let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(seed);
-    let Some(payer_idx) = ctx.pool.take(n, &mut rng) else { return skip(&mut row, "payer_pool_exhausted") };
+    let Some(payer_idx) = ctx.pool.take(n, &mut rng) else {
+        return skip(&mut row, "payer_pool_exhausted");
+    };
     row["payer_assignment_seed"] = json!(seed);
 
     // Build and sign every probe; log the signed realisation before anything is sent.
-    let budget = ctx.live.as_ref().map(|l| l.budget.clone()).unwrap_or_default();
+    let budget = ctx
+        .live
+        .as_ref()
+        .map(|l| l.budget.clone())
+        .unwrap_or_default();
     let mut pending = vec![];
     let mut k = 0usize;
     for pair in &plan.pairs {
@@ -682,7 +849,15 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
                 last_valid_block_height: bh.last_valid_block_height,
                 budget: budget.clone(),
             };
-            pending.push(Pending { probe_id, signature, payer_idx: pi, wire, anchor, nominal_ms, reservation });
+            pending.push(Pending {
+                probe_id,
+                signature,
+                payer_idx: pi,
+                wire,
+                anchor,
+                nominal_ms,
+                reservation,
+            });
         }
     }
 
@@ -707,8 +882,12 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
         let (anchor_ns, observed) = if phase == Anchor::Estimate {
             (est_start, false)
         } else {
-            let est = ctx.slot_clock.estimate_unix_ns(anchor_slot).unwrap_or(est_start);
-            let wait = Duration::from_nanos((est - ctx.clock.now_unix_ns()).max(0) as u64) + Duration::from_millis(800);
+            let est = ctx
+                .slot_clock
+                .estimate_unix_ns(anchor_slot)
+                .unwrap_or(est_start);
+            let wait = Duration::from_nanos((est - ctx.clock.now_unix_ns()).max(0) as u64)
+                + Duration::from_millis(800);
             match ctx.slot_clock.wait_first_shred(anchor_slot, wait).await {
                 Some(t) => (t, true),
                 None => (est, false),
@@ -733,7 +912,12 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
             .map(|p| {
                 let at_ns = anchor_ns + ((extra_ms + p.nominal_ms) * 1e6) as i64;
                 let at = tokio::time::Instant::from_std(ctx.clock.unix_ns_to_instant(at_ns));
-                Outgoing { probe_id: p.probe_id.clone(), wire: p.wire.clone(), at, deadline: at + max_late }
+                Outgoing {
+                    probe_id: p.probe_id.clone(),
+                    wire: p.wire.clone(),
+                    at,
+                    deadline: at + max_late,
+                }
             })
             .collect();
         let earliest = outgoing.iter().map(|o| o.at).min().expect("non-empty");
@@ -741,7 +925,10 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
             mark("late", &mut not_sent);
             continue;
         }
-        if ctx.not_after_ns.is_some_and(|t| ctx.clock.now_unix_ns() >= t) {
+        if ctx
+            .not_after_ns
+            .is_some_and(|t| ctx.clock.now_unix_ns() >= t)
+        {
             mark("campaign_cutoff", &mut not_sent);
             continue;
         }
@@ -755,12 +942,21 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
                 }
                 let records = ctx.quic.send_scheduled(&l.auth, addr, outgoing).await;
                 for r in &records {
-                    ctx.logs.sends.append(&json!({"run_id": ctx.run_id, "dry_run": false, "record": r}))?;
-                    let sig = &items.iter().find(|p| p.probe_id == r.probe_id).expect("item").signature;
+                    ctx.logs
+                        .sends
+                        .append(&json!({"run_id": ctx.run_id, "dry_run": false, "record": r}))?;
+                    let sig = &items
+                        .iter()
+                        .find(|p| p.probe_id == r.probe_id)
+                        .expect("item")
+                        .signature;
                     if r.never_opened {
                         // Provably never left this process: release its reservation.
                         l.ledger.cancel_unsent(sig)?;
-                        not_sent.insert(r.probe_id.clone(), r.error.clone().unwrap_or_else(|| "never_opened".into()));
+                        not_sent.insert(
+                            r.probe_id.clone(),
+                            r.error.clone().unwrap_or_else(|| "never_opened".into()),
+                        );
                     } else if let Some(e) = &r.error {
                         transport_errors.insert(r.probe_id.clone(), e.clone());
                     }
@@ -779,7 +975,11 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
     row["not_sent"] = json!(not_sent.len());
     row["not_sent_reasons"] = json!(not_sent);
     row["transport_errors"] = json!(transport_errors.len());
-    row["sent_ok"] = json!(if ctx.live.is_some() { pending.len() - not_sent.len() - transport_errors.len() } else { 0 });
+    row["sent_ok"] = json!(if ctx.live.is_some() {
+        pending.len() - not_sent.len() - transport_errors.len()
+    } else {
+        0
+    });
 
     // Which of the window's slots the target actually produced (eligibility criterion (c)).
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -796,7 +996,11 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
     ctx.logs.windows.append(&row)?;
 
     let mut informative_pairs = [0u32; 3];
-    let mut release: Vec<usize> = pending.iter().filter(|p| not_sent.contains_key(&p.probe_id)).map(|p| p.payer_idx).collect();
+    let mut release: Vec<usize> = pending
+        .iter()
+        .filter(|p| not_sent.contains_key(&p.probe_id))
+        .map(|p| p.payer_idx)
+        .collect();
     if let Some(l) = &ctx.live {
         let tracked: Vec<Tracked> = pending
             .iter()
@@ -808,26 +1012,47 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
                 window_last_slot: window.1,
                 last_valid_block_height: bh.last_valid_block_height,
                 max_fee: p.reservation.max_fee,
-                transport_error: transport_errors.get(&p.probe_id).cloned().or_else(|| not_sent.get(&p.probe_id).map(|r| format!("not_sent: {r}"))),
+                transport_error: transport_errors
+                    .get(&p.probe_id)
+                    .cloned()
+                    .or_else(|| not_sent.get(&p.probe_id).map(|r| format!("not_sent: {r}"))),
             })
             .collect();
-        let (unsent, sent): (Vec<Tracked>, Vec<Tracked>) = tracked.into_iter().partition(|t| not_sent.contains_key(&t.probe_id));
-        let mut outcomes = collect::resolve(&ctx.rpc, Some(&l.ledger), &sent, Some(&ctx.run), Duration::from_secs(90)).await?;
+        let (unsent, sent): (Vec<Tracked>, Vec<Tracked>) = tracked
+            .into_iter()
+            .partition(|t| not_sent.contains_key(&t.probe_id));
+        let mut outcomes = collect::resolve(
+            &ctx.rpc,
+            Some(&l.ledger),
+            &sent,
+            Some(&ctx.run),
+            Duration::from_secs(90),
+        )
+        .await?;
         outcomes.extend(unsent.iter().map(collect::not_sent_outcome));
         for o in &outcomes {
-            ctx.logs.outcomes.append(&json!({"run_id": ctx.run_id, "outcome": o}))?;
+            ctx.logs
+                .outcomes
+                .append(&json!({"run_id": ctx.run_id, "outcome": o}))?;
         }
         // Payers of terminal outcomes are free again; unresolved ones stay leased (also in the ledger).
         for p in &pending {
-            if outcomes.iter().any(|o| o.probe_id == p.probe_id && o.status.is_terminal() && o.status != Status::NotSent) {
+            if outcomes.iter().any(|o| {
+                o.probe_id == p.probe_id && o.status.is_terminal() && o.status != Status::NotSent
+            }) {
                 release.push(p.payer_idx);
             }
         }
         // Shared stopping definition (PREREGISTRATION §5): all planned probes sent without transport error, the target
         // produced a block in the window, and both members of the pair landed in the window (verified in the block).
-        let window_ok = not_sent.is_empty() && transport_errors.is_empty() && produced == Some(true);
+        let window_ok =
+            not_sent.is_empty() && transport_errors.is_empty() && produced == Some(true);
         if plan.kit == Kit::K && window_ok {
-            let landed: HashSet<&str> = outcomes.iter().filter(|o| o.status == Status::LandedTarget).map(|o| o.probe_id.as_str()).collect();
+            let landed: HashSet<&str> = outcomes
+                .iter()
+                .filter(|o| o.status == Status::LandedTarget)
+                .map(|o| o.probe_id.as_str())
+                .collect();
             for pair in &plan.pairs {
                 let idx = match pair.kind {
                     design::PairKind::C1 => 0,
@@ -835,7 +1060,11 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
                     design::PairKind::C3 => 2,
                     _ => continue,
                 };
-                if pair.members.iter().all(|m| landed.contains(format!("{}/{}", pair.pair_id, m.label).as_str())) {
+                if pair
+                    .members
+                    .iter()
+                    .all(|m| landed.contains(format!("{}/{}", pair.pair_id, m.label).as_str()))
+                {
                     informative_pairs[idx] += 1;
                 }
             }
@@ -847,7 +1076,14 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
         }
         let current: u64 = ctx.rpc.balances(&l.owned).await?.iter().sum();
         let t = l.ledger.totals()?;
-        reconcile(l.opening, l.ledger.external_deposits()?, current, t.committed(), t.cap, RECONCILE_TOLERANCE_LAMPORTS)?;
+        reconcile(
+            l.opening,
+            l.ledger.external_deposits()?,
+            current,
+            t.committed(),
+            t.cap,
+            RECONCILE_TOLERANCE_LAMPORTS,
+        )?;
     } else {
         release.extend(pending.iter().map(|p| p.payer_idx));
     }
@@ -882,7 +1118,10 @@ mod tests {
         let leased: HashSet<String> = [keys[0].pubkey().to_string()].into();
         let pool = PayerPool::new(keys, None, &leased).unwrap();
         let a = pool.take(8, &mut rng(1)).unwrap();
-        assert!(!a.contains(&0), "leased payer from the ledger is never handed out");
+        assert!(
+            !a.contains(&0),
+            "leased payer from the ledger is never handed out"
+        );
         assert!(pool.take(2, &mut rng(2)).is_none(), "only 1 free");
         pool.release(a.clone());
         let b = pool.take(8, &mut rng(3)).unwrap();
@@ -892,7 +1131,9 @@ mod tests {
         let dup = vec![k.insecure_clone(), k.insecure_clone()];
         assert!(PayerPool::new(dup, None, &HashSet::new()).is_err());
         let m = Keypair::new();
-        assert!(PayerPool::new(vec![m.insecure_clone()], Some(&m.pubkey()), &HashSet::new()).is_err());
+        assert!(
+            PayerPool::new(vec![m.insecure_clone()], Some(&m.pubkey()), &HashSet::new()).is_err()
+        );
     }
 
     #[test]
@@ -912,7 +1153,11 @@ mod tests {
         )
         .unwrap();
         let live = load_progress(&p, true).unwrap();
-        assert_eq!(live.claimed["T"], [1, 2].into(), "dry-run claims never consume live plans; a crashed claim does");
+        assert_eq!(
+            live.claimed["T"],
+            [1, 2].into(),
+            "dry-run claims never consume live plans; a crashed claim does"
+        );
         assert_eq!(live.informative["T"], [1, 1, 0]);
         let dry = load_progress(&p, false).unwrap();
         assert_eq!(dry.claimed["T"], [0].into());

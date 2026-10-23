@@ -46,20 +46,29 @@ impl Validator {
 }
 
 fn ip_of(addr: &Option<String>) -> Option<String> {
-    addr.as_deref().and_then(|s| s.parse::<SocketAddr>().ok()).map(|a| a.ip().to_string())
+    addr.as_deref()
+        .and_then(|s| s.parse::<SocketAddr>().ok())
+        .map(|a| a.ip().to_string())
 }
 
 pub fn classify(node: &ClusterNode) -> IngressKind {
     let client = node.client_id.as_deref().unwrap_or("");
-    let Some(_) = node.tpu_quic else { return IngressKind::None };
+    let Some(_) = node.tpu_quic else {
+        return IngressKind::None;
+    };
     match client {
         "AgaveBam" | "FireBAM" => IngressKind::BamNode,
-        "HarmonicAgave" | "HarmonicFiredancer" | "HarmonicFrankendancer" => IngressKind::HarmonicRemoteTpu,
+        "HarmonicAgave" | "HarmonicFiredancer" | "HarmonicFrankendancer" => {
+            IngressKind::HarmonicRemoteTpu
+        }
         _ => {
             // IP equality is a heuristic, not proof of direct ingress: a self-hosted Jito relayer can share the
             // validator's IP, so the relayer's default port (11228) marks a relayer either way.
             let same_ip = ip_of(&node.tpu_quic) == ip_of(&node.gossip);
-            let relayer_port = node.tpu_quic.as_deref().is_some_and(|a| a.ends_with(":11228"));
+            let relayer_port = node
+                .tpu_quic
+                .as_deref()
+                .is_some_and(|a| a.ends_with(":11228"));
             match (same_ip, client) {
                 (_, "JitoLabs") if relayer_port => IngressKind::Relayer,
                 (true, _) => IngressKind::Direct,
@@ -75,7 +84,8 @@ pub async fn snapshot(rpc: &Rpc) -> Result<(Vec<Validator>, serde_json::Value)> 
     let raw = rpc.cluster_nodes_raw().await?;
     let nodes: Vec<ClusterNode> = serde_json::from_value(raw.clone())?;
     let votes: Vec<VoteAccount> = rpc.vote_accounts().await?;
-    let by_node: HashMap<&str, &VoteAccount> = votes.iter().map(|v| (v.node_pubkey.as_str(), v)).collect();
+    let by_node: HashMap<&str, &VoteAccount> =
+        votes.iter().map(|v| (v.node_pubkey.as_str(), v)).collect();
     let mut out: Vec<Validator> = nodes
         .iter()
         .filter_map(|n| {
@@ -93,13 +103,20 @@ pub async fn snapshot(rpc: &Rpc) -> Result<(Vec<Validator>, serde_json::Value)> 
         })
         .filter(|v| v.activated_stake > 0)
         .collect();
-    out.sort_by(|a, b| b.activated_stake.cmp(&a.activated_stake));
+    out.sort_by_key(|v| std::cmp::Reverse(v.activated_stake));
     Ok((out, raw))
 }
 
 /// Mechanism group label used for target selection and pooling (PLAN §2.1).
 pub fn group(v: &Validator) -> String {
-    format!("{}/{}", v.client_id, serde_json::to_value(v.ingress).ok().and_then(|x| x.as_str().map(String::from)).unwrap_or_default())
+    format!(
+        "{}/{}",
+        v.client_id,
+        serde_json::to_value(v.ingress)
+            .ok()
+            .and_then(|x| x.as_str().map(String::from))
+            .unwrap_or_default()
+    )
 }
 
 /// Highest-stake validator of each mechanism group, plus the `extra` next-highest on a *different* TPU IP
@@ -154,20 +171,52 @@ mod tests {
 
     #[test]
     fn ingress_classification() {
-        assert_eq!(classify(&node("Agave", "1.2.3.4:8001", Some("1.2.3.4:8009"))), IngressKind::Direct);
-        assert_eq!(classify(&node("JitoLabs", "1.2.3.4:8001", Some("5.6.7.8:11228"))), IngressKind::Relayer);
-        assert_eq!(classify(&node("JitoLabs", "1.2.3.4:8001", Some("1.2.3.4:11228"))), IngressKind::Relayer, "same-IP relayer");
-        assert_eq!(classify(&node("JitoLabs", "1.2.3.4:8001", Some("1.2.3.4:8002"))), IngressKind::Direct);
-        assert_eq!(classify(&node("AgaveBam", "1.2.3.4:8001", Some("9.9.9.9:5010"))), IngressKind::BamNode);
-        assert_eq!(classify(&node("HarmonicFiredancer", "1.2.3.4:8001", Some("8.8.8.8:9007"))), IngressKind::HarmonicRemoteTpu);
-        assert_eq!(classify(&node("Firedancer", "1.2.3.4:8001", None)), IngressKind::None);
+        assert_eq!(
+            classify(&node("Agave", "1.2.3.4:8001", Some("1.2.3.4:8009"))),
+            IngressKind::Direct
+        );
+        assert_eq!(
+            classify(&node("JitoLabs", "1.2.3.4:8001", Some("5.6.7.8:11228"))),
+            IngressKind::Relayer
+        );
+        assert_eq!(
+            classify(&node("JitoLabs", "1.2.3.4:8001", Some("1.2.3.4:11228"))),
+            IngressKind::Relayer,
+            "same-IP relayer"
+        );
+        assert_eq!(
+            classify(&node("JitoLabs", "1.2.3.4:8001", Some("1.2.3.4:8002"))),
+            IngressKind::Direct
+        );
+        assert_eq!(
+            classify(&node("AgaveBam", "1.2.3.4:8001", Some("9.9.9.9:5010"))),
+            IngressKind::BamNode
+        );
+        assert_eq!(
+            classify(&node(
+                "HarmonicFiredancer",
+                "1.2.3.4:8001",
+                Some("8.8.8.8:9007")
+            )),
+            IngressKind::HarmonicRemoteTpu
+        );
+        assert_eq!(
+            classify(&node("Firedancer", "1.2.3.4:8001", None)),
+            IngressKind::None
+        );
     }
 
     #[test]
     fn leader_windows_group_consecutive_slots() {
-        assert_eq!(windows(vec![14, 12, 13, 15, 40, 41, 42, 43, 50]), vec![(12, 15), (40, 43), (50, 50)]);
+        assert_eq!(
+            windows(vec![14, 12, 13, 15, 40, 41, 42, 43, 50]),
+            vec![(12, 15), (40, 43), (50, 50)]
+        );
         // back-to-back windows of one leader (and a single-leader localnet) stay separate 4-slot windows
-        assert_eq!(windows((100..112).collect()), vec![(100, 103), (104, 107), (108, 111)]);
+        assert_eq!(
+            windows((100..112).collect()),
+            vec![(100, 103), (104, 107), (108, 111)]
+        );
         assert!(windows(vec![]).is_empty());
     }
 }

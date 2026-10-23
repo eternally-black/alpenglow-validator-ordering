@@ -25,7 +25,9 @@ pub fn parse_feature_account(owner: &str, data: &[u8]) -> Result<Option<u64>> {
     }
     match data.first() {
         Some(0) => Ok(None),
-        Some(1) if data.len() >= 9 => Ok(Some(u64::from_le_bytes(data[1..9].try_into().expect("8 bytes")))),
+        Some(1) if data.len() >= 9 => Ok(Some(u64::from_le_bytes(
+            data[1..9].try_into().expect("8 bytes"),
+        ))),
         _ => bail!("malformed feature account data ({} bytes)", data.len()),
     }
 }
@@ -41,7 +43,9 @@ pub async fn require_active(rpc: &Rpc) -> Result<GateStatus> {
             activated_at_slot: slot,
             first_alpenglow_slot: FIRST_ALPENGLOW_SLOT,
         }),
-        None => bail!("Alpenglow feature {FEATURE_GATE} is pending, not active — refusing to measure"),
+        None => {
+            bail!("Alpenglow feature {FEATURE_GATE} is pending, not active — refusing to measure")
+        }
     }
 }
 
@@ -58,7 +62,10 @@ mod tests {
     fn parses_activated_feature() {
         let mut data = vec![1u8];
         data.extend_from_slice(&459_648_000u64.to_le_bytes());
-        assert_eq!(parse_feature_account(FEATURE_PROGRAM, &data).unwrap(), Some(459_648_000));
+        assert_eq!(
+            parse_feature_account(FEATURE_PROGRAM, &data).unwrap(),
+            Some(459_648_000)
+        );
     }
 
     #[test]

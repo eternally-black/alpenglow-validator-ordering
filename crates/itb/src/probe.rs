@@ -51,7 +51,11 @@ pub struct Template {
 
 impl Template {
     pub const fn new(cu_limit: u32, cu_price_micro_lamports: u64, loaded_data_limit: u32) -> Self {
-        Self { cu_limit, cu_price_micro_lamports, loaded_data_limit }
+        Self {
+            cu_limit,
+            cu_price_micro_lamports,
+            loaded_data_limit,
+        }
     }
 
     /// `ceil(L * p / 1e6)` lamports.
@@ -99,7 +103,10 @@ impl Template {
 
     /// Build and sign the probe. `lock` is a fresh, unfunded pubkey that only carries the write lock.
     pub fn build(&self, payer: &Keypair, lock: &Pubkey, recent_blockhash: Hash) -> Transaction {
-        let message = Message::new(&self.instructions(&payer.pubkey(), lock), Some(&payer.pubkey()));
+        let message = Message::new(
+            &self.instructions(&payer.pubkey(), lock),
+            Some(&payer.pubkey()),
+        );
         Transaction::new(&[payer], message, recent_blockhash)
     }
 }
@@ -114,7 +121,8 @@ pub mod library {
     pub const HI: Template = Template::new(1_000, 3_000_000, KIB_32);
     pub const LO: Template = Template::new(1_000, 1_000_000, MIB_64);
 
-    pub const ALL: [(&str, Template); 5] = [("A", A), ("B", B), ("A'", A_PRIME), ("hi", HI), ("lo", LO)];
+    pub const ALL: [(&str, Template); 5] =
+        [("A", A), ("B", B), ("A'", A_PRIME), ("hi", HI), ("lo", LO)];
 }
 
 /// Candidate ordering keys; higher value = expected earlier.
@@ -213,7 +221,10 @@ mod tests {
         let signed_writable = h.num_required_signatures - h.num_readonly_signed_accounts;
         let unsigned = msg.account_keys.len() as u8 - h.num_required_signatures;
         let unsigned_writable = unsigned - h.num_readonly_unsigned_accounts;
-        assert_eq!((signed_writable + unsigned_writable) as u64, ATOM_WRITABLE_ACCOUNTS);
+        assert_eq!(
+            (signed_writable + unsigned_writable) as u64,
+            ATOM_WRITABLE_ACCOUNTS
+        );
         assert!(tx.verify().is_ok());
         let wire = bincode::serialize(&tx).unwrap();
         assert!(wire.len() <= 1232, "fits a packet: {} bytes", wire.len());
@@ -222,7 +233,10 @@ mod tests {
     #[test]
     fn templates_meet_the_cu_floor() {
         for (name, t) in ALL {
-            assert!(t.cu_limit >= ATOM_EXECUTED_CU, "{name} would fail with ComputationalBudgetExceeded");
+            assert!(
+                t.cu_limit >= ATOM_EXECUTED_CU,
+                "{name} would fail with ComputationalBudgetExceeded"
+            );
         }
     }
 }

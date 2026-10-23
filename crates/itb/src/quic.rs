@@ -104,16 +104,25 @@ impl QuicClient {
 
         let mut config = ClientConfig::new(Arc::new(QuicClientConfig::try_from(crypto)?));
         config.transport_config(Arc::new(transport));
-        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().expect("bind addr")).context("binding QUIC endpoint")?;
+        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().expect("bind addr"))
+            .context("binding QUIC endpoint")?;
         endpoint.set_default_client_config(config);
-        Ok(Self { endpoint, conns: Default::default(), new_conn_log: Default::default(), clock })
+        Ok(Self {
+            endpoint,
+            conns: Default::default(),
+            new_conn_log: Default::default(),
+            clock,
+        })
     }
 
     fn allow_new_connection(&self, ip: IpAddr) -> bool {
         let mut log = self.new_conn_log.lock().expect("limiter mutex");
         let q = log.entry(ip).or_default();
         let now = Instant::now();
-        while q.front().is_some_and(|t| now.duration_since(*t) > Duration::from_secs(60)) {
+        while q
+            .front()
+            .is_some_and(|t| now.duration_since(*t) > Duration::from_secs(60))
+        {
             q.pop_front();
         }
         if q.len() >= MAX_NEW_CONNECTIONS_PER_IP_PER_MINUTE {
@@ -130,7 +139,13 @@ impl QuicClient {
         let mut conns = self.conns.lock().await;
         if let Some(c) = conns.get(&addr) {
             if c.lock().await.conn.close_reason().is_none() {
-                return ConnectReport { addr: addr.to_string(), reused: true, handshake_us: None, error: None, at_unix_ns };
+                return ConnectReport {
+                    addr: addr.to_string(),
+                    reused: true,
+                    handshake_us: None,
+                    error: None,
+                    at_unix_ns,
+                };
             }
             conns.remove(&addr);
         }
@@ -139,13 +154,18 @@ impl QuicClient {
                 addr: addr.to_string(),
                 reused: false,
                 handshake_us: None,
-                error: Some("local limiter: too many new connections to this IP in the last minute".into()),
+                error: Some(
+                    "local limiter: too many new connections to this IP in the last minute".into(),
+                ),
                 at_unix_ns,
             };
         }
         let started = Instant::now();
         let result = async {
-            let connecting = self.endpoint.connect(addr, "connect").map_err(|e| anyhow!("connect: {e}"))?;
+            let connecting = self
+                .endpoint
+                .connect(addr, "connect")
+                .map_err(|e| anyhow!("connect: {e}"))?;
             tokio::time::timeout(HANDSHAKE_TIMEOUT, connecting)
                 .await
                 .map_err(|_| anyhow!("handshake timed out after {HANDSHAKE_TIMEOUT:?}"))?
@@ -155,17 +175,40 @@ impl QuicClient {
         match result {
             Ok(conn) => {
                 let handshake_us = started.elapsed().as_micros() as u64;
-                conns.insert(addr, Arc::new(tokio::sync::Mutex::new(ConnState { conn, recent_streams: VecDeque::new() })));
-                ConnectReport { addr: addr.to_string(), reused: false, handshake_us: Some(handshake_us), error: None, at_unix_ns }
+                conns.insert(
+                    addr,
+                    Arc::new(tokio::sync::Mutex::new(ConnState {
+                        conn,
+                        recent_streams: VecDeque::new(),
+                    })),
+                );
+                ConnectReport {
+                    addr: addr.to_string(),
+                    reused: false,
+                    handshake_us: Some(handshake_us),
+                    error: None,
+                    at_unix_ns,
+                }
             }
-            Err(e) => ConnectReport { addr: addr.to_string(), reused: false, handshake_us: None, error: Some(e.to_string()), at_unix_ns },
+            Err(e) => ConnectReport {
+                addr: addr.to_string(),
+                reused: false,
+                handshake_us: None,
+                error: Some(e.to_string()),
+                at_unix_ns,
+            },
         }
     }
 
     /// Sends each transaction on its own uni-stream at its scheduled instant, in schedule order. Items sharing an
     /// instant go out back-to-back on the same connection. The connection is held for the whole call, so concurrent
     /// callers to one endpoint queue behind each other and share one stream budget. No retries.
-    pub async fn send_scheduled(&self, _auth: &LiveAuthorization, addr: SocketAddr, mut items: Vec<Outgoing>) -> Vec<StreamRecord> {
+    pub async fn send_scheduled(
+        &self,
+        _auth: &LiveAuthorization,
+        addr: SocketAddr,
+        mut items: Vec<Outgoing>,
+    ) -> Vec<StreamRecord> {
         items.sort_by_key(|o| o.at);
         let state = self.conns.lock().await.get(&addr).cloned();
         let mut out = Vec::with_capacity(items.len());
@@ -196,7 +239,11 @@ impl QuicClient {
             let wait_start = Instant::now();
             loop {
                 let now = Instant::now();
-                while st.recent_streams.front().is_some_and(|t| now.duration_since(*t) >= STREAM_WINDOW) {
+                while st
+                    .recent_streams
+                    .front()
+                    .is_some_and(|t| now.duration_since(*t) >= STREAM_WINDOW)
+                {
                     st.recent_streams.pop_front();
                 }
                 if st.recent_streams.len() < MAX_STREAMS_PER_100MS {

@@ -18,7 +18,8 @@ impl RunDir {
         if path.exists() {
             anyhow::bail!("run directory {} already exists", path.display());
         }
-        std::fs::create_dir_all(path.join("blocks")).with_context(|| format!("creating {}", path.display()))?;
+        std::fs::create_dir_all(path.join("blocks"))
+            .with_context(|| format!("creating {}", path.display()))?;
         Ok(Self { path })
     }
 
@@ -52,8 +53,14 @@ pub struct Jsonl {
 
 impl Jsonl {
     pub fn open(path: &Path) -> Result<Self> {
-        let f = OpenOptions::new().create(true).append(true).open(path).with_context(|| format!("opening {}", path.display()))?;
-        Ok(Self { w: Mutex::new(BufWriter::new(f)) })
+        let f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .with_context(|| format!("opening {}", path.display()))?;
+        Ok(Self {
+            w: Mutex::new(BufWriter::new(f)),
+        })
     }
 
     pub fn append(&self, value: &impl Serialize) -> Result<()> {
@@ -76,12 +83,18 @@ impl Jsonl {
 }
 
 pub fn utc_now_rfc3339() -> String {
-    time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap_or_default()
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default()
 }
 
 /// `20261023T171500Z-<tag>-<4 hex>`: sortable, filesystem-safe, collision-resistant run id.
 pub fn new_run_id(tag: &str) -> String {
     let now = time::OffsetDateTime::now_utc();
     let fmt = time::macros::format_description!("[year][month][day]T[hour][minute][second]Z");
-    format!("{}-{tag}-{:04x}", now.format(&fmt).unwrap_or_default(), rand::random::<u16>())
+    format!(
+        "{}-{tag}-{:04x}",
+        now.format(&fmt).unwrap_or_default(),
+        rand::random::<u16>()
+    )
 }

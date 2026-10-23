@@ -13,12 +13,16 @@ pub const COMPILED_MAX_SPEND_LAMPORTS: u64 = 50_000_000;
 
 #[derive(Debug)]
 pub struct LiveAuthorization {
-    cap_lamports: u64,
     _private: (),
 }
 
 impl LiveAuthorization {
-    pub fn grant(live: bool, max_spend_sol: Option<f64>, gate: &GateStatus, ledger: &Ledger) -> Result<Self> {
+    pub fn grant(
+        live: bool,
+        max_spend_sol: Option<f64>,
+        gate: &GateStatus,
+        ledger: &Ledger,
+    ) -> Result<Self> {
         if !live {
             bail!("live sending requires --live");
         }
@@ -27,24 +31,21 @@ impl LiveAuthorization {
         };
         let cap = sol_to_lamports(sol)?;
         if cap > COMPILED_MAX_SPEND_LAMPORTS {
-            bail!("--max-spend-sol {sol} exceeds the compiled maximum of {} SOL", COMPILED_MAX_SPEND_LAMPORTS as f64 / LAMPORTS_PER_SOL as f64);
+            bail!(
+                "--max-spend-sol {sol} exceeds the compiled maximum of {} SOL",
+                COMPILED_MAX_SPEND_LAMPORTS as f64 / LAMPORTS_PER_SOL as f64
+            );
         }
         if ledger.cap() != cap {
-            bail!("ledger cap is {} lamports but --max-spend-sol is {cap}; use the same cap for the whole campaign", ledger.cap());
+            bail!(
+                "ledger cap is {} lamports but --max-spend-sol is {cap}; use the same cap for the whole campaign",
+                ledger.cap()
+            );
         }
         // A GateStatus can only be produced by `alpenglow::require_active`, so holding one proves activation
         // (activation at slot 0 — e.g. a localnet genesis — is valid).
         let _ = gate;
-        Ok(Self { cap_lamports: cap, _private: () })
-    }
-
-    pub fn cap_lamports(&self) -> u64 {
-        self.cap_lamports
-    }
-
-    #[cfg(test)]
-    pub fn for_tests() -> Self {
-        Self { cap_lamports: 1, _private: () }
+        Ok(Self { _private: () })
     }
 }
 
@@ -61,7 +62,11 @@ mod tests {
     use crate::alpenglow::{FEATURE_GATE, FIRST_ALPENGLOW_SLOT};
 
     fn gate() -> GateStatus {
-        GateStatus { feature_gate: FEATURE_GATE, activated_at_slot: 459_648_000, first_alpenglow_slot: FIRST_ALPENGLOW_SLOT }
+        GateStatus {
+            feature_gate: FEATURE_GATE,
+            activated_at_slot: 459_648_000,
+            first_alpenglow_slot: FIRST_ALPENGLOW_SLOT,
+        }
     }
 
     fn ledger(cap: u64) -> Ledger {
