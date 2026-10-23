@@ -1,0 +1,51 @@
+[workspace]
+members = ["crates/itb"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "Apache-2.0"
+repository = "https://github.com/eternally-black/inside-the-block"
+
+# Solana crates are pinned to the exact versions agave v4.3.2 (the mainnet release at measurement time) builds with,
+# so wire formats, TLS setup and cost constants match the validators we measure.
+[workspace.dependencies]
+solana-compute-budget-interface = { version = "3.1.0", features = ["borsh"] }
+solana-hash = "4.6.0"
+solana-instruction = "3.5.0"
+solana-keypair = "3.1.2"
+solana-message = { version = "4.5.0", features = ["serde"] }
+solana-pubkey = "4.3.0"
+solana-signature = "3.5.2"
+solana-signer = "3.0.1"
+solana-system-interface = { version = "3.3.0", features = ["bincode"] }
+solana-tls-utils = { version = "=4.3.2", features = ["agave-unstable-api"] }
+solana-transaction = { version = "4.2.0", features = ["serde", "wincode", "verify"] }
+quinn = { package = "anza-quinn", version = "=0.11.11-rustsec20260339" }
+rustls = { version = "0.23.43", default-features = false, features = ["std", "ring"] }
+
+anyhow = "1.0.104"
+base64 = "0.22"
+bincode = "1.3.3"
+bs58 = "0.5"
+clap = { version = "4.5", features = ["derive", "env"] }
+futures-util = "0.3"
+rand = "0.8"
+rand_chacha = "0.3"
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.10"
+thiserror = "2.0.19"
+time = { version = "0.3", features = ["formatting", "macros"] }
+tokio = { version = "1.53.1", features = ["full"] }
+tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+zstd = "0.13"
+
+[profile.release]
+debug = 1
