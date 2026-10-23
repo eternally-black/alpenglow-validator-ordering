@@ -78,3 +78,12 @@ def test_a_failed_control_does_not_publish_its_raw_verdict():
 
     v = {"diagnosis": {"verdict": "none"}, "gates": {}, "confirmatory": True}
     assert published_claim(v, controls_failed=True, is_control=True) == "control failed: none"
+
+
+
+def test_a_tie_break_by_arrival_does_not_trigger_the_buffer_gate():
+    # CU price is tied on C3: arrival order there is a tie-break, not evidence that buffering failed.
+    c3_only = {"c1": stats.Effect(20, 40, ALPHA), "c2": stats.Effect(21, 40, ALPHA), "c3": stats.Effect(39, 40, ALPHA)}
+    by_regime = {"buffered": {"label": NULL, "order": c3_only}, "streaming": {"label": NULL, "order": NULL}}
+    assert _regime_gates("direct", by_regime, "cu_price")["key_conclusions_withdrawn"] is False
+    assert _regime_gates("direct", by_regime, "reward_cost")["key_conclusions_withdrawn"] is True

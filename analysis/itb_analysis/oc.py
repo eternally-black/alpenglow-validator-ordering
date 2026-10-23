@@ -10,7 +10,8 @@ failures (failed streams, unproduced windows, gossip transitions), so eligibilit
 
 Scoring against an explicit truth table:
 - correct: the claim names the true mechanism;
-- acceptable: an honest non-claim ("none", "unidentified…", or a withdrawn claim) — not a detection, not a falsehood;
+- acceptable: an honest non-claim ("none", "unidentified…", a withdrawn claim) or an under-claim (`partial:R` when the
+  truth is R) — not a full detection, not a falsehood;
 - wrong: anything else (a rule or mixture the scenario does not contain).
 "Any core target wrong" = the share of replicate campaigns in which at least one core target got a wrong claim, with an
 exact 95 % upper bound; "robust wrong" counts wrong claims that also survive the worst-case selection bounds.
@@ -170,14 +171,16 @@ def run(design: Path, targets: Path, reps: int, n_draws: int, seed0: int = 1000,
             for per_target in replicates:
                 any_core_wrong = any_robust_wrong = False
                 ctrl = [r for r in per_target.values() if r["control"]]
-                controls_ok += bool(ctrl) and all(r["claim"] == "reward_cost" for r in ctrl)
+                controls_ok += bool(ctrl) and all(r["claim"] in report.CONTROL_PASS for r in ctrl)
                 for target, res in per_target.items():
                     if res["control"]:
                         continue  # controls follow reward/cost in every scenario; scored separately
                     c = res["claim"]
                     claims[c] += 1
                     tier = tiers.get(target, "core")
-                    cls = "correct" if c in correct else "acceptable" if c in acceptable + ("withdrawn",) else "wrong"
+                    # partial:R when the truth is R is an under-claim (R's key named, majority not proven), not a falsehood
+                    under = tuple(f"partial:{r}" for r in correct if not r.startswith(("partial:", "mixed:")))
+                    cls = "correct" if c in correct else "acceptable" if c in acceptable + under + ("withdrawn",) else "wrong"
                     by_tier[tier][cls] += 1
                     by_tier[tier]["n"] += 1
                     any_core_wrong |= tier == "core" and cls == "wrong"

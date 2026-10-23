@@ -160,7 +160,11 @@ def _regime_gates(ingress: str, by_regime: dict[str, dict], verdict: str) -> dic
         return any(e.n and (e.interval[0] > 0.5 or e.interval[1] < 0.5) for e in effs.values())
 
     buf, stream = by_regime.get("buffered"), by_regime.get("streaming")
-    broken = any(e.verdict("first") == "confirmed" for e in buf["order"].values()) if ingress == "direct" and buf else None
+    # Only contrasts where the verdict's key differs between the members can contradict it: on a key-tied contrast
+    # ("any") the tie-break is unspecified, and arrival order is a legitimate one.
+    rule = verdict.removeprefix("partial:")
+    keyed = [c for c in stats.CONTRASTS if rule in stats.RULES and stats.RULES[rule]["order"][c] == "tie"]
+    broken = any(buf["order"][c].verdict("first") == "confirmed" for c in keyed) if ingress == "direct" and buf else None
     streaming_only = any_effect(stream["label"]) and not any_effect(buf["label"]) if buf and stream else None
     reason = None
     if broken and verdict in KEY_VERDICTS:
@@ -170,6 +174,9 @@ def _regime_gates(ingress: str, by_regime: dict[str, dict], verdict: str) -> dic
     return {"buffer_assumption_broken": broken, "label_effects_streaming_only": streaming_only,
             "key_conclusions_withdrawn": reason is not None, "withdrawal_reason": reason}
 
+
+#: Final verdicts with which a positive control passes: reward/cost SUPPORTED/CONFIRMED, after the selection check.
+CONTROL_PASS = ("reward_cost", "partial:reward_cost")
 
 #: Qualifier of a rule claim that does not survive the worst-case selection bounds (PREREGISTRATION §1).
 ASSUMES_SELECTION = " (assumes selection)"
@@ -182,7 +189,7 @@ def published_claim(v: dict, controls_failed: bool, is_control: bool) -> str:
         return f"withdrawn: {v['gates'].get('withdrawal_reason') or 'buffer assumption broken'}"
     if controls_failed and not is_control:
         return "withdrawn: positive control failed"
-    if controls_failed and is_control and verdict != "reward_cost":
+    if controls_failed and is_control and verdict not in CONTROL_PASS:
         return f"control failed: {verdict}"
     if v["diagnosis"].get("selection_robust") is False:
         verdict += ASSUMES_SELECTION
@@ -279,11 +286,11 @@ def analyse(dirs: list[Path], manifest: dict | None, designs: dict | None, n_dra
                 pvals[f"{key}/{c}/label"] = p["label"]
                 pvals[f"{key}/{c}/order"] = p["order"]
     result["holm"] = stats.holm(pvals, family_size=FAMILY if manifest else None)
-    # §9 gates. A positive control passes only with the final (post-selection-check, strict) reward/cost verdict, in
-    # its frozen (client, ingress) group.
+    # §9 gates. A positive control passes only with a final reward/cost verdict (after the selection check; strict or
+    # partial), in its frozen (client, ingress) group.
     controls_failed = False
     if manifest:
-        ok = {t: any(v["target_identity"] == t and v["positive_control"] and v["diagnosis"]["verdict"] == "reward_cost"
+        ok = {t: any(v["target_identity"] == t and v["positive_control"] and v["diagnosis"]["verdict"] in CONTROL_PASS
                      for v in result["validators"].values()) for t in controls}
         result["positive_controls"] = ok
         controls_failed = not all(ok.values()) if ok else True
