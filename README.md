@@ -7,10 +7,10 @@
 
 | | |
 |---|---|
-| **Results** | *Campaign 2026-10-27 → 10-31. Per-validator verdicts, intervals and the "what went wrong" log are in [REPORT.md](REPORT.md).* |
+| **Status** | Code, analysis and simulation complete; localnet end-to-end green. Mainnet campaign 2026-10-27 → 10-29 (hard stop `--not-after`), then [REPORT.md](REPORT.md) with per-validator verdicts, intervals, measurement dates and the "what went wrong" log |
 | **Reproduce (offline, no keys)** | `docker compose up --build` |
 | **Re-check claims on chain** | `docker compose --profile verify up` |
-| **Pre-registration** | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md), hash posted on mainnet before the campaign (Memo signature in REPORT.md) |
+| **Pre-registration** | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md) (normative analysis plan). Its SHA-256, the design's and the manifest's are posted in a mainnet Memo before the campaign; the signature goes here and in REPORT.md |
 | **Does the method work?** | [docs/POWER.md](docs/POWER.md): the analysis is run on simulated schedulers with known rules, including look-alikes built to fool it |
 
 ---
@@ -52,7 +52,7 @@ Each decision links to the evidence behind it.
 |---|---|---|
 | **Primary evidence = our own probes only** (other txs are supplementary) | Brief requirement; only our probes have known keys and send times | [docs/BOUNTY.md](docs/BOUNTY.md) |
 | **Leader type = clientId × ingress kind**, per window | ≈ 69 % of stake advertises a TPU that is a **shared BAM node or Harmonic Remote TPU**; there an external builder, not the validator, orders. `clientId` flips when BAM/Harmonic connect or disconnect | [research 02](docs/research/02-transaction-path-and-tooling.md), [research 03](docs/research/03-client-schedulers.md) |
-| **Buffered regime for direct ingress** (probes sent ≈ 150 ms before the window) | Agave holds packets that arrive ≤ 20 slots before its window, and Firedancer keeps pending txs. So every member of a pair is in the queue when the leader starts, and the scheduler's key is isolated from arrival | agave v4.3.2 `decision_maker.rs`; firedancer `default.toml` (research 02 errata) |
+| **Buffered regime for direct ingress** (probes sent ≈ 150 ms before the window, in 3 of every 4 windows; the 4th streams, as a built-in check of the buffer assumption) | Agave holds packets that arrive ≤ 20 slots before its window, and Firedancer keeps pending txs. So every member of a pair is in the queue when the leader starts, and the scheduler's key is isolated from arrival | agave v4.3.2 `decision_maker.rs`; firedancer `default.toml` (research 02 errata) |
 | **Streaming regime for shared ingress** | Pre-window sends to a shared builder land with whichever leader is current (spill-over). They are measured separately as a spill-over map | [PLAN §2.4](docs/PLAN.md) |
 | **Event-anchored send times** | After Alpenglow a slot inside a leader window is observed every ≈ 130 ms, but the hand-over between leaders takes ≈ 560 ms (≈ 235 ms per slot, not 200). We send relative to *observed* first shreds, not an extrapolated clock | dry-run data, [`timing.rs`](crates/itb/src/timing.rs) |
 | **Window = statistical unit**; exact binomial intervals; Bonferroni over 36 effects; randomisation tests that follow the real assignment | Pairs inside one window are not independent | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md) §4 |
@@ -69,7 +69,7 @@ Each decision links to the evidence behind it.
 | **Interaction of our own transactions** | Conflicts only through designed lock accounts. Distinct payers, randomly assigned. ≤ 14 streams per burst (below the 20/100 ms unstaked throttle). One persistent connection per IP (agave allows 8 new connections/IP/min) | Sub-millisecond stream processing order inside the receiver |
 | **Competition inside the block** | Full blocks archived for every probed window. Block fullness and our probes' priority percentile as covariates. Inclusion is a co-primary outcome | Other senders' arrival times and the scheduler's internal queue |
 | **Send order** | Randomised and balanced within each pair; independent of every key by construction; analysed as its own coding | — |
-| **Noise vs rule** | Pre-registered rules and decision thresholds; random rule as a candidate; conflict-window weights; simulation-calibrated operating characteristics; null results reported as findings | Effects smaller than the documented minimum detectable effect |
+| **Noise vs rule** | Pre-registered rules and decision thresholds; random rule as a candidate; equivalence tests for "tie" predictions; window-level strictness; a mixture diagnostic; simulation-calibrated operating characteristics; null results reported as findings | Effects smaller than the documented minimum detectable effect |
 | **Alpenglow (do not mix)** | Feature gate checked by every run; slots below 459,653,008 rejected at ingest and analysis | — |
 
 ### What this design does NOT separate (also in REPORT.md)
@@ -88,10 +88,11 @@ VERIFY_SAMPLE=0 docker compose --profile verify up   # all claims (slow on the p
 ```
 
 For each landed probe, the verifier checks that:
+- the signed bytes we logged before sending carry a valid ed25519 signature by the claimed payer;
 - its signature sits at the claimed index of the claimed block;
 - the transaction decodes to the claimed L, p, D, payer and lock;
 - the fee equals `5000 + ⌈L·p/10⁶⌉`;
-- the slot's leader is the target.
+- the slot's leader is the target (from the block's fee-reward recipient).
 
 It separates **chain-verifiable** facts from **locally recorded** ones (send timestamps). Raw data layout: [docs/DATA.md](docs/DATA.md).
 
@@ -108,7 +109,7 @@ It separates **chain-verifiable** facts from **locally recorded** ones (send tim
 - **Containers:** one Compose file with profiles `reproduce` (default), `verify`, `dryrun`, `live`, `keys`, `localnet` (a pinned Agave 4.3.2 test validator built from the SHA-256-verified release).
 - **Tests:**
   - Rust unit tests, including golden cost/priority vectors and ledger crash/restart tests;
-  - Python tests for statistics and the simulator;
+  - Python tests for the statistics (including counterexamples from the code review), the simulator and the verifier;
   - an end-to-end test that sends live probes over QUIC to a local Agave 4.3.2 node, collects outcomes and verifies every claim from the archived blocks ([`scripts/e2e-localnet.sh`](scripts/e2e-localnet.sh)).
 
 ## 6. Repository map
@@ -116,7 +117,7 @@ It separates **chain-verifiable** facts from **locally recorded** ones (send tim
 ```
 crates/itb/          measurement binary (Rust): probe, design, quic, timing, ledger, run, collect, setup
 analysis/            analysis package (Python): outcomes, stats, sim, oc, verify, report
-design/              frozen design + target list (hash in the pre-registration)
+design/              target list, frozen design and campaign manifest (hashes in the Memo; scripts/freeze.py)
 data/raw/<run_id>/   every observation of every run (signed probes, sends, outcomes, blocks, gossip)
 data/derived/        numbers in the report, regenerated by `docker compose up`
 docs/                PLAN, PREREGISTRATION, POWER, DATA, research notes, independent reviews
@@ -126,6 +127,6 @@ docker/              Dockerfiles; docker/LOCALNET.md
 ## 7. Process
 
 - The plan was reviewed adversarially by three independent models before any code: GPT-6 Astra, Claude Fable and DeepSeek-V4.1-Flash. Their reviews and every disposition are in [docs/review/](docs/review/) and [PLAN §12](docs/PLAN.md).
-- The code was reviewed again at the first gate.
+- The code was reviewed again at the first gate by GPT-6 Astra ([CODE-gate1-gpt.md](docs/review/CODE-gate1-gpt.md)): 30 findings on spend safety, execution and analysis, all addressed before the campaign.
 
 License: [Apache-2.0](LICENSE).

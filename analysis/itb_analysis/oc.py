@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import tempfile
 from collections import Counter, defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from . import outcomes, stats
@@ -66,69 +68,111 @@ def apply_stopping(pairs, tiers: dict[str, str]):
     return outcomes.pd.concat(keep, ignore_index=True) if keep else pairs.iloc[0:0]
 
 
-def analyse_dir(run_dir: Path, n_draws: int, tiers: dict[str, str]) -> dict[str, dict]:
+def analyse_dir(run_dir: Path, n_draws: int, tiers: dict[str, str], estimand: str = "cc") -> dict[str, dict]:
     run = load_run(run_dir)
     pairs = apply_stopping(outcomes.pair_table(run), tiers)
     per_target = {}
     for target, g in pairs.groupby("target_identity"):
-        eff = stats.validator_effects(g, n_draws=n_draws)
+        eff = stats.validator_effects(g, n_draws=n_draws, estimand=estimand)
         per_target[target] = {"verdict": eff["diagnosis"]["verdict"], "n_c1": eff["label"]["c1"].n, "windows": int(g["seq"].nunique())}
     return per_target
 
 
-def run(design: Path, targets: Path, reps: int, n_draws: int, seed0: int = 1000) -> dict:
+def _replicate(job: tuple) -> dict[str, dict]:
+    """One simulated campaign, analysed exactly as the report would (a process-pool worker)."""
+    design, targets, scenario, over, seed, n_draws, tiers, estimand = job
+    with tempfile.TemporaryDirectory() as tmp:
+        simulate(design, targets, Path(tmp), Params(scenario=scenario, seed=seed, **over), stage=1)
+        return analyse_dir(Path(tmp), n_draws, tiers, estimand)
+
+
+def run(design: Path, targets: Path, reps: int, n_draws: int, seed0: int = 1000, estimand: str = "cc",
+        only: list[str] | None = None, jobs: int = 1) -> dict:
+    """Replicate r of every scenario uses seed seed0 + r, so results do not depend on `jobs`."""
     tiers = {t["identity"]: t.get("tier", "core") for t in json.loads(Path(targets).read_text())}
     results: dict[str, dict] = {}
-    for name, (over, correct, acceptable) in SCENARIOS.items():
-        over = dict(over)
-        scenario = over.pop("scenario", name)
-        verdicts: Counter = Counter()
-        by_tier: dict[str, Counter] = defaultdict(Counter)
-        family_wrong = 0
-        n_obs, windows = [], []
-        for r in range(reps):
-            with tempfile.TemporaryDirectory() as tmp:
-                simulate(design, targets, Path(tmp), Params(scenario=scenario, seed=seed0 + r, **over), stage=1)
-                per_target = analyse_dir(Path(tmp), n_draws, tiers)
-            any_core_wrong = False
-            for target, res in per_target.items():
-                v = res["verdict"]
-                verdicts[v] += 1
-                tier = tiers.get(target, "core")
-                cls = "correct" if v in correct else "acceptable" if v in acceptable else "wrong"
-                by_tier[tier][cls] += 1
-                by_tier[tier]["n"] += 1
-                any_core_wrong |= tier == "core" and cls == "wrong"
-                n_obs.append(res["n_c1"])
-                windows.append(res["windows"])
-            family_wrong += any_core_wrong
-        total = sum(verdicts.values())
-        median = lambda xs: sorted(xs)[len(xs) // 2] if xs else 0
-        results[name] = {
-            "correct": list(correct),
-            "verdicts": {k: v / total for k, v in verdicts.most_common()},
-            "by_tier": {t: {k: c[k] / c["n"] for k in ("correct", "acceptable", "wrong")} | {"n": c["n"]} for t, c in by_tier.items()},
-            "family_wrong_rate": family_wrong / reps,
-            "median_pairs_c1": median(n_obs),
-            "median_windows_attempted": median(windows),
-            "reps": reps,
-        }
-        print(name, json.dumps(results[name]), flush=True)
+    pool = ProcessPoolExecutor(max_workers=jobs) if jobs > 1 else None
+    try:
+        for name, (over, correct, acceptable) in SCENARIOS.items():
+            if only and name not in only:
+                continue
+            over = dict(over)
+            scenario = over.pop("scenario", name)
+            batch = [(design, targets, scenario, over, seed0 + r, n_draws, tiers, estimand) for r in range(reps)]
+            replicates = list(pool.map(_replicate, batch)) if pool else [_replicate(j) for j in batch]
+            verdicts: Counter = Counter()
+            by_tier: dict[str, Counter] = defaultdict(Counter)
+            family_wrong = 0
+            n_obs, windows = [], []
+            for per_target in replicates:
+                any_core_wrong = False
+                for target, res in per_target.items():
+                    v = res["verdict"]
+                    verdicts[v] += 1
+                    tier = tiers.get(target, "core")
+                    cls = "correct" if v in correct else "acceptable" if v in acceptable else "wrong"
+                    by_tier[tier][cls] += 1
+                    by_tier[tier]["n"] += 1
+                    any_core_wrong |= tier == "core" and cls == "wrong"
+                    n_obs.append(res["n_c1"])
+                    windows.append(res["windows"])
+                family_wrong += any_core_wrong
+            total = sum(verdicts.values())
+            median = lambda xs: sorted(xs)[len(xs) // 2] if xs else 0
+            results[name] = {
+                "correct": list(correct),
+                "verdicts": {k: v / total for k, v in verdicts.most_common()},
+                "by_tier": {t: {k: c[k] / c["n"] for k in ("correct", "acceptable", "wrong")} | {"n": c["n"]} for t, c in by_tier.items()},
+                "family_wrong_rate": family_wrong / reps,
+                "median_pairs_c1": median(n_obs),
+                "median_windows_attempted": median(windows),
+                "reps": reps,
+                "estimand": estimand,
+            }
+            print(name, json.dumps(results[name]), flush=True)
+    finally:
+        if pool:
+            pool.shutdown()
     return results
+
+
+def markdown_table(results: dict) -> str:
+    """The POWER.md table: per scenario, core-tier verdict classes, family-wise wrong rate and sample sizes."""
+    pct = lambda x: f"{100 * x:.0f} %"
+    rows = ["| Scenario | True verdict | Correct | Honest non-claim | Wrong | Any core target wrong | Median C1 pairs | Median windows |",
+            "|---|---|---|---|---|---|---|---|"]
+    for name, r in results.items():
+        core = r["by_tier"].get("core", {"correct": 0, "acceptable": 0, "wrong": 0})
+        rows.append(f"| `{name}` | {' / '.join(r['correct'])} | {pct(core['correct'])} | {pct(core['acceptable'])} | "
+                    f"{pct(core['wrong'])} | {pct(r['family_wrong_rate'])} | {r['median_pairs_c1']} | {r['median_windows_attempted']} |")
+    return "\n".join(rows) + "\n"
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--design", required=True, type=Path)
-    ap.add_argument("--targets", required=True, type=Path)
+    ap.add_argument("--design", type=Path)
+    ap.add_argument("--targets", type=Path)
     ap.add_argument("--reps", type=int, default=20)
     ap.add_argument("--n-draws", type=int, default=2_000)
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--estimand", choices=sorted(stats.ESTIMANDS), default="cc",
+                    help="cc = pre-registered primary; censored = sensitivity coding")
+    ap.add_argument("--markdown", type=Path, default=None, help="also write the POWER.md table here")
+    ap.add_argument("--from-json", type=Path, default=None, help="render --markdown from an earlier --out file")
+    ap.add_argument("--jobs", type=int, default=os.cpu_count() or 1, help="worker processes (results do not depend on it)")
+    ap.add_argument("--scenarios", nargs="*", choices=sorted(SCENARIOS), default=None)
     a = ap.parse_args()
-    res = run(a.design, a.targets, a.reps, a.n_draws)
+    if a.from_json:
+        res = json.loads(a.from_json.read_text())
+    else:
+        if not (a.design and a.targets):
+            ap.error("--design and --targets are required unless --from-json is given")
+        res = run(a.design, a.targets, a.reps, a.n_draws, estimand=a.estimand, only=a.scenarios, jobs=a.jobs)
     if a.out:
         a.out.parent.mkdir(parents=True, exist_ok=True)
         a.out.write_text(json.dumps(res, indent=1))
+    if a.markdown:
+        a.markdown.write_text(markdown_table(res), encoding="utf-8")
 
 
 if __name__ == "__main__":

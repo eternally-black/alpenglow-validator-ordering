@@ -130,6 +130,22 @@ def _labels(eff: dict) -> dict:
     return {c: _effect(e) for c, e in eff["label"].items()}
 
 
+def _regime_gates(ingress: str, by_regime: dict[str, dict]) -> dict:
+    """PREREGISTRATION §9 rows 2-3 for one validator group, from its per-regime effects.
+
+    - buffer_assumption_broken: on direct ingress, some order effect is confirmed "first" in the buffered regime
+      (the probes did not coexist in the queue); the group's key conclusions are then withdrawn.
+    - label_effects_streaming_only: label effects appear in streaming windows but in no buffered one."""
+    def any_effect(effs: dict) -> bool:
+        return any(e.n and (e.interval[0] > 0.5 or e.interval[1] < 0.5) for e in effs.values())
+
+    buf, stream = by_regime.get("buffered"), by_regime.get("streaming")
+    broken = any(e.verdict("first") == "confirmed" for e in buf["order"].values()) if ingress == "direct" and buf else None
+    streaming_only = any_effect(stream["label"]) and not any_effect(buf["label"]) if buf and stream else None
+    return {"buffer_assumption_broken": broken, "label_effects_streaming_only": streaming_only,
+            "key_conclusions_withdrawn": bool(broken)}
+
+
 def compute(raw_root: Path, manifest_path: Path | None = None, n_draws: int = stats.N_RANDOMISATION) -> dict:
     manifest = load_manifest(manifest_path)
     dirs, rejected = select_runs(raw_root, manifest)
@@ -161,11 +177,13 @@ def compute(raw_root: Path, manifest_path: Path | None = None, n_draws: int = st
         wsub = windows[windows["target_identity"] == target].set_index(["run_id", "seq"])
         ambiguous_ok = [(r, s) for (r, s), row in wsub.iterrows() if row["exclusion"] in ("", "mode:transition_ambiguous")]
         relaxed["evaluable"] = [(r, s) in set(ambiguous_ok) for r, s in zip(relaxed["run_id"], relaxed["seq"])]
+        by_regime = {reg: stats.validator_effects(gg, n_draws=min(n_draws, 2_000)) for reg, gg in g.groupby("regime")}
         sens = {
             "censored": _labels(stats.validator_effects(g, n_draws=min(n_draws, 2_000), estimand="censored")),
             "worst_case": _worst_case(g),
             "session_bootstrap_L": _session_bootstrap(g),
-            "regime": {reg: _labels(stats.validator_effects(gg, n_draws=min(n_draws, 2_000))) for reg, gg in g.groupby("regime")},
+            "regime": {reg: {"label": _labels(e), "order": {c: _effect(x) for c, x in e["order"].items()},
+                             "verdict": e["diagnosis"]["verdict"]} for reg, e in by_regime.items()},
             "including_transition_ambiguous": _labels(stats.validator_effects(relaxed, n_draws=min(n_draws, 2_000))),
         }
         if "achieved_offset_ms" in g:
@@ -188,6 +206,7 @@ def compute(raw_root: Path, manifest_path: Path | None = None, n_draws: int = st
             "selection": eff["selection"],
             "exploratory_uncontended_c2": {"k": int(uncontended["x_first_cc"].sum()), "n": len(uncontended)},
             "sensitivity": sens,
+            "gates": _regime_gates(ingress, by_regime),
         }
         if core is None or target in core:
             for c, p in eff["pvalues"].items():
@@ -201,12 +220,8 @@ def compute(raw_root: Path, manifest_path: Path | None = None, n_draws: int = st
                      for v in result["validators"].values()) for t in controls}
         result["positive_controls"] = ok
         result["closed_source_conclusions_withdrawn"] = not all(ok.values()) if ok else True
-        buffered_broken = {}
-        for k, v in result["validators"].items():
-            reg = v["sensitivity"]["regime"].get("buffered")
-            if v["ingress"] == "direct" and reg:
-                buffered_broken[k] = False  # order effects in the buffered regime are inspected below
-        result["buffer_assumption_checks"] = buffered_broken
+    result["buffer_assumption_broken"] = sorted(k for k, v in result["validators"].items() if v["gates"]["buffer_assumption_broken"])
+    result["label_effects_streaming_only"] = sorted(k for k, v in result["validators"].items() if v["gates"]["label_effects_streaming_only"])
     return _clean(result)
 
 
@@ -246,6 +261,9 @@ def markdown_summary(result: dict) -> str:
         def f(e):
             return "–" if e["n"] == 0 else f"{e['estimate']:.2f} [{e['ci_bonferroni'][0]:.2f}, {e['ci_bonferroni'][1]:.2f}] (n={e['n']})"
         keep = [f"{k} ({s['status']})" for k, s in r["rules"].items() if s["status"] != "REJECTED"]
+        gates = r.get("gates", {})
+        flags = "".join([" (withdrawn: buffer assumption broken)" if gates.get("key_conclusions_withdrawn") else "",
+                         " (label effects in streaming windows only)" if gates.get("label_effects_streaming_only") else ""])
         lines.append(f"| `{r['target_identity'][:8]}…` | {r['client_id']} | {r['ingress']} | {f(r['label']['c1'])} | {f(r['label']['c2'])} | "
-                     f"{f(r['label']['c3'])} | **{r['diagnosis']['verdict']}** | {', '.join(keep) or 'none'} |")
+                     f"{f(r['label']['c3'])} | **{r['diagnosis']['verdict']}**{flags} | {', '.join(keep) or 'none'} |")
     return "\n".join(lines)

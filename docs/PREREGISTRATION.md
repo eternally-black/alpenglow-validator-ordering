@@ -4,7 +4,7 @@
 > **normative** analysis plan. Where PLAN.md or other documents differ, this document wins.
 >
 > On freezing:
-> - the SHA-256 of this file, of `design/design.jsonl` and of `design/campaign.json` (the campaign manifest) are posted on Solana mainnet in a Memo transaction signed by the measurement wallet;
+> - the SHA-256 of this file, of `design/design.jsonl` and of `design/campaign.json` (the campaign manifest: core targets, positive controls, design and genesis hashes, stop date) are posted on Solana mainnet in a Memo transaction signed by the measurement wallet. `scripts/freeze.py` writes the manifest and prints the Memo text;
 > - the Memo signature is added to the README;
 > - any later change is listed under "Deviations" in REPORT.md, with its reason.
 >
@@ -155,8 +155,8 @@ Settings: 100,000 seeded draws, Holm over the fixed family of 36 (missing effect
 | Observation | Conclusion |
 |---|---|
 | reward/cost not SUPPORTED/CONFIRMED on the positive controls (vanilla Agave, Firedancer) | The method failed on a known rule. The report states it, and conclusions for closed-source clients are withdrawn (`closed_source_conclusions_withdrawn`). |
-| O_C confirmed "first" on direct ingress in the buffered regime | The buffer assumption is wrong (probes did not coexist in the queue). Key conclusions for that group are withdrawn. |
-| Label effects only in streaming windows | The ordering happens upstream of the regime we thought we controlled; reported as such. |
+| O_C confirmed "first" on direct ingress in the buffered regime | The buffer assumption is wrong (probes did not coexist in the queue). Key conclusions for that group are withdrawn (`gates.buffer_assumption_broken`, `key_conclusions_withdrawn`). |
+| Label effects only in streaming windows | The ordering happens upstream of the regime we thought we controlled; reported as such (`gates.label_effects_streaming_only`). |
 | Selection check fails | `unidentified:selection` for that validator. |
 
 ## Deviations
