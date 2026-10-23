@@ -1,0 +1,21 @@
+Created [docs/review/PLAN-v1-gpt.md](</C:/Users/valera/Desktop/AlpenGlow Validator Bounty/docs/review/PLAN-v1-gpt.md>) with **33 findings: 5 BLOCKER, 25 MAJOR, 3 MINOR**.
+
+- Kit A’s ranking constraints are mathematically impossible: total fee and priority fee rank identically.
+- Shared locks do not prove simultaneous scheduler eligibility.
+- Pairwise comparisons inflate evidence unless window dependence is respected.
+- Same-slot survivor filtering can manufacture apparent ordering rules.
+- The proposed CU range includes a transaction already demonstrated to fail.
+- BAM’s documented cadence changed to **20 ms**, contradicting the 50 ms assumption. [Source](https://bam.dev/blog/bam-changelog-sept-23-oct-9/)
+- Overtaking curves cannot uniquely distinguish auctions from pacing or transport buffering.
+- Tie pairs cannot independently identify tie-breaking and calibrate network jitter.
+- Pre-window sends and long races cross uncontrolled slot and leader boundaries.
+- Shared ingress, QUIC processing, and stale snapshots weaken validator attribution.
+- Blockhash, retries, payer rotation, and balance controls need explicit protocols.
+- Scheduling cost must be separated from execution accounting.
+- Firedancer’s allocation discriminator needs release-specific validation.
+- Sixteen windows are insufficient for the proposed subdivisions and precision.
+- Decision thresholds, multiplicity, simulations, and preregistration need redesign.
+- The passive census could require hundreds of gigabytes.
+- Spend-cap reconciliation and offline reproduction need clearer guarantees.
+- The report supplies replacement contrasts, a smaller campaign, revised timeline, and score-raising ideas.
+- **No other files were modified.**

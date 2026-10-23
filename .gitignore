@@ -1,0 +1,31 @@
+# --- secrets: keys are supplied only via env or a mounted volume, never committed ---
+.env
+.env.*
+!.env.example
+secrets/
+*.keypair.json
+*-keypair.json
+id.json
+keys/
+
+# --- build output ---
+target/
+**/__pycache__/
+*.pyc
+.venv/
+node_modules/
+dist/
+
+# --- local runtime state (raw data that backs the report lives in data/raw and IS committed) ---
+data/tmp/
+data/scratch/
+*.log
+*.sqlite-journal
+
+# --- editor / agent config ---
+.vscode/
+.idea/
+.claude/
+.codex/
+.DS_Store
+Thumbs.db
