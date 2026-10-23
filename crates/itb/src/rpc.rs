@@ -173,6 +173,11 @@ impl Rpc {
         Ok(rel.into_iter().map(|r| epoch_first_slot + r).collect())
     }
 
+    /// Slots in `[start, end]` that have a confirmed block (skipped slots are absent).
+    pub async fn blocks_in_range(&self, start: u64, end: u64) -> Result<Vec<u64>> {
+        self.call_as("getBlocks", json!([start, end, {"commitment": "confirmed"}])).await
+    }
+
     pub async fn slot_leaders(&self, start: u64, limit: u64) -> Result<Vec<String>> {
         self.call_as("getSlotLeaders", json!([start, limit])).await
     }

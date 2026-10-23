@@ -29,3 +29,6 @@ data/scratch/
 .codex/
 .DS_Store
 Thumbs.db
+keys-not-configured/
+state/
+data/dryrun/

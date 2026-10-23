@@ -118,14 +118,15 @@ pub fn top_per_group(validators: &[Validator], extra: usize) -> Vec<Validator> {
     picked
 }
 
-/// Leader windows (runs of consecutive leader slots) as (first_slot, last_slot).
+/// Leader windows as (first_slot, last_slot): leader slots grouped into the 4-slot, 4-aligned groups the schedule
+/// assigns (`NUM_CONSECUTIVE_LEADER_SLOTS`). Two back-to-back windows of the same leader stay two windows.
 pub fn windows(mut slots: Vec<u64>) -> Vec<(u64, u64)> {
     slots.sort_unstable();
     slots.dedup();
     let mut out: Vec<(u64, u64)> = vec![];
     for s in slots {
         match out.last_mut() {
-            Some((_, end)) if *end + 1 == s => *end = s,
+            Some((first, end)) if *first / 4 == s / 4 => *end = s,
             _ => out.push((s, s)),
         }
     }
@@ -158,7 +159,9 @@ mod tests {
 
     #[test]
     fn leader_windows_group_consecutive_slots() {
-        assert_eq!(windows(vec![12, 10, 11, 13, 40, 41, 42, 43, 50]), vec![(10, 13), (40, 43), (50, 50)]);
+        assert_eq!(windows(vec![14, 12, 13, 15, 40, 41, 42, 43, 50]), vec![(12, 15), (40, 43), (50, 50)]);
+        // back-to-back windows of one leader (and a single-leader localnet) stay separate 4-slot windows
+        assert_eq!(windows((100..112).collect()), vec![(100, 103), (104, 107), (108, 111)]);
         assert!(windows(vec![]).is_empty());
     }
 }

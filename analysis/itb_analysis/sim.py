@@ -82,12 +82,15 @@ def _greedy(items: list[Item], p: Params, rng: np.random.Generator, key: str = "
     """Streaming priority scheduler: a pass every pass_ms; available items scheduled in key order.
     Items with a lock shared in the window keep key order; independent items land in random worker order."""
     pending = sorted(items, key=lambda i: i.arrival)
-    t = 0.0
+    # The scheduler's pass grid has no relation to our arrival times: random phase per window.
+    phase = rng.uniform(0, p.pass_ms)
+    t = phase
     order = 0
     while pending:
         avail = [i for i in pending if max(i.arrival, 0.0) <= t]
         if not avail:
-            t = max(t + p.pass_ms, math.ceil(max(pending[0].arrival, 0.0) / p.pass_ms) * p.pass_ms)
+            nxt = max(pending[0].arrival, 0.0)
+            t = max(t + p.pass_ms, phase + math.ceil((nxt - phase) / p.pass_ms) * p.pass_ms)
             continue
         avail.sort(key=lambda i: (-i.key[key], rng.random()))
         shared = {i.lock for i in avail}
@@ -103,7 +106,7 @@ def _greedy(items: list[Item], p: Params, rng: np.random.Generator, key: str = "
 def _paced(items: list[Item], p: Params, rng: np.random.Generator) -> None:
     """Pending queue drained one item per pace_ms opportunity, best reward/cost first (pacing look-alike)."""
     pending = list(items)
-    t = 0.0
+    t = rng.uniform(0, p.pace_ms)
     order = 0
     while pending:
         avail = [i for i in pending if max(i.arrival, 0.0) <= t]

@@ -1,13 +1,85 @@
-# Single Compose file for the project (PLAN.md §5). Services are grouped by profile; the default
-# profile (offline reproduction) and the verify / dryrun / live profiles are added later.
+# One Compose file for the whole project (PLAN §5).
 #
-# localnet: a throwaway single-node Solana cluster (solana-test-validator, Agave v4.3.2) for
-# integration tests. Fresh ledger on every start. See docker/LOCALNET.md.
+#   docker compose up --build                 # DEFAULT: offline reproduction — recompute every number from data/raw
+#                                             #          (no network, no keys) and compare with data/derived
+#   docker compose --profile verify up        # re-check a sample of claims against mainnet (public RPC)
+#   docker compose --profile dryrun up        # live mainnet dry run: real schedule/gossip/QUIC handshakes, no tx bytes
+#   docker compose --profile live run --rm live run --live --max-spend-sol 0.05 --stage 1 ...   # capped live sends
+#   docker compose --profile localnet up -d --wait localnet                                     # local test validator
 #
-#   docker compose --profile localnet up -d --build --wait localnet
-#   docker compose --profile localnet down -v
+# Keys are never in the repo or the images: the live profile mounts ${ITB_KEYS_DIR} read-only at /keys.
+# See .env.example for every variable.
+
+x-analysis: &analysis
+  build:
+    context: .
+    dockerfile: docker/analysis.Dockerfile
+  image: itb-analysis:local
+
+x-itb: &itb
+  build:
+    context: .
+    dockerfile: docker/itb.Dockerfile
+  image: itb:local
 
 services:
+  # ---------------------------------------------------------------- default: offline reproduction
+  reproduce:
+    <<: *analysis
+    command: ["reproduce", "--raw", "data/raw", "--derived", "data/derived"]
+    volumes:
+      - ./:/work:ro
+    network_mode: none # proves the result needs nothing but the committed data
+
+  # ---------------------------------------------------------------- chain verification
+  verify:
+    <<: *analysis
+    profiles: ["verify"]
+    command: ["verify", "--source", "chain", "--sample", "${VERIFY_SAMPLE:-30}", "--rpc-url", "${VERIFY_RPC_URL:-https://api.mainnet-beta.solana.com}"]
+    volumes:
+      - ./:/work:ro
+
+  # ---------------------------------------------------------------- mainnet dry run (default mode of the binary)
+  dryrun:
+    <<: *itb
+    profiles: ["dryrun"]
+    command: ["run", "--design", "design/design.jsonl", "--stage", "1", "--max-windows", "${DRYRUN_WINDOWS:-10}",
+              "--out", "data/dryrun", "--progress", "data/dryrun/progress.jsonl"]
+    environment:
+      RPC_URL: ${RPC_URL:-https://api.mainnet-beta.solana.com}
+      WS_URL: ${WS_URL:-}
+    volumes:
+      - ./design:/work/design:ro
+      - ./data/dryrun:/work/data/dryrun
+
+  # ---------------------------------------------------------------- live, capped (explicit flags required)
+  live:
+    <<: *itb
+    profiles: ["live"]
+    environment:
+      RPC_URL: ${RPC_URL:-https://api.mainnet-beta.solana.com}
+      WS_URL: ${WS_URL:-}
+      ITB_KEYPAIR_PATH: /keys/master.json
+      ITB_PAYER_DIR: /keys/payers
+      ITB_LEDGER: /work/state/ledger.sqlite
+      ITB_PROGRESS: /work/state/progress.jsonl
+    volumes:
+      - ${ITB_KEYS_DIR:-./keys-not-configured}:/keys:ro
+      - ./state:/work/state
+      - ./data:/work/data
+      - ./design:/work/design:ro
+
+  # One-off: generate the payer pool into the keys directory (the only writable key mount).
+  keys-init:
+    <<: *itb
+    profiles: ["keys"]
+    command: ["init-payers", "--dir", "/keys/payers", "--count", "24"]
+    network_mode: none
+    volumes:
+      - ${ITB_KEYS_DIR:-./keys-not-configured}:/keys
+
+  # ---------------------------------------------------------------- local single-node cluster for integration tests
+  # solana-test-validator, Agave v4.3.2. Fresh ledger on every start. See docker/LOCALNET.md.
   localnet:
     profiles: ["localnet"]
     build:

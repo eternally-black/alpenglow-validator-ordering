@@ -595,6 +595,12 @@ async fn execute_window(ctx: WindowCtx, v: Validator, plan: WindowPlan, window: 
     }
     row["anchors"] = serde_json::Value::Object(anchors);
     row["not_sent"] = json!(not_sent.len());
+    // Which of the window's slots the target actually produced (eligibility criterion (c)); give the cluster a moment.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    match ctx.rpc.blocks_in_range(window.0, window.1).await {
+        Ok(slots) => row["produced_slots"] = json!(slots),
+        Err(e) => row["produced_slots_error"] = json!(e.to_string()),
+    }
     for t in &mut tracked {
         if let Some(reason) = not_sent.get(&t.probe_id) {
             t.transport_error = Some(format!("not_sent: {reason}"));
