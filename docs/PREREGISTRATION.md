@@ -24,7 +24,7 @@ For each target validator **V**, reached through the ingress endpoint actually u
 
 - **Primary (complete-case):** L and O are estimated over pairs where **both** members landed in the targeted window: "when both are included, which comes first".
 - **Co-primary inclusion analysis (estimand 3).**
-- **Sensitivity (censored coding, §6):** a non-landed member counts as after every landed one. Simulation (POWER.md) shows this coding loses most of its power at landing rates ≤ 0.6, which is why it is not primary.
+- **Sensitivity (censored coding, §6):** a non-landed member counts as after every landed one. In simulation (POWER.md) it recovers reward/cost in 50 % of campaigns at 90 % landing (complete-case: 99 %) and in none at 50 % landing (complete-case: 51 %), which is why it is not primary.
 - **Pairs where neither member landed** contribute nothing; they are counted in the funnel.
 
 **Selection assumption (stated, partly testable, and bounded).** Reading a complete-case effect as an ordering rule assumes that whether *both* members of a pair are included does not depend jointly on the send-order assignment and on the order the scheduler would have produced. This cannot be established from the data. A label-blind scheduler whose inclusion drops both members exactly when y would have won produces a perfect, balanced complete-case "rule" (the gate-1b counterexample, simulated as `balanced_double_loss` in POWER.md). Therefore:

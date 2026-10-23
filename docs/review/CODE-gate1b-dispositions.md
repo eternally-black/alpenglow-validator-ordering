@@ -40,3 +40,12 @@ Review: [CODE-gate1b-gpt.md](CODE-gate1b-gpt.md) (GPT-6 Astra, advisory only), 2
 | 14 (race slot crossings and member gaps) | The T kit stays **exploratory** (PREREGISTRATION §7). Achieved first-send offsets are measured (N9); slot crossings of race pairs are classified in the exploratory analysis only. |
 | 21 (pair/report claims recomputation) | `docker compose up` recomputes every reported number from raw data and diffs it against the committed results. The verifier checks every claim against chain or archive, plus completeness. |
 | 23 (unresolved / missing-block states not simulated) | **Accepted.** Observation failures that change eligibility are simulated (N11). Unresolved outcomes are not: they leave a pair incomplete exactly like a non-landing, which the landing-rate scenarios cover. |
+
+## Found afterwards (DeepSeek review of these fixes, and the simulation study itself)
+
+- [ANALYSIS-gate1b-deepseek.md](ANALYSIS-gate1b-deepseek.md): the R vs partial:R split moved from complete-window strictness to the *governed share*, because the strictness version starved at low landing. Mixtures are never selection-robust, and a failed control publishes "control failed: …".
+- **First full simulation run:**
+  - Arrival tie-breaks on a key-tied contrast (C3 under CU price) triggered the buffer gate and withdrew 32 % of correct CU-price claims. The gate now looks only at contrasts where the verdict's key differs.
+  - A 95 %-strict rule with ≈ 20 pairs per contrast was scored wrong for an honest `partial:R`, which is now scored as an under-claim. Positive controls pass with reward/cost SUPPORTED, strict or partial (the original pre-registered condition), so a real Agave with some streaming-window noise cannot withdraw the whole report.
+- **Loaded localnet e2e:** the ledger's durable write sat between the observed anchor and the send. Each phase is now reserved before its anchor wait, and released on every path that does not send.
+- **Mutation testing:** removing expired fees from the cap check was not caught by any test; `expiry_frees_the_payer_but_never_the_fee` now covers it. The nine other mutations of the new guards (eight in the analysis, one in the ledger) were all caught.

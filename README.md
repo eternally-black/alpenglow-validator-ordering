@@ -58,7 +58,7 @@ Each decision links to the evidence behind it.
 | **Window = statistical unit**; exact binomial intervals; Bonferroni over 36 effects; randomisation tests that follow the real assignment | Pairs inside one window are not independent | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md) §4 |
 | **Positive controls first** (vanilla Agave, Firedancer) | Their rule is public. If we cannot recover it, nothing else in the report should be believed | PREREGISTRATION §9 |
 | **Stopping by landed pairs, not by results** | Probes that do not land cost nothing. Low-landing ingress gets more windows, without a peek at the ordering | PREREGISTRATION §5 |
-| **Simulation before live data** | Shows the procedure finds the true rule in 93–100 % of runs and almost never a wrong one, including against look-alikes | [docs/POWER.md](docs/POWER.md) |
+| **Simulation before live data** | The full published procedure runs on 1,700 simulated campaigns with known rules, look-alikes and failure injection. For every strict rule at 90 % landing it names the true rule for 96–100 % of core validators. A wrong claim *without* the "(assumes selection)" qualifier never occurs, in any scenario. Qualified wrong claims appear only for FIFO (≈ 1 %) and in the reviewer's selection counterexample, which the qualifier exists to catch | [docs/POWER.md](docs/POWER.md) |
 
 ## 3. How the design handles each item in "what you will have to account for"
 

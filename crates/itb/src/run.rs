@@ -630,6 +630,10 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         }
     }
 
+    // A final gossip snapshot brackets the last windows (eligibility (b) needs one after each window's start).
+    if let Err(e) = snapshot_once().await {
+        tracing::warn!(error = %e, "final gossip snapshot failed");
+    }
     let failures = failures.lock().expect("failures").clone();
     let mut summary = json!({"run_id": run_id, "windows_started": windows_started, "finished_at": utc_now_rfc3339(),
                              "cadence": slot_clock.cadence(), "anchor_event": slot_clock.anchor_kind(),

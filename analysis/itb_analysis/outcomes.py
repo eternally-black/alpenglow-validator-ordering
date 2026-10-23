@@ -17,6 +17,15 @@ import pandas as pd
 from .load import Run
 
 FIRST_ALPENGLOW_SLOT = 459_653_008
+MAINNET_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
+
+
+def _alpenglow_floor(start: dict) -> int:
+    """First post-Alpenglow slot of the run's cluster: the first Alpenglow block on mainnet-beta (and for runs that
+    recorded no genesis, e.g. simulations), the recorded gate activation slot on any other cluster (localnet tests)."""
+    if start.get("genesis_hash") in (None, MAINNET_GENESIS_HASH):
+        return FIRST_ALPENGLOW_SLOT
+    return int((start.get("alpenglow") or {}).get("activated_at_slot", FIRST_ALPENGLOW_SLOT))
 
 #: (pair_kind) -> (x label, y label), PLAN §2.3
 CONTRASTS: dict[str, tuple[str, str]] = {
@@ -184,7 +193,8 @@ def window_table(run: Run, designs: dict | None = None) -> pd.DataFrame:
         return None  # missing or errored lookup: unknown
 
     w["target_produced"] = col("produced_slots", None).apply(produced)
-    w["post_alpenglow"] = w["window_first_slot"] >= FIRST_ALPENGLOW_SLOT
+    floor = {s.get("run_id"): _alpenglow_floor(s) for s in run.starts}
+    w["post_alpenglow"] = [int(f) >= floor.get(r, FIRST_ALPENGLOW_SLOT) for f, r in zip(w["window_first_slot"], w["run_id"])]
     reasons = []
     for _, r in w.iterrows():
         why = []

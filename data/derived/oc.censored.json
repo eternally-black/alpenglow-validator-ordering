@@ -1,0 +1,128 @@
+{
+ "reward_cost_greedy": {
+  "correct": [
+   "reward_cost"
+  ],
+  "claims": {
+   "partial:reward_cost": 0.52125,
+   "reward_cost": 0.325,
+   "unidentified": 0.15125,
+   "none": 0.0025
+  },
+  "by_tier": {
+   "extended": {
+    "correct": 0.145,
+    "acceptable": 0.855,
+    "wrong": 0.0,
+    "n": 400
+   },
+   "core": {
+    "correct": 0.505,
+    "acceptable": 0.495,
+    "wrong": 0.0,
+    "n": 400
+   }
+  },
+  "family_wrong_rate": 0.0,
+  "family_wrong_upper95": 0.02951304960703993,
+  "family_robust_wrong_rate": 0.0,
+  "controls_pass_rate": 1.0,
+  "median_pairs_c1": 43,
+  "reps": 100,
+  "estimand": "censored"
+ },
+ "cu_price_batch_20": {
+  "correct": [
+   "cu_price"
+  ],
+  "claims": {
+   "cu_price": 0.59,
+   "partial:cu_price": 0.34,
+   "unidentified": 0.06875,
+   "none": 0.00125
+  },
+  "by_tier": {
+   "extended": {
+    "correct": 0.3825,
+    "acceptable": 0.6175,
+    "wrong": 0.0,
+    "n": 400
+   },
+   "core": {
+    "correct": 0.7975,
+    "acceptable": 0.2025,
+    "wrong": 0.0,
+    "n": 400
+   }
+  },
+  "family_wrong_rate": 0.0,
+  "family_wrong_upper95": 0.02951304960703993,
+  "family_robust_wrong_rate": 0.0,
+  "controls_pass_rate": 1.0,
+  "median_pairs_c1": 42,
+  "reps": 100,
+  "estimand": "censored"
+ },
+ "low_landing_reward_cost": {
+  "correct": [
+   "reward_cost"
+  ],
+  "claims": {
+   "none": 0.745,
+   "unidentified": 0.25125,
+   "partial:reward_cost": 0.00375
+  },
+  "by_tier": {
+   "extended": {
+    "correct": 0.0,
+    "acceptable": 1.0,
+    "wrong": 0.0,
+    "n": 400
+   },
+   "core": {
+    "correct": 0.0,
+    "acceptable": 1.0,
+    "wrong": 0.0,
+    "n": 400
+   }
+  },
+  "family_wrong_rate": 0.0,
+  "family_wrong_upper95": 0.02951304960703993,
+  "family_robust_wrong_rate": 0.0,
+  "controls_pass_rate": 0.0,
+  "median_pairs_c1": 45,
+  "reps": 100,
+  "estimand": "censored"
+ },
+ "low_landing_cu_price": {
+  "correct": [
+   "cu_price"
+  ],
+  "claims": {
+   "none": 0.78625,
+   "unidentified": 0.19625,
+   "partial:cu_price": 0.0175
+  },
+  "by_tier": {
+   "extended": {
+    "correct": 0.0,
+    "acceptable": 1.0,
+    "wrong": 0.0,
+    "n": 400
+   },
+   "core": {
+    "correct": 0.0,
+    "acceptable": 1.0,
+    "wrong": 0.0,
+    "n": 400
+   }
+  },
+  "family_wrong_rate": 0.0,
+  "family_wrong_upper95": 0.02951304960703993,
+  "family_robust_wrong_rate": 0.0,
+  "controls_pass_rate": 0.0,
+  "median_pairs_c1": 41,
+  "reps": 100,
+  "estimand": "censored"
+ }
+}

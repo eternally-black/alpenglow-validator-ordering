@@ -32,3 +32,12 @@ def test_changed_or_disappeared_endpoint_is_a_transition():
     gone = states()
     gone.loc[1, "present"] = False
     assert _gossip_mode(gone, "T", 10, USED) == "transition_ambiguous"
+
+
+
+def test_the_alpenglow_floor_follows_the_run_cluster():
+    from itb_analysis.outcomes import FIRST_ALPENGLOW_SLOT, MAINNET_GENESIS_HASH, _alpenglow_floor
+
+    assert _alpenglow_floor({"genesis_hash": MAINNET_GENESIS_HASH, "alpenglow": {"activated_at_slot": 0}}) == FIRST_ALPENGLOW_SLOT
+    assert _alpenglow_floor({}) == FIRST_ALPENGLOW_SLOT
+    assert _alpenglow_floor({"genesis_hash": "localnet", "alpenglow": {"activated_at_slot": 0}}) == 0
