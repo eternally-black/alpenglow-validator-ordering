@@ -41,7 +41,7 @@ Pre-committed claim language (from the GPT review):
 | # | Fact | Consequence |
 |---|---|---|
 | F1 | Alpenglow gate `A1pengvu…` active from slot 459,648,000; first Alpenglow block 459,653,008 | Every run asserts the gate; ingest and analysis reject slots < 459,653,008. **Post-Alpenglow only.** |
-| F2 | 200 ms slots; leader window = 4 slots = 800 ms; blockhash valid for 150 blocks (≈ 30 s) | Offsets are in ms relative to the *predicted* window start; the *achieved* offset is classified post hoc (§4.4). |
+| F2 | Nominal 200 ms slots; leader window = 4 slots. Observed after Alpenglow: ≈ 130 ms between slots inside a window, ≈ 560 ms at the hand-over (≈ 235 ms per slot on average). A blockhash is valid for 150 blocks; validity is tracked by block height, never by slot age | Offsets are in ms relative to the *predicted* window start; the *achieved* offset is classified post hoc (§4.4). |
 | F3 | No vote txs; `meta.costUnits` present; v1 txs (lamport-total `priorityFee`) are ≈ 30–45 % of traffic | Parser handles legacy/v0/v1. Probes stay legacy (scope limit stated). |
 | F4 | `getClusterNodes.clientId` is **dynamic** (BAM/Harmonic flip on connect/disconnect) | Gossip + Kobe snapshots immediately before *and* after each window; mode = stable / transition-ambiguous / unknown. |
 | F5 | **≈ 69 % of stake ingests via shared builders.** BAM node: 17 IPs, :5010. Harmonic Remote TPU: 6 IPs, :9007. Harmonic forwards to the validator **and all connected builders**; BAM delivers "when their leader rotation arrives"; direct-to-validator TPU txs also go through BAM. | For BAM/Harmonic **the builder is the scheduler under test**. Report per endpoint and per validator. A pre-window send tests routing, not the validator. |
@@ -103,7 +103,7 @@ legacy message · 1 signature (payer) · 2 writable accounts (payer, lock) · 31
 - **Every template must be simulated successfully** (`err == null`) before the design is frozen.
 - **Locks.** Each pair gets fresh lock pubkeys. A shared lock forces a sequential decision; the uncontended arm uses distinct locks.
 - **Payers.** Every probe in a window has a **distinct payer**, drawn at random from the 24-payer pool. A payer is never reused within a window or while one of its txs is unresolved. Assignments are logged.
-- **Blockhash.** One blockhash per window group, **aged ≈ 120–135 slots** at send time. Probes then expire ≈ 3–6 s after send (≈ 2–5 s after the window ends), which:
+- **Blockhash.** One blockhash per window group, **aged ≈ 120–135 slots** at send time. Probes then expire roughly 15–30 blocks after send (a few seconds at the observed cadence; the recorded last valid block height decides, never the slot age), which:
   - bounds spill-over;
   - removes Firedancer carry-over into the next window;
   - halves the payer pool.
@@ -236,17 +236,14 @@ These pairs are not used as a "network noise floor".
 
 - **Window outcome** ∈ {A first, B first, only A, only B, neither} on (slot, index) over the whole window.
 - **Primary estimand:** superseded — see PREREGISTRATION §1 (complete-case primary; censored coding and worst-case bounds are sensitivity analyses).
-- **Inference:** randomisation test on the actual assignment (within-pair send order and labels), with window-level bootstrap CIs. The three contrasts in one window share the window, so resampling is by window.
-- **Inclusion co-primary:** P(land | member), per contrast.
-- **Two codings per contrast:** by label (economic key) and by send order (arrival). Both are in the confirmatory family.
-- **Compatible set**, using **Holm-adjusted** one-sided bounds so that the joint coverage of the family is 95 %:
-  - "favours A" requires the adjusted lower bound of P(A first) > 0.5;
-  - a predicted **tie** (C3 under CU-price/lamport-fee rules, or the label coding under FIFO) requires **equivalence by TOST** with margin ±0.15 around 0.5;
-  - a rule is compatible if every one of its predictions passes.
-
-  Unadjusted bounds are shown as exploratory.
-- **Strictness** = observed agreement with a Holm-adjusted one-sided lower bound. It describes ledger outcomes for our probes, not internal violations.
-- **Family:** 6 core validators × {C1, C2, C3} × {label, send-order} = 36 tests, Holm at family-wise α = 0.05. Everything else is exploratory.
+- **Inference, decision rules, verdicts, strictness and the confirmatory family:** defined only in [PREREGISTRATION.md](PREREGISTRATION.md) §3–§6 and §9; implemented in `analysis/itb_analysis/stats.py` and `report.py`. In short:
+  - each window is one binary trial per contrast and coding;
+  - exact Clopper–Pearson intervals, Bonferroni over the 36-effect family;
+  - TOST for ties;
+  - randomisation p-values with Holm over the fixed family;
+  - window-level strictness on complete windows;
+  - worst-case selection bounds;
+  - the published claim after every gate.
 
 ### 4.3 Secondary / exploratory (labelled as such everywhere)
 
@@ -324,9 +321,9 @@ docker/                itb.Dockerfile · analysis.Dockerfile · localnet.Dockerf
   - The transaction-submission path requires a `LiveAuthorization` value. Only the CLI can build it, and only after it has validated `--live`, `--max-spend-sol`, the keypair and the Alpenglow gate.
   - The dry-run *may* open QUIC handshakes and call RPC. The test asserts **zero transaction payload bytes submitted**.
 - **Spend cap.**
-  - (1) **Reservation ledger.** Reserve the worst-case fee per signed tx *before* it is sent. Unknown or unresolved outcomes stay charged. Release only on `expired_confirmed`. Retries are idempotent by signature.
-  - (2) **On-chain reconciliation** over **all owned accounts**; internal transfers cancel, with no double rent adjustment. Abort if the total drop exceeds the cap.
-  - (3) Per-validator and per-run sub-caps.
+  - (1) **Reservation ledger.** Reserve the worst-case fee per signed tx *before* it is sent. A fee is released only when the transaction provably never left the process (`cancelled_unsent`). An expired transaction frees its payer, but its fee stays charged: RPC non-inclusion evidence never releases money, and the frozen design's worst case fits inside the cap by itself.
+  - (2) **On-chain reconciliation** over **all owned accounts**, before any send of every live command; internal transfers cancel. No tolerance: an unexplained drop is charged to the ledger and stops every further send of the process.
+  - (3) **Named sub-budgets**, each with a cap that must be defined before anything is sent against it (smoke, setup, pilot, campaign stages).
   - (4) **Compiled maximum = 0.05 SOL.**
   - (5) A single cumulative ledger covers smoke, pilot, campaign, funding, sweeps and the Memo.
   - **Tests:** an integration test that tries to overspend through crash/restart/unknown outcomes, and a manual mutation check (break the guard → the test must fail).
@@ -406,7 +403,7 @@ Devnet is skipped: one client and empty blocks, and the faucet bars agents. Loca
 |---|---|---|
 | H1 | now | Approve PLAN v2 (or request changes). |
 | H2 | Oct 25 | **Measurement location:** rent a small Frankfurt VPS (≈ €5/mo, Docker installed) and give the agent SSH access — *recommended*. Or decide to run from the home PC; the stated cost is coarser timing for distant validators. |
-| H3 | Oct 24 | One or two keyed mainnet RPC endpoints with WebSocket (Helius free tier is enough; a second provider for the dual-RPC clock is a plus). Put them in `.env` as `RPC_URL`, `WS_URL`, `RPC_URL_2`, `WS_URL_2` — never in chat. |
+| H3 | Oct 24 | One keyed mainnet RPC endpoint with WebSocket (`slotsUpdatesSubscribe` for first-shred events). Put it in `.env` as `RPC_URL`, `WS_URL` — never in chat. |
 | H4 | **Oct 24** (smoke test that evening) | `solana-keygen new -o <path outside repo>`, fund it with **≈ 0.07 SOL**, and tell the agent the *path* only. The 0.07 is the cap of 0.05 plus ≈ 0.016 refundable payer rent; the planned worst-case spend is ≈ 0.028. |
 | H5 | optional | validators.app API token in `.env` (cross-check of client labels). |
 | H6 | Nov 4–5 | Approve making the GitHub repo public (agent uses `gh` as `eternally-black`); submit on Superteam Earn; sweep the remaining SOL afterwards. |

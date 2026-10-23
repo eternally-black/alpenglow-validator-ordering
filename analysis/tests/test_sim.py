@@ -1,7 +1,8 @@
+import json
 from pathlib import Path
 
 from itb_analysis import outcomes
-from itb_analysis.load import load_run
+from itb_analysis.load import load_designs, load_run
 from itb_analysis.sim import Params, simulate
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -10,10 +11,14 @@ DESIGN = FIXTURES / "design.jsonl"
 TARGETS = FIXTURES / "targets.json"
 
 
+PERFECT = {"p_transport_error": 0.0, "p_unproduced": 0.0, "p_transition": 0.0}
+
+
 def _pairs(tmp_path, scenario, **kw):
-    out = simulate(DESIGN, TARGETS, tmp_path / scenario, Params(scenario=scenario, seed=7, landing=1.0, jitter_ms=0.01, **kw), stage=1)
+    params = Params(scenario=scenario, seed=7, landing=1.0, jitter_ms=0.01, **(PERFECT | kw))
+    out = simulate(DESIGN, TARGETS, tmp_path / scenario, params, stage=1)
     run = load_run(out)
-    return run, outcomes.pair_table(run)
+    return run, outcomes.pair_table(run, designs=load_designs([DESIGN]))
 
 
 def _rate(pairs, kind, col="x_first", regime=None):
@@ -28,6 +33,31 @@ def test_format_and_join(tmp_path):
     assert set(run.outcomes["probe_id"]) <= set(run.probes["probe_id"])
     assert len(pairs) == len(run.windows) * 4  # 4 pairs per K window
     assert pairs["evaluable"].all()
+
+
+def test_injected_failures_are_excluded_but_transitions_still_count_for_stopping(tmp_path):
+    out = simulate(DESIGN, TARGETS, tmp_path / "f", Params("fifo", seed=5, p_transport_error=0.2, p_unproduced=0.2,
+                                                           p_transition=0.2), stage=1)
+    w = outcomes.window_table(load_run(out), load_designs([DESIGN]))
+    reasons = ",".join(w["exclusion"])
+    for r in ("not_all_sent", "target_produced_no_block", "mode:transition_ambiguous"):
+        assert r in reasons
+    transition_only = w[w["exclusion"] == "mode:transition_ambiguous"]
+    assert len(transition_only) and transition_only["stop_ok"].all(), "gossip stability is not part of the stopping predicate"
+    assert not w[w["exclusion"].str.contains("not_all_sent")]["stop_ok"].any()
+
+
+def test_a_template_swapped_behind_its_label_is_a_design_mismatch(tmp_path):
+    out = simulate(DESIGN, TARGETS, tmp_path / "s", Params("fifo", seed=5, **PERFECT), stage=1)
+    lines = (out / "probes.jsonl").read_text().splitlines()
+    first = json.loads(lines[0])
+    first["template"]["cu_limit"] += 1  # the label now carries a different treatment
+    lines[0] = json.dumps(first)
+    (out / "probes.jsonl").write_text("".join(line + "\n" for line in lines))
+    w = outcomes.window_table(load_run(out), load_designs([DESIGN]))
+    bad = w[(w["target_identity"] == first["target_identity"]) & (w["seq"] == first["seq"])]
+    assert bad["exclusion"].iloc[0].startswith("design_mismatch")
+    assert w["exclusion"].eq("").sum() == len(w) - 1
 
 
 def test_deterministic(tmp_path):

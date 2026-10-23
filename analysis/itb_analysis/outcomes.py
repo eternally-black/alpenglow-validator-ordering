@@ -49,61 +49,133 @@ def probe_table(run: Run) -> pd.DataFrame:
     return p
 
 
+ATTRIBUTION = ("client_id", "tpu_quic", "ingress")
+
+
+def _known(v) -> bool:
+    return v is not None and not (isinstance(v, float) and math.isnan(v)) and v != ""
+
+
 def _gossip_mode(states: pd.DataFrame, identity: str, t_ns, used: dict | None = None, horizon_ns: float = 90e9) -> str:
     """stable / transition_ambiguous / unknown (PREREGISTRATION §2(b)).
 
-    Requires one snapshot at or before `t_ns` and one after it, both within the horizon, agreeing with each other on
-    clientId, tpuQuic and ingress kind, and agreeing with the endpoint the window actually used (`used`). Missing
-    evidence is "unknown", never "stable".
+    Requires one snapshot at or before `t_ns` and one after it, both within the horizon, each with a complete
+    attribution (clientId, tpuQuic, ingress kind), agreeing with each other *and* with the complete attribution of the
+    endpoint the window actually used. Missing or incomplete evidence is "unknown", never "stable"; an actual change
+    (including a validator that leaves gossip) is "transition_ambiguous".
     """
     if states.empty or t_ns is None or (isinstance(t_ns, float) and math.isnan(t_ns)):
+        return "unknown"
+    if used is None or not all(_known(used.get(k)) for k in ATTRIBUTION):
         return "unknown"
     s = states[states["identity"] == identity]
     before = s[(s["at_unix_ns"] <= t_ns) & (s["at_unix_ns"] >= t_ns - horizon_ns)].sort_values("at_unix_ns").tail(1)
     after = s[(s["at_unix_ns"] > t_ns) & (s["at_unix_ns"] <= t_ns + horizon_ns)].sort_values("at_unix_ns").head(1)
     if before.empty or after.empty:
         return "unknown"
-    snaps = pd.concat([before, after])
-    if not snaps["present"].all():
+    snaps = [r for _, r in pd.concat([before, after]).iterrows()]
+    if not all(bool(r["present"]) for r in snaps):
         return "transition_ambiguous"
-    key = snaps[["client_id", "tpu_quic", "ingress"]].astype(str).agg("|".join, axis=1)
-    if key.nunique() > 1:
+    if not all(_known(r.get(k)) for r in snaps for k in ATTRIBUTION):
+        return "unknown"
+    keys = {tuple(str(r[k]) for k in ATTRIBUTION) for r in snaps}
+    if len(keys) > 1 or keys != {tuple(str(used[k]) for k in ATTRIBUTION)}:
         return "transition_ambiguous"
-    if used is not None and all(used.get(k) is not None for k in ("client_id", "tpu_quic", "ingress")):
-        if "|".join(str(used[k]) for k in ("client_id", "tpu_quic", "ingress")) != key.iloc[0]:
-            return "transition_ambiguous"
     return "stable"
 
 
-def window_table(run: Run) -> pd.DataFrame:
-    """One row per attempted window with eligibility flags and the reason for any exclusion (PREREGISTRATION §2)."""
+def _template_key(t) -> tuple | None:
+    if not isinstance(t, dict):
+        return None
+    return (int(t["cu_limit"]), int(t["cu_price_micro_lamports"]), int(t["loaded_data_limit"]))
+
+
+def _plan_members(plan: dict) -> set[tuple]:
+    return {(q["pair_id"], q["kind"], m["label"], _template_key(m["template"]), pos, int(m["lock_index"]))
+            for q in plan["pairs"] for pos, m in enumerate(q["members"])}
+
+
+def _realised_members(g: pd.DataFrame) -> list[tuple]:
+    return [(r["pair_id"], r["pair_kind"], r["label"], _template_key(r["template"]), int(r["send_position_in_pair"]),
+             int(r["lock_index"])) for _, r in g.iterrows()]
+
+
+def _send_evidence(run: Run) -> pd.DataFrame:
+    """Per window: probes whose own send record shows the stream finished without error (`sends_ok`)."""
+    s, p = run.sends, run.probes
+    cols = ["run_id", "target_identity", "seq", "sends_ok", "send_records"]
+    if s.empty or p.empty or "finished_unix_ns" not in s:
+        return pd.DataFrame(columns=cols)
+    s = s.copy()
+    ok = s["finished_unix_ns"].notna()
+    if "error" in s:
+        ok &= s["error"].isna()
+    if "never_opened" in s:
+        ok &= ~s["never_opened"].fillna(True).astype(bool)
+    s["ok"] = ok
+    j = s.merge(p[["run_id", "probe_id", "target_identity", "seq"]], on=["run_id", "probe_id"], how="inner")
+    return (j.groupby(["run_id", "target_identity", "seq"])
+             .agg(sends_ok=("ok", "sum"), send_records=("probe_id", "size")).reset_index())
+
+
+def window_table(run: Run, designs: dict | None = None) -> pd.DataFrame:
+    """One row per attempted window with eligibility flags and the reason for any exclusion (PREREGISTRATION §2).
+
+    With `designs` ({sha256: {(target, stage, seq): plan}}, from `load.load_designs`), every window's realised probes
+    must match its frozen plan exactly (pair ids and kinds, labels, templates, send positions, locks), checked against
+    the design whose hash the run recorded; without a matching design the window is `design_unavailable`.
+    """
     w = run.windows.copy()
     if w.empty:
         return w
     p = run.probes
-    logged = p.groupby(["run_id", "target_identity", "seq"]).size().rename("probes_logged") if len(p) else pd.Series(dtype=int, name="probes_logged")
-    w = w.merge(logged, left_on=["run_id", "target_identity", "seq"], right_index=True, how="left")
+    keys = ["run_id", "target_identity", "seq"]
+    logged = p.groupby(keys).agg(probes_logged=("probe_id", "size"), probe_ids=("probe_id", "nunique")) if len(p) else \
+        pd.DataFrame(columns=["probes_logged", "probe_ids"])
+    w = w.merge(logged, left_on=keys, right_index=True, how="left")
     w["probes_logged"] = w["probes_logged"].fillna(0).astype(int)
+    w["duplicate_records"] = w["probes_logged"] != w["probe_ids"].fillna(0).astype(int)
+    w = w.merge(_send_evidence(run), on=keys, how="left")
     col = lambda name, default: w[name] if name in w else pd.Series(default, index=w.index)
     planned = col("planned_probes", np.nan)
     skipped = col("skipped", np.nan)
-    sent_ok = col("sent_ok", np.nan)
     not_sent = col("not_sent", np.nan)
     transport = col("transport_errors", 0)
-    # Every planned member logged and written without error; missing fields mean "not established".
+    # Every planned member logged once and its own send record shows a finished stream without error; aggregate
+    # counters must agree; missing fields mean "not established".
     w["all_sent"] = (
         skipped.isna()
         & planned.notna()
         & w["probes_logged"].eq(planned)
-        & sent_ok.eq(planned)
+        & w["sends_ok"].fillna(-1).eq(planned)
+        & w["send_records"].fillna(-1).eq(planned)
         & not_sent.fillna(-1).eq(0)
         & transport.fillna(-1).eq(0)
     )
+    design_of = {s.get("run_id"): s.get("design_sha256") for s in run.starts}
+    probes_of = dict(tuple(p.groupby(keys))) if designs is not None and len(p) else {}
+    design_ok = []
+    for _, r in w.iterrows():
+        if designs is None:
+            design_ok.append("")
+            continue
+        plans = designs.get(design_of.get(r["run_id"]))
+        plan = plans.get((r["target_identity"], int(r["stage"]), int(r["seq"]))) if plans else None
+        if plan is None:
+            design_ok.append("design_unavailable")
+            continue
+        g = probes_of.get((r["run_id"], r["target_identity"], r["seq"]), p.iloc[0:0])
+        real = _realised_members(g)
+        same = len(real) == len(set(real)) and set(real) == _plan_members(plan) and planned_ok(r, plan)
+        design_ok.append("" if same else "design_mismatch")
+    w["design_check"] = design_ok
     t_col = "estimated_window_start_unix_ns"
+    states_of = dict(tuple(run.states.groupby("identity"))) if len(run.states) else {}
     modes = []
     for _, r in w.iterrows():
         used = {k: r.get(k) for k in ("client_id", "tpu_quic", "ingress")}
-        modes.append(_gossip_mode(run.states, r["target_identity"], r[t_col] if t_col in w and pd.notna(r.get(t_col)) else None, used))
+        st = states_of.get(r["target_identity"], run.states.iloc[0:0])
+        modes.append(_gossip_mode(st, r["target_identity"], r[t_col] if t_col in w and pd.notna(r.get(t_col)) else None, used))
     w["mode"] = modes
 
     def produced(v):
@@ -116,6 +188,10 @@ def window_table(run: Run) -> pd.DataFrame:
     reasons = []
     for _, r in w.iterrows():
         why = []
+        if r["duplicate_records"]:
+            why.append("duplicate_records")
+        if r["design_check"]:
+            why.append(r["design_check"])
         if not r["all_sent"]:
             why.append("not_all_sent" if pd.isna(r.get("skipped")) else f"skipped:{r.get('skipped')}")
         if r["mode"] != "stable":
@@ -127,7 +203,16 @@ def window_table(run: Run) -> pd.DataFrame:
         reasons.append(",".join(why))
     w["exclusion"] = reasons
     w["evaluable"] = w["exclusion"].eq("")
+    # The stopping predicate `itb run` uses (PREREGISTRATION §5): everything but gossip stability, which is known only
+    # after the next snapshot.
+    w["stop_ok"] = (~w["duplicate_records"]) & w["design_check"].eq("") & w["all_sent"] & w["target_produced"].eq(True)
     return w
+
+
+def planned_ok(r, plan: dict) -> bool:
+    """The window's recorded plan size equals the frozen plan's member count."""
+    n = sum(len(q["members"]) for q in plan["pairs"])
+    return pd.notna(r.get("planned_probes")) and int(r["planned_probes"]) == n
 
 
 def _rank_key(row) -> tuple:
@@ -136,12 +221,14 @@ def _rank_key(row) -> tuple:
     return (1, 0, 0)
 
 
-def pair_table(run: Run, kinds: tuple[str, ...] = ("c1", "c2", "c3", "c2_uncontended")) -> pd.DataFrame:
-    """One row per (window, pair) for the given pair kinds, with y_w / z_w and the landing funnel."""
+def pair_table(run: Run, kinds: tuple[str, ...] = ("c1", "c2", "c3", "c2_uncontended"),
+               designs: dict | None = None, windows: pd.DataFrame | None = None) -> pd.DataFrame:
+    """One row per (window, pair) for the given pair kinds, with y_w / z_w and the landing funnel. `windows` reuses an
+    already computed `window_table(run, designs)`."""
     p = probe_table(run)
     if p.empty:
         return pd.DataFrame()
-    w = window_table(run).set_index(["run_id", "target_identity", "seq"])
+    w = (window_table(run, designs) if windows is None else windows).set_index(["run_id", "target_identity", "seq"])
     rows = []
     for (run_id, pair_id), g in p[p["pair_kind"].isin(kinds)].groupby(["run_id", "pair_id"]):
         kind = g["pair_kind"].iloc[0]
@@ -187,15 +274,18 @@ def pair_table(run: Run, kinds: tuple[str, ...] = ("c1", "c2", "c3", "c2_unconte
                 "ingress": None if wrow is None else wrow.get("ingress"),
                 "mode": None if wrow is None else wrow.get("mode"),
                 "evaluable": False if wrow is None else bool(wrow.get("evaluable")),
+                # counts towards the stopping rule exactly as in `itb run`
+                "stop_informative": False if wrow is None else bool(wrow.get("stop_ok")) and both,
             }
         )
     return pd.DataFrame(rows)
 
 
-def funnel(run: Run) -> pd.DataFrame:
+def funnel(run: Run, designs: dict | None = None, windows: pd.DataFrame | None = None,
+           pairs: pd.DataFrame | None = None) -> pd.DataFrame:
     """Per target: planned → sent → any landing → status breakdown (probe level) and window eligibility."""
     p = probe_table(run)
-    w = window_table(run)
+    w = window_table(run, designs) if windows is None else windows
     if p.empty:
         return pd.DataFrame()
     status = p.pivot_table(index="target_identity", columns="status", values="probe_id", aggfunc="count", fill_value=0)
@@ -216,7 +306,7 @@ def funnel(run: Run) -> pd.DataFrame:
     )
     by_reason.columns = [f"excluded_{c}" for c in by_reason.columns]
     probes = p.groupby("target_identity").agg(probes_planned=("probe_id", "size"), probes_landed=("landed", "sum"))
-    pairs = pair_table(run)
+    pairs = pair_table(run, designs=designs, windows=w) if pairs is None else pairs
     stages = (
         pairs[pairs["pair_kind"].isin(["c1", "c2", "c3"])]
         .groupby("target_identity")

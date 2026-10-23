@@ -203,8 +203,51 @@ def validator_effects(pairs: pd.DataFrame, alpha_adj: float | None = None, n_dra
     out["strictness"] = {r: strictness(pairs, r, estimand) for r in RULES if r != "random"}
     out["mixture"] = mixture_diagnostic(pairs, estimand, n_draws=min(n_draws, 20_000))
     out["selection"] = selection_balance(pairs, estimand)
-    out["diagnosis"] = diagnosis(out["rules"], out["mixture"], out["label"], out["selection"])
+    out["selection_bounds"] = selection_bounds(pairs, alpha_adj)
+    out["diagnosis"] = diagnosis(out["rules"], out["mixture"], out["label"], out["selection"], out["strictness"],
+                                 out["selection_bounds"])
     return out
+
+
+def selection_bounds(pairs: pd.DataFrame, alpha_adj: float | None = None) -> dict:
+    """Selection-robust (worst-case) bounds over *every* pair of the evaluable windows (PREREGISTRATION §1).
+
+    Complete-case effects are interpretable as ordering rules only under the selection assumption. Without it, every
+    pair that is not complete — one member landed, or neither — could have gone either way. L_lo counts them all
+    against x, L_hi all for x (likewise O for the first-sent member). A directional claim is *selection-robust* when it
+    survives that worst case at the adjusted level, i.e. when no inclusion mechanism, however adversarial, could have
+    produced it from a label-blind (or order-blind) ordering."""
+    alpha_adj = adjusted_alpha() if alpha_adj is None else alpha_adj
+    out = {}
+    for c in CONTRASTS:
+        g = pairs[(pairs["pair_kind"] == c) & pairs["evaluable"]]
+        cc = g.dropna(subset=["x_first_cc"])
+        n, total = len(cc), len(g)
+        rest = total - n  # single-landed + neither-landed
+        k_label, k_order = int(cc["x_first_cc"].sum()), int(cc["first_sent_first_cc"].sum())
+        out[c] = {
+            "complete": n,
+            "single_landed": int((g["landed_x"] ^ g["landed_y"]).sum()),
+            "neither_landed": int((~g["landed_x"] & ~g["landed_y"]).sum()),
+            "L_lo": Effect(k_label, total, alpha_adj), "L_hi": Effect(k_label + rest, total, alpha_adj),
+            "O_lo": Effect(k_order, total, alpha_adj), "O_hi": Effect(k_order + rest, total, alpha_adj),
+        }
+    return out
+
+
+def selection_robust(rule: str, bounds: dict) -> bool | None:
+    """Whether every directional prediction of `rule` holds even under the worst-case bounds (None: no prediction)."""
+    checks = []
+    for c in CONTRASTS:
+        b = bounds[c]
+        pl, po = RULES[rule]["label"][c], RULES[rule]["order"][c]
+        if pl == "x":
+            checks.append(b["L_lo"].n > 0 and b["L_lo"].interval[0] > 0.5)
+        elif pl == "y":
+            checks.append(b["L_hi"].n > 0 and b["L_hi"].interval[1] < 0.5)
+        if po == "first":
+            checks.append(b["O_lo"].n > 0 and b["O_lo"].interval[0] > 0.5)
+    return all(checks) if checks else None
 
 
 SELECTION_ALPHA = 0.01
@@ -245,17 +288,24 @@ def _window_agreement(pairs: pd.DataFrame, rule: str, estimand: str) -> pd.Serie
 
 
 def strictness(pairs: pd.DataFrame, rule: str, estimand: str = "cc") -> dict:
-    """Window-level strictness: share of windows in which *every* directional prediction of `rule` held (among its
-    evaluable contrasts in that window), with an exact one-sided 95 % lower bound — one Bernoulli trial per window."""
+    """Window-level strictness: share of *complete* windows in which every directional prediction of `rule` held,
+    with an exact one-sided 95 % lower bound — one Bernoulli trial per window. A window is complete for `rule` only if
+    every contrast carrying one of its directional predictions was observed there (both members landed): a window
+    with a single surviving contrast cannot certify the whole rule. Incomplete windows are counted, not scored."""
     xc, oc_ = ESTIMANDS[estimand]
     if rule == "fifo":
-        df = pairs[pairs["pair_kind"].isin(CONTRASTS) & pairs["evaluable"]].dropna(subset=[oc_])
-        per_window = df.groupby(["run_id", "seq"])[oc_].min()
+        needed, col, want = list(CONTRASTS), oc_, {c: 1.0 for c in CONTRASTS}
     else:
-        per_window = _window_agreement(pairs, rule, estimand)
-        per_window = (per_window == 1.0).astype(float)
-    k, n = int(per_window.sum()), int(len(per_window))
-    return {"windows_all_agree": k, "windows": n, "rate": k / n if n else float("nan"), "lower95": one_sided_lower(k, n)}
+        needed = [c for c in CONTRASTS if RULES[rule]["label"][c] in ("x", "y")]
+        col = xc
+        want = {c: 1.0 if RULES[rule]["label"][c] == "x" else 0.0 for c in needed}
+    df = pairs[pairs["pair_kind"].isin(needed) & pairs["evaluable"]].dropna(subset=[col])
+    hits = df.assign(hit=[float(v == want[c]) for v, c in zip(df[col], df["pair_kind"])])
+    per_window = hits.groupby(["run_id", "seq"]).agg(n=("hit", "size"), all_hit=("hit", "min"))
+    complete = per_window[per_window["n"] == len(needed)]
+    k, n = int(complete["all_hit"].sum()), int(len(complete))
+    return {"windows_all_agree": k, "windows": n, "windows_incomplete": int(len(per_window) - n),
+            "rate": k / n if n else float("nan"), "lower95": one_sided_lower(k, n)}
 
 
 def mixture_diagnostic(pairs: pd.DataFrame, estimand: str = "cc", n_draws: int = 20_000, seed: int = 0) -> dict:
@@ -299,22 +349,44 @@ def mixture_diagnostic(pairs: pd.DataFrame, estimand: str = "cc", n_draws: int =
     return res
 
 
-def diagnosis(rules: dict[str, dict], mixture: dict, label: dict[str, Effect], selection: dict | None = None) -> dict:
+#: A detected rule is reported as the validator's rule only if it provably governs the majority of complete windows.
+STRICT_MAJORITY = 0.5
+
+
+def diagnosis(rules: dict[str, dict], mixture: dict, label: dict[str, Effect], selection: dict | None = None,
+              strict: dict | None = None, bounds: dict | None = None) -> dict:
     """One-line verdict per validator (PREREGISTRATION §4). Secondary diagnostics never resurrect a rule that the
     confirmatory contrasts rejected, except to describe a mixture with arrival order. A failed selection check
-    overrides everything: the analysed subset is not assignment-invariant."""
+    overrides everything: the analysed subset is not assignment-invariant.
+
+    A SUPPORTED/CONFIRMED rule R becomes the verdict `R` only if its window-level strictness lower bound exceeds 0.5
+    (it governs most windows); otherwise the verdict is `partial:R` (R's key is visible, but other windows follow
+    something else — a mode-switching leader, say). Every rule verdict carries `selection_robust`: whether it survives
+    the worst-case selection bounds."""
+    def out(verdict: str, rule: str | None = None, component: str | None = None) -> dict:
+        robust = selection_robust(rule, bounds) if rule and bounds else None
+        s = strict.get(rule) if rule and strict else None
+        return {"verdict": verdict, "component": component, "selection_robust": robust,
+                "strictness_lower95": s["lower95"] if s else None}
+
     if selection and any(v["flag"] for v in selection.values()):
-        return {"verdict": "unidentified:selection", "component": None}
+        return out("unidentified:selection")
     supported = [r for r, v in rules.items() if v["status"] in ("SUPPORTED", "CONFIRMED") and r != "random"]
     if len(supported) > 1:
-        return {"verdict": "ambiguous:" + ",".join(sorted(supported)), "component": None}
+        return out("ambiguous:" + ",".join(sorted(supported)))
+
+    def strict_or_partial(r: str) -> str:
+        if strict is None or r not in strict:
+            return r
+        return r if strict[r]["lower95"] > STRICT_MAJORITY else f"partial:{r}"
+
     if supported == ["fifo"]:
         named = [r for r in ECONOMIC_RULES if mixture[r]["consistent"] and mixture[r]["p_holm"] < FAMILY_ALPHA]
         if len(named) == 1:
-            return {"verdict": f"mixed:fifo+{named[0]}", "component": named[0]}
-        return {"verdict": "fifo", "component": None}
+            return out(f"mixed:fifo+{named[0]}", "fifo", named[0])
+        return out(strict_or_partial("fifo"), "fifo")
     if supported:
-        return {"verdict": supported[0], "component": None}
+        return out(strict_or_partial(supported[0]), supported[0])
     if rules["random"]["status"] == "REJECTED":
-        return {"verdict": "unidentified", "component": None}
-    return {"verdict": "none", "component": None}
+        return out("unidentified")
+    return out("none")

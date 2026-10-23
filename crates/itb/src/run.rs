@@ -1007,6 +1007,23 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
     let produced = match ctx.rpc.blocks_in_range(window.0, window.1).await {
         Ok(slots) => {
             row["produced_slots"] = json!(slots);
+            // Every produced block of a live window is archived (excerpt): competition covariates, and the verifier's
+            // check that no probe sits in a window block without a landing claim.
+            if ctx.live.is_some() {
+                let ours: HashSet<&str> = pending.iter().map(|p| p.signature.as_str()).collect();
+                let mut archived = vec![];
+                for &slot in &slots {
+                    match ctx.rpc.block_raw(slot, "confirmed").await {
+                        Ok(Some(b)) => {
+                            collect::archive(&ctx.run, slot, &b, &ours)?;
+                            archived.push(slot);
+                        }
+                        Ok(None) => {}
+                        Err(e) => tracing::warn!(slot, error = %e, "window block not archived"),
+                    }
+                }
+                row["archived_slots"] = json!(archived);
+            }
             Some(!slots.is_empty())
         }
         Err(e) => {

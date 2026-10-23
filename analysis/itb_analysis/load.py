@@ -40,15 +40,24 @@ class Run:
     states: pd.DataFrame
     sends: pd.DataFrame
     ends: list[dict] = field(default_factory=list)
+    #: observed slot events (run_id, slot, kind, recv_unix_ns) from slot_events.json.zst
+    slot_events: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 def _flatten_outcomes(rows: list[dict]) -> pd.DataFrame:
+    """One row per (run_id, probe_id): the *last* record wins, so an outcome restored by `itb reconcile` supersedes
+    the unresolved one written at collection time. `outcome_records` keeps the number of records seen."""
     flat = []
     for r in rows:
         o = dict(r.get("outcome", r))
         o["run_id"] = r.get("run_id", o.get("run_id"))
         flat.append(o)
-    return pd.DataFrame(flat)
+    df = pd.DataFrame(flat)
+    if df.empty or "probe_id" not in df:
+        return df
+    counts = df.groupby(["run_id", "probe_id"], dropna=False).size().rename("outcome_records")
+    df = df.drop_duplicates(subset=["run_id", "probe_id"], keep="last")
+    return df.merge(counts, left_on=["run_id", "probe_id"], right_index=True, how="left")
 
 
 def _flatten_sends(rows: list[dict]) -> pd.DataFrame:
@@ -98,7 +107,11 @@ def load_run(path: Path) -> Run:
         elif len(df):
             df["run_id"] = df["run_id"].fillna(run_id)
     end = read_json(path / "run_end.json") if (path / "run_end.json").exists() else {}
-    return Run([path], [start], probes, windows, outcomes, states, sends, [end] if end else [])
+    ev_path = path / "slot_events.json.zst"
+    events = pd.DataFrame(read_zst_json(ev_path)) if ev_path.exists() else pd.DataFrame()
+    if len(events):
+        events["run_id"] = run_id
+    return Run([path], [start], probes, windows, outcomes, states, sends, [end] if end else [], events)
 
 
 def load_runs(paths: list[Path]) -> Run:
@@ -115,7 +128,27 @@ def load_runs(paths: list[Path]) -> Run:
         states=cat([r.states for r in runs]),
         sends=cat([r.sends for r in runs]),
         ends=[e for r in runs for e in r.ends],
+        slot_events=cat([r.slot_events for r in runs]),
     )
+
+
+def load_designs(paths: list[Path]) -> dict[str, dict[tuple[str, int, int], dict]]:
+    """Frozen designs keyed by SHA-256 of the file, each as {(target, stage, seq): plan}."""
+    import hashlib
+
+    out = {}
+    for p in paths:
+        p = Path(p)
+        if not p.exists():
+            continue
+        raw = p.read_bytes()
+        plans = {}
+        for line in raw.decode("utf-8").splitlines():
+            if line.strip():
+                pl = json.loads(line)
+                plans[(pl["target_identity"], int(pl["stage"]), int(pl["seq"]))] = pl
+        out[hashlib.sha256(raw).hexdigest()] = plans
+    return out
 
 
 def run_dirs(root: Path) -> list[Path]:

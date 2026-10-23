@@ -7,14 +7,17 @@ For each claimed landing of a probe:
    the lock and the two programs, and exactly four instructions in order — SetComputeUnitLimit(L),
    SetComputeUnitPrice(p), SetLoadedAccountsDataSizeLimit(D), System transfer of 0 lamports payer → lock — with L, p,
    D, payer and lock equal to the logged design values.
-3. **Chain.** The block at the claimed slot contains that signature at the claimed (non-negative) index, its message
-   equals the signed one field by field, and the charged fee is 5000 + ⌈L·p/10⁶⌉.
+3. **Chain.** The block at the claimed slot contains that signature at the claimed (non-negative) index; the on-chain
+   transaction equals the signed one (complete signature vector and message, field by field); the wire carries
+   exactly the one signature its header requires; the charged fee is 5000 + ⌈L·p/10⁶⌉.
 4. **Attribution.** The slot's leader (the "Fee" reward recipient in the block, cross-checked with getSlotLeaders on
    chain) matches the claimed status, and a `landed_target` slot lies inside the claimed window.
+5. **Completeness** (archive). No probe sits in an archived block of its window unless its outcome claims exactly that
+   landing (catches a status lookup that missed an inclusion).
 
-Sources: `chain` re-fetches blocks over JSON-RPC (default public mainnet, rate-limited, so a sample);
-`archive` reads the raw blocks committed with each run. Send timestamps and transport events are local records and
-are not "verified" by this tool. Checking zero claims is a failure, not a pass.
+Sources: `chain` re-fetches full blocks over JSON-RPC (default public mainnet, rate-limited, so a sample);
+`archive` reads the block excerpts committed with each run (docs/DATA.md). Send timestamps and transport events are
+local records and are not "verified" by this tool. Checking zero claims is a failure, not a pass.
 """
 
 from __future__ import annotations
@@ -67,6 +70,8 @@ def _compact_u16(buf: bytes, i: int) -> tuple[int, int]:
 def parse_legacy_tx(wire: bytes) -> dict:
     """Parses a bincode-serialised legacy transaction (what we sent)."""
     n_sigs, i = _compact_u16(wire, 0)
+    if len(wire) < i + 64 * n_sigs + 3:
+        raise ValueError("truncated signature vector")
     sigs = [wire[i + 64 * k: i + 64 * (k + 1)] for k in range(n_sigs)]
     i += 64 * n_sigs
     message = wire[i:]
@@ -101,9 +106,16 @@ def check_atom(tx: dict, probe: dict) -> dict[str, bool]:
     """Exact probe-atom checks on the parsed signed bytes."""
     t = probe["template"]
     keys, ixs = tx["keys"], tx["instructions"]
-    checks = {"header_1_0_2": tx["header"] == (1, 0, 2), "four_keys": len(keys) == 4, "four_instructions": len(ixs) == 4}
+    checks = {
+        "header_1_0_2": tx["header"] == (1, 0, 2),
+        # the wire carries exactly the one signature the header requires: anything else is not a valid transaction
+        "one_signature": len(tx["signatures"]) == 1 == tx["header"][0],
+        "four_keys": len(keys) == 4,
+        "four_instructions": len(ixs) == 4,
+    }
     if not (checks["four_keys"] and checks["four_instructions"]):
         return checks
+    checks["compute_budget_ixs_take_no_accounts"] = all(ix["accounts"] == [] for ix in ixs[:3])
     checks["payer_is_key0"] = keys[0] == probe.get("payer")
     checks["lock_is_key1"] = keys[1] == probe.get("lock")
     checks["programs"] = set(keys[2:]) == {COMPUTE_BUDGET, SYSTEM}
@@ -136,7 +148,10 @@ def check_signature(tx: dict, payer: str, claimed_signature: str) -> dict[str, b
 
 
 def check_onchain_message(onchain: dict, tx: dict) -> bool:
-    """The block's JSON message equals the signed one, field by field."""
+    """The block's JSON transaction equals the signed one: the complete signature vector and the message, field by
+    field."""
+    if onchain["transaction"].get("signatures") != [b58encode(s) for s in tx["signatures"]]:
+        return False
     m = onchain["transaction"]["message"]
     h = m.get("header", {})
     same_header = (h.get("numRequiredSignatures"), h.get("numReadonlySignedAccounts"), h.get("numReadonlyUnsignedAccounts")) == tx["header"]
@@ -188,6 +203,52 @@ def _block_from_archive(run_dir: Path, slot: int):
     return read_zst_json(p) if p.exists() else None
 
 
+def _signatures(block: dict) -> list[str]:
+    """First signature of every transaction in block order (archived excerpt or full block)."""
+    if "signatures" in block:
+        return block["signatures"]
+    return [t["transaction"]["signatures"][0] for t in block["transactions"]]
+
+
+def _tx_at(block: dict, idx: int) -> dict | None:
+    """The full transaction + meta at `idx`: from the excerpt's stored probes, or from a full block."""
+    if "probe_transactions" in block:
+        return block["probe_transactions"].get(str(idx))
+    txs = block["transactions"]
+    return txs[idx] if 0 <= idx < len(txs) else None
+
+
+def completeness(run_dirs: list[Path]) -> dict:
+    """Archive check that complements the claims: no probe of a window appears in an archived block of that window
+    unless its outcome claims exactly that landing. Catches a landing the status lookup missed (e.g. an RPC that
+    answered "not found" for a transaction that was in fact included)."""
+    unclaimed, blocks_checked = [], 0
+    for d in run_dirs:
+        outcomes = {}
+        for row in read_jsonl(d / "outcomes.jsonl"):  # the last record of a probe wins (recovered supersedes)
+            o = row.get("outcome", row)
+            outcomes[o["probe_id"]] = o
+        by_window: dict[tuple, list[dict]] = {}
+        for p in read_jsonl(d / "probes.jsonl"):
+            by_window.setdefault((p["window_first_slot"], p["window_last_slot"]), []).append(p)
+        for (first, last), probes in by_window.items():
+            for slot in range(first, last + 1):
+                block = _block_from_archive(d, slot)
+                if block is None:
+                    continue
+                blocks_checked += 1
+                position = {s: i for i, s in enumerate(_signatures(block))}
+                for p in probes:
+                    if p["signature"] not in position:
+                        continue
+                    o = outcomes.get(p["probe_id"], {})
+                    if not (o.get("status") == "landed_target" and o.get("slot") == slot
+                            and o.get("index_in_block") == position[p["signature"]]):
+                        unclaimed.append({"run": d.name, "probe_id": p["probe_id"], "slot": slot,
+                                          "index": position[p["signature"]], "claimed_status": o.get("status")})
+    return {"blocks_checked": blocks_checked, "unclaimed_landings": unclaimed}
+
+
 def verify(run_dirs: list[Path], source: str = "archive", rpc_url: str = "https://api.mainnet-beta.solana.com",
            sample: int | None = None, seed: int = 0) -> dict:
     claims = []
@@ -233,9 +294,10 @@ def verify(run_dirs: list[Path], source: str = "archive", rpc_url: str = "https:
         block = blocks[slot]
         c["block_available"] = block is not None
         if block is not None:
-            txs = block["transactions"]
-            at = txs[idx] if c["index_nonnegative"] and idx < len(txs) else None
-            c["signature_at_index"] = at is not None and at["transaction"]["signatures"][0] == o["signature"]
+            sigs = _signatures(block)
+            c["signature_at_index"] = c["index_nonnegative"] and idx < len(sigs) and sigs[idx] == o["signature"]
+            at = _tx_at(block, idx) if c["index_nonnegative"] else None
+            c["transaction_at_index_available"] = at is not None
             if at is not None and tx is not None:
                 c["onchain_message_equals_signed"] = check_onchain_message(at, tx)
                 t = probe["template"]
@@ -256,8 +318,10 @@ def verify(run_dirs: list[Path], source: str = "archive", rpc_url: str = "https:
         r["ok"] = all(c.values())
         results.append(r)
     ok = sum(1 for r in results if r.get("ok"))
+    comp = completeness(run_dirs) if source == "archive" else None
     return {"source": source, "claims_checked": len(results), "claims_ok": ok, "results": results,
-            "passed": len(results) > 0 and ok == len(results)}
+            "completeness": comp,
+            "passed": len(results) > 0 and ok == len(results) and not (comp and comp["unclaimed_landings"])}
 
 
 def print_ledger(report: dict) -> None:
@@ -269,3 +333,8 @@ def print_ledger(report: dict) -> None:
         print("\nNO CLAIMS CHECKED — verification did not cover anything (treated as failure)")
     else:
         print(f"\n{report['claims_ok']}/{report['claims_checked']} claims verified ({report['source']})")
+    comp = report.get("completeness")
+    if comp is not None:
+        bad = comp["unclaimed_landings"]
+        print(f"completeness: {comp['blocks_checked']} archived window blocks, "
+              + ("no unclaimed probe" if not bad else f"{len(bad)} probe(s) in a window block without that landing claim: {bad[:5]}"))

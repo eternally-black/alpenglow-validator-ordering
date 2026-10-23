@@ -28,13 +28,15 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def manifest(targets: list[dict], design: Path, prereg: Path, not_after: str) -> dict:
-    core = [t["identity"] for t in targets if t.get("tier", "core") == "core"]
-    if len(core) != 6:
-        raise SystemExit(f"the confirmatory family needs exactly 6 core targets, got {len(core)}")
-    controls = [t["identity"] for t in targets
-                if t["identity"] in core and t["client_id"] in POSITIVE_CONTROL_CLIENTS and t["ingress"] == "direct"]
-    if {t["client_id"] for t in targets if t["identity"] in controls} != set(POSITIVE_CONTROL_CLIENTS):
+def manifest(targets: list[dict], design: Path, prereg: Path, not_after: str, budget: str = "campaign") -> dict:
+    core_t = [t for t in targets if t.get("tier", "core") == "core"]
+    if len(core_t) != 6:
+        raise SystemExit(f"the confirmatory family needs exactly 6 core targets, got {len(core_t)}")
+    # Each core target is frozen together with the (client, ingress) group that is confirmatory for it: windows in any
+    # other group (the validator switched BAM/Harmonic on or off) are analysed as exploratory, outside the family.
+    core = [{"identity": t["identity"], "client_id": t["client_id"], "ingress": t["ingress"]} for t in core_t]
+    controls = [t["identity"] for t in core_t if t["client_id"] in POSITIVE_CONTROL_CLIENTS and t["ingress"] == "direct"]
+    if {t["client_id"] for t in core_t if t["identity"] in controls} != set(POSITIVE_CONTROL_CLIENTS):
         raise SystemExit("core targets must include a direct-ingress Agave and a direct-ingress Firedancer validator")
     if len({t["client_id"] for t in targets}) < 3:
         raise SystemExit("the brief requires at least 3 client types")
@@ -44,8 +46,9 @@ def manifest(targets: list[dict], design: Path, prereg: Path, not_after: str) ->
         "design_sha256": sha256(design),
         "preregistration_sha256": sha256(prereg),
         "core_targets": core,
-        "extended_targets": [t["identity"] for t in targets if t["identity"] not in core],
+        "extended_targets": [t["identity"] for t in targets if t not in core_t],
         "positive_controls": controls,
+        "budget": budget,
         "not_after": not_after,
         "excluded_run_ids": [],
     }

@@ -113,3 +113,22 @@ def test_empty_verification_is_not_a_pass(tmp_path):
     (tmp_path / "empty").mkdir()
     rep = V.verify([tmp_path / "empty"])
     assert rep["claims_checked"] == 0 and not rep["passed"]
+
+
+def test_an_extra_serialised_signature_is_rejected(tmp_path):
+    # Gate-1b counterexample (N13): two signatures on the wire, the message still requires one.
+    probe, onchain = make_probe()
+    wire = base64.b64decode(probe["wire_base64"])
+    forged = compact(2) + wire[1:65] + os.urandom(64) + wire[65:]
+    probe = dict(probe, wire_base64=base64.b64encode(forged).decode())
+    rep = V.verify([write_run(tmp_path, probe, onchain, outcome(probe))])
+    assert not rep["passed"] and rep["results"][0]["checks"]["one_signature"] is False
+
+
+def test_a_probe_in_a_window_block_without_its_landing_claim_fails_completeness(tmp_path):
+    probe, onchain = make_probe()
+    d = write_run(tmp_path, probe, onchain, outcome(probe, status="expired_confirmed", slot=None, index=None))
+    comp = V.completeness([d])
+    assert comp["blocks_checked"] == 1 and comp["unclaimed_landings"][0]["index"] == 1
+    genuine = write_run(tmp_path / "g", probe, onchain, outcome(probe))
+    assert V.completeness([genuine])["unclaimed_landings"] == []

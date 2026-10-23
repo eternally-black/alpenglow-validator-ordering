@@ -67,7 +67,7 @@ Each decision links to the evidence behind it.
 | **Leader schedule and leader types** | `getLeaderSchedule` → 4-slot aligned windows. Gossip snapshot every 60 s (clientId, version, `tpuQuic`, ingress kind) and a mode per window: stable / transition-ambiguous / unknown. Which of the window's slots were produced (`getBlocks`). Kobe `running_bam` snapshot | Private operator configuration (Firedancer pacing, Harmonic strategy, BAM plugins): we observe behaviour, not config |
 | **Path from our backend to the executing node** | Our own QUIC client, TLS/transport identical to agave's `tpu-client-next`, pinned to the advertised `tpuQuic`. Per-stream open/write/finish timestamps. Ingress kind per window. Spill-over map. Hold-cliff test (Agave drops packets > 20 slots early; Firedancer keeps them) | Arrival time at the leader is unobservable (we log send time). Staked/SWQoS paths: we are an unstaked sender |
 | **Interaction of our own transactions** | Conflicts only through designed lock accounts. Distinct payers, randomly assigned. ≤ 14 streams per burst (below the 20/100 ms unstaked throttle). One persistent connection per IP (agave allows 8 new connections/IP/min) | Sub-millisecond stream processing order inside the receiver |
-| **Competition inside the block** | Full blocks archived for every probed window. Block fullness and our probes' priority percentile as covariates. Inclusion is a co-primary outcome | Other senders' arrival times and the scheduler's internal queue |
+| **Competition inside the block** | Every produced block of every probed window is archived as an excerpt: all signatures in order, per-transaction fee, CU and cost, the leader, and our probes in full. Block fullness and our probes' priority percentile are covariates. Inclusion is a co-primary outcome | Other senders' arrival times and the scheduler's internal queue |
 | **Send order** | Randomised and balanced within each pair; independent of every key by construction; analysed as its own coding | — |
 | **Noise vs rule** | Pre-registered rules and decision thresholds; random rule as a candidate; equivalence tests for "tie" predictions; window-level strictness; a mixture diagnostic; simulation-calibrated operating characteristics; null results reported as findings | Effects smaller than the documented minimum detectable effect |
 | **Alpenglow (do not mix)** | Feature gate checked by every run; slots below 459,653,008 rejected at ingest and analysis | — |
@@ -77,6 +77,7 @@ Each decision links to the evidence behind it.
 - **Priority fee vs total charged fee.** With one signature both rank probes identically; we report them as one class.
 - **The validator's own scheduler vs an upstream builder** that uses the same comparator. Final blocks cannot tell these apart, so we report the ingress topology instead.
 - **Streaming priority vs a short batch auction** when only a smooth reordering curve is observed. We report an "effective reordering horizon" and do not claim a batch period.
+- **A relayer co-located on the validator's own IP, on a non-standard port,** would be classified as direct ingress. Only known relayer ports and shared BAM/Harmonic endpoints are recognised. The ingress kind is recorded per window, and every group is reported separately.
 - **Our probes vs application transactions.** Our results are scoped to untipped, legacy, tiny probes on the measured path and dates. v1 transactions and heavy programs are external-validity limits.
 
 ## 4. Verify it yourself
@@ -94,16 +95,17 @@ For each landed probe, the verifier checks that:
 - the fee equals `5000 + ⌈L·p/10⁶⌉`;
 - the slot's leader is the target (from the block's fee-reward recipient).
 
-It separates **chain-verifiable** facts from **locally recorded** ones (send timestamps). Raw data layout: [docs/DATA.md](docs/DATA.md).
+A completeness check runs over the archived window blocks: no probe may sit in a block of its window unless its outcome claims exactly that landing. This catches an RPC that answered "not found" for a transaction that was included. The verifier separates **chain-verifiable** facts from **locally recorded** ones (send timestamps). Raw data layout: [docs/DATA.md](docs/DATA.md).
 
 ## 5. Engineering
 
 - **Dry-run by default, type-enforced.** Transaction bytes can only be written with a `LiveAuthorization`. The CLI builds one only after it has checked `--live`, `--max-spend-sol`, the keypair and the Alpenglow gate ([`auth.rs`](crates/itb/src/auth.rs)). A dry run still uses the real schedule, gossip and QUIC handshakes.
-- **Spend cap, layered** ([`ledger.rs`](crates/itb/src/ledger.rs)):
-  - (1) every transaction is reserved at its worst-case fee *before* sending, in a crash-safe SQLite ledger. Unknown outcomes stay charged; a reservation is released only on proof of expiry;
-  - (2) on-chain reconciliation over all owned accounts before every window;
-  - (3) a compiled maximum of 0.05 SOL;
-  - (4) one cumulative ledger for setup and every run.
+- **Spend cap, layered** ([`ledger.rs`](crates/itb/src/ledger.rs), [`campaign.rs`](crates/itb/src/campaign.rs)):
+  - (1) every transaction is reserved at its worst-case fee *before* sending, in a crash-safe SQLite ledger. A fee is released only if the transaction provably never left the process. An expired transaction frees its payer but stays charged: RPC "not found" answers never release money. The frozen design's worst case (0.039 SOL) fits under the cap by itself;
+  - (2) cumulative on-chain reconciliation over all owned accounts before any send, in every live command, with no tolerance. An unexplained drop is charged and stops every further send;
+  - (3) every send counts against a named sub-budget with its own cap (smoke, setup, pilot, campaign), inside a compiled maximum of 0.05 SOL;
+  - (4) one cumulative ledger for everything, held by one process at a time (an OS file lock released on process death). Deadlines bound every stream open and write; live runs require the pre-registered `--not-after`.
+- **Crash recovery is experiment recovery.** `itb reconcile` resolves open reservations and writes each probe's outcome and landing block back into its original run. Restored windows never count towards stopping.
 - **Keys** only via a mounted volume or env. The default reproduction runs with `network_mode: none`. gitleaks runs in CI.
 - **Logging:** structured JSON per window and per probe; the signed bytes of every probe are logged *before* sending.
 - **Containers:** one Compose file with profiles `reproduce` (default), `verify`, `dryrun`, `live`, `keys`, `localnet` (a pinned Agave 4.3.2 test validator built from the SHA-256-verified release).
@@ -127,6 +129,6 @@ docker/              Dockerfiles; docker/LOCALNET.md
 ## 7. Process
 
 - The plan was reviewed adversarially by three independent models before any code: GPT-6 Astra, Claude Fable and DeepSeek-V4.1-Flash. Their reviews and every disposition are in [docs/review/](docs/review/) and [PLAN §12](docs/PLAN.md).
-- The code was reviewed again at the first gate by GPT-6 Astra ([CODE-gate1-gpt.md](docs/review/CODE-gate1-gpt.md)): 30 findings on spend safety, execution and analysis, all addressed before the campaign.
+- The code was reviewed at the first gate by GPT-6 Astra ([CODE-gate1-gpt.md](docs/review/CODE-gate1-gpt.md), 30 findings). It was then re-reviewed adversarially after the fixes ([CODE-gate1b-gpt.md](docs/review/CODE-gate1b-gpt.md): 10 closed, 19 partial, 1 open, 14 new). Every gate-1b item and how it was handled: [docs/review/CODE-gate1b-dispositions.md](docs/review/CODE-gate1b-dispositions.md).
 
 License: [Apache-2.0](LICENSE).

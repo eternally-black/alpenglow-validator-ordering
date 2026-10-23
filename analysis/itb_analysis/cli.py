@@ -14,7 +14,12 @@ import sys
 from pathlib import Path
 
 from . import oc, report, verify
-from .load import run_dirs
+from .load import load_designs, run_dirs
+
+
+def _designs(paths: list[Path] | None):
+    """Frozen designs to validate windows against: the given files, or every design/*.jsonl."""
+    return load_designs(paths if paths else sorted(Path("design").glob("*.jsonl")))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -24,8 +29,11 @@ def main(argv: list[str] | None = None) -> int:
         p = sub.add_parser(name)
         p.add_argument("--raw", type=Path, default=Path("data/raw"))
         p.add_argument("--derived", type=Path, default=Path("data/derived"))
-        p.add_argument("--manifest", type=Path, default=Path("design/campaign.json"),
-                       help="campaign manifest; without it every run under --raw is analysed (marked non-confirmatory)")
+        p.add_argument("--manifest", type=Path, default=None,
+                       help="campaign manifest (design/campaign.json). Must exist when given; without it every run "
+                            "under --raw is analysed and nothing is confirmatory")
+        p.add_argument("--design", type=Path, action="append", default=None,
+                       help="frozen design file(s) to validate windows against (default: every design/*.jsonl)")
     v = sub.add_parser("verify")
     v.add_argument("--raw", type=Path, default=Path("data/raw"))
     v.add_argument("--source", choices=["chain", "archive"], default="chain")
@@ -43,11 +51,11 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     if a.cmd == "report":
-        path = report.write(report.compute(a.raw, a.manifest), a.derived)
+        path = report.write(report.compute(a.raw, a.manifest, designs=_designs(a.design)), a.derived)
         print(f"wrote {path}")
         return 0
     if a.cmd == "reproduce":
-        fresh = report.compute(a.raw, a.manifest)
+        fresh = report.compute(a.raw, a.manifest, designs=_designs(a.design))
         committed_path = a.derived / "results.json"
         if not committed_path.exists():
             print(f"no committed {committed_path}; nothing to compare (run `report` first)")

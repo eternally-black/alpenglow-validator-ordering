@@ -137,3 +137,55 @@ def test_selection_imbalance_overrides_the_verdict():
     eff = stats.validator_effects(biased, n_draws=1_000)
     assert eff["diagnosis"]["verdict"] == "unidentified:selection"
     assert stats.validator_effects(pairs, n_draws=1_000)["diagnosis"]["verdict"] == "fifo"
+
+
+def _window_pairs(fn, n):
+    """Complete or lost pairs per window: fn(contrast, window, x_sent_first) -> (x_first or None if both lost)."""
+    rows = []
+    for w in range(n):
+        xs = w % 2 == 0
+        for c in stats.CONTRASTS:
+            x_first = fn(c, w, xs)
+            lost = x_first is None
+            rows.append({"run_id": "r", "seq": w, "pair_kind": c, "evaluable": True, "x_sent_first": xs,
+                         "landed_x": not lost, "landed_y": not lost,
+                         "x_first_cc": np.nan if lost else float(x_first),
+                         "first_sent_first_cc": np.nan if lost else float(x_first == xs)})
+    return pd.DataFrame(rows)
+
+
+def test_strictness_is_scored_only_on_complete_windows():
+    # Gate-1b counterexample (N10): only C1 is ever observed, always reward/cost's way; that cannot certify the rule.
+    pairs = _pairs(lambda c, xs, rng: RC_PRED[c], n=40)
+    pairs.loc[pairs["pair_kind"] != "c1", ["x_first_cc", "first_sent_first_cc"]] = np.nan
+    s = stats.strictness(pairs, "reward_cost")
+    assert (s["windows"], s["windows_incomplete"], s["lower95"]) == (0, 40, 0.0)
+
+
+def test_a_mode_switching_leader_is_partial_not_the_rule():
+    # 24 windows follow reward/cost, 16 follow arrival order: reward/cost is SUPPORTED, but it does not provably govern
+    # most windows, so the verdict must say so.
+    pairs = _window_pairs(lambda c, w, xs: RC_PRED[c] if w < 24 else xs, 40)
+    eff = stats.validator_effects(pairs, n_draws=1_000)
+    assert eff["rules"]["reward_cost"]["status"] == "SUPPORTED"
+    assert eff["strictness"]["reward_cost"]["lower95"] < stats.STRICT_MAJORITY
+    assert eff["diagnosis"]["verdict"] == "partial:reward_cost"
+    strict = stats.validator_effects(_window_pairs(lambda c, w, xs: RC_PRED[c], 40), n_draws=1_000)
+    assert strict["diagnosis"]["verdict"] == "reward_cost" and strict["diagnosis"]["selection_robust"] is True
+
+
+def test_balanced_double_loss_is_flagged_as_not_selection_robust():
+    # Gate-1b counterexample (R2): a label-blind winning position per window; C1/C2 pairs are lost entirely whenever
+    # it would make y win. Retained pairs are balanced in send order and x wins all of them, so the complete-case
+    # analysis names CU price — the claim must be marked as resting on the selection assumption.
+    def fn(c, w, xs):
+        win_first = (w // 2) % 2 == 0
+        x_wins = xs == win_first
+        return None if c in ("c1", "c2") and not x_wins else x_wins
+
+    eff = stats.validator_effects(_window_pairs(fn, 80), n_draws=1_000)
+    assert all(not v["flag"] for v in eff["selection"].values()), "the balance check alone cannot see it"
+    assert eff["diagnosis"]["verdict"] == "cu_price"
+    assert eff["diagnosis"]["selection_robust"] is False
+    b = eff["selection_bounds"]["c1"]
+    assert (b["complete"], b["neither_landed"]) == (40, 40) and b["L_lo"].estimate == 0.5

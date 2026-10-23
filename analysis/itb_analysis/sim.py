@@ -18,7 +18,7 @@ import argparse
 import hashlib
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -70,6 +70,13 @@ class Params:
     base: str = "cu_price_batch"
     mode_b: str = "fifo"
     spill_p: float = 0.7
+    #: observation failures, per window: one stream fails, the leader produces no block, gossip changes mid-window
+    p_transport_error: float = 0.02
+    p_unproduced: float = 0.02
+    p_transition: float = 0.03
+    #: targets that follow `control_scenario` whatever the scenario (the positive controls: known reward/cost)
+    controls: tuple = ()
+    control_scenario: str = "reward_cost_greedy"
     extra: dict = field(default_factory=dict)
 
 
@@ -198,6 +205,19 @@ def apply_rule(name, items, p, rng, shared):
             x = a if a.probe["label"] == a.probe["pair_x_label"] else b
             if x.probe["send_position_in_pair"] == 1 and rng.random() < p.loss_q:
                 a.landed = b.landed = False
+    elif name == "balanced_double_loss":
+        # The gate-1b counterexample (R2): a label-blind order — the winning *send position* is drawn once per window —
+        # and both members of a C1/C2 pair are lost whenever that order would make y win. The retained pairs stay
+        # balanced in send order and x wins all of them; only the pairs lost entirely reveal the selection.
+        _fifo(items, p, rng)
+        win_first = rng.random() < 0.5
+        for a, b in _pairs(items):
+            if not win_first:
+                a.rank, b.rank = b.rank, a.rank
+            first = a if a.probe["send_position_in_pair"] == 0 else b
+            winner = first if win_first else (b if first is a else a)
+            if a.probe["pair_kind"] in ("c1", "c2") and winner.probe["label"] != winner.probe["pair_x_label"]:
+                a.landed = b.landed = False
     elif name == "mode_switch":
         apply_rule(p.base if rng.random() < 0.5 else p.mode_b, items, p, rng, shared)
     else:
@@ -260,6 +280,16 @@ def simulate_window(plan, target, p, rng, run_id, start_ns):
     else:
         apply_rule(p.scenario, items, p, rng, shared)
 
+    # Observation failures (they exercise eligibility and the stopping predicate exactly as on mainnet).
+    unproduced = rng.random() < p.p_unproduced
+    failed_stream = int(rng.integers(len(items))) if items and rng.random() < p.p_transport_error else None
+    transition = rng.random() < p.p_transition
+    if unproduced:
+        for i in items:
+            i.landed = False
+    if failed_stream is not None:
+        items[failed_stream].landed = False
+
     first = plan["window_first_slot"]
     outcomes, placed = [], []
     for i in items:
@@ -293,16 +323,25 @@ def simulate_window(plan, target, p, rng, run_id, start_ns):
             o.update(slot=slot, index_in_block=k, block_tx_count=n_block, leader=plan["target_identity"],
                      fee=i.probe["total_fee"], cost_units=i.probe["cost"])
         rows.append({"run_id": run_id, "outcome": o})
+    sends = []
+    for k, i in enumerate(items):
+        t = start_ns + int((i.probe["nominal_offset_ms"]) * 1e6)
+        err = "write: connection lost" if k == failed_stream else None
+        sends.append({"run_id": run_id, "dry_run": False, "record": {
+            "probe_id": i.probe["probe_id"], "addr": "sim:1", "scheduled_unix_ns": t, "open_unix_ns": t, "written_unix_ns": t,
+            "finished_unix_ns": None if err else t, "stream_index_in_burst": k, "limiter_delay_us": 0,
+            "never_opened": False, "error": err}})
     window = {
         "run_id": run_id, "target_identity": plan["target_identity"], "tier": plan.get("tier", "core"),
         "client_id": target["client_id"], "ingress": target["ingress"], "tpu_quic": target.get("tpu_quic", "sim:1"),
         "version": "sim", "seq": plan["seq"], "stage": plan["stage"], "kit": plan["kit"], "regime": plan["regime"],
         "burst_offset_ms": plan["burst_offset_ms"], "window_first_slot": first, "window_last_slot": first + 3,
-        "planned_probes": len(items), "sent_ok": len(items), "not_sent": 0, "transport_errors": 0,
+        "planned_probes": len(items), "sent_ok": len(items) - (failed_stream is not None), "not_sent": 0,
+        "transport_errors": int(failed_stream is not None),
         "connect": {"error": None}, "estimated_window_start_unix_ns": start_ns,
-        "produced_slots": [first + k for k in range(WINDOW_SLOTS)], "live": True,
+        "produced_slots": [] if unproduced else [first + k for k in range(WINDOW_SLOTS)], "live": True,
     }
-    return probes, window, rows
+    return probes, window, rows, sends, transition
 
 
 # ---------------------------------------------------------------- whole run
@@ -317,7 +356,8 @@ def simulate(design_path, targets_path, out_dir, params, stage=1, windows_per_ta
     run_id = f"sim-{params.scenario}-{params.seed}"
     counts, slot, t_ns = {}, 460_100_000, 1_790_000_000 * 10**9
     with (out_dir / "probes.jsonl").open("w") as fp, (out_dir / "windows.jsonl").open("w") as fw, \
-            (out_dir / "outcomes.jsonl").open("w") as fo, (out_dir / "target_states.jsonl").open("w") as fs:
+            (out_dir / "outcomes.jsonl").open("w") as fo, (out_dir / "target_states.jsonl").open("w") as fs, \
+            (out_dir / "sends.jsonl").open("w") as fsend:
         for pl in plans:
             tid = pl["target_identity"]
             if windows_per_target is not None and counts.get(tid, 0) >= windows_per_target:
@@ -328,19 +368,25 @@ def simulate(design_path, targets_path, out_dir, params, stage=1, windows_per_ta
             t_ns += gap * 4 * int(REAL_SLOT_MS * 1e6)
             pl = dict(pl, window_first_slot=slot)
             target = targets[tid]
-            probes, window, outcomes = simulate_window(pl, target, params, rng, run_id, t_ns)
+            tp = replace(params, scenario=params.control_scenario) if tid in params.controls else params
+            probes, window, outcomes, sends, transition = simulate_window(pl, target, tp, rng, run_id, t_ns)
             state = {"client_id": target["client_id"], "version": "sim", "tpu_quic": target.get("tpu_quic", "sim:1"),
                      "ingress": target["ingress"], "identity": tid}
-            for dt in (-10, 10):  # bracketing gossip snapshots
-                fs.write(json.dumps({"at_unix_ns": t_ns + dt * 10**9, "identity": tid, "state": state}) + "\n")
+            # Bracketing gossip snapshots; a transition changes the advertised TPU in the later one.
+            after = dict(state, tpu_quic="sim:2") if transition else state
+            for dt, st in ((-10, state), (10, after)):
+                fs.write(json.dumps({"at_unix_ns": t_ns + dt * 10**9, "identity": tid, "state": st}) + "\n")
             for x in probes:
                 fp.write(json.dumps(x) + "\n")
             fw.write(json.dumps(window) + "\n")
             for x in outcomes:
                 fo.write(json.dumps(x) + "\n")
+            for x in sends:
+                fsend.write(json.dumps(x) + "\n")
     (out_dir / "run_start.json").write_text(json.dumps({
         "run_id": run_id, "mode": "simulated", "stage": stage, "scenario": params.scenario,
         "params": dict(params.__dict__), "design_file": str(design_path),
+        "design_sha256": hashlib.sha256(Path(design_path).read_bytes()).hexdigest(),
     }, indent=1))
     return out_dir
 

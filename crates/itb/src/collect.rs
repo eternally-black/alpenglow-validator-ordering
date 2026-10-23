@@ -95,6 +95,59 @@ pub fn not_sent_outcome(t: &Tracked) -> Outcome {
     blank(t, Status::NotSent)
 }
 
+/// The archived form of a block (`blocks/<slot>.json.zst`, docs/DATA.md): every transaction's first signature in
+/// block order, its fee, compute units consumed, cost units and failure flag, the leader's fee reward, the block's
+/// identity fields, and the full JSON (transaction + meta) of our own probes keyed by index. About 30 KB compressed
+/// instead of ~300 KB for the full block: enough to verify every claimed index offline, to check that no unclaimed
+/// probe sits in a window block, and for block fullness and priority percentiles — the chain re-check (`verify
+/// --source chain`) is the independent comparison against full blocks.
+pub fn excerpt(block: &Value, ours: &HashSet<&str>) -> Value {
+    let txs = block["transactions"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let (mut sigs, mut fees, mut cus, mut costs, mut failed) =
+        (vec![], vec![], vec![], vec![], vec![]);
+    let mut probes = serde_json::Map::new();
+    for (i, tx) in txs.iter().enumerate() {
+        let sig = tx["transaction"]["signatures"][0]
+            .as_str()
+            .unwrap_or_default();
+        if ours.contains(sig) {
+            probes.insert(i.to_string(), tx.clone());
+        }
+        sigs.push(Value::from(sig));
+        fees.push(tx["meta"]["fee"].clone());
+        cus.push(tx["meta"]["computeUnitsConsumed"].clone());
+        costs.push(tx["meta"]["costUnits"].clone());
+        failed.push(Value::from(!tx["meta"]["err"].is_null()));
+    }
+    let fee_rewards: Vec<Value> = block["rewards"]
+        .as_array()
+        .map(|r| {
+            r.iter()
+                .filter(|x| x["rewardType"] == "Fee")
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    serde_json::json!({
+        "excerpt": 1, "blockhash": block["blockhash"], "previousBlockhash": block["previousBlockhash"],
+        "parentSlot": block["parentSlot"], "blockHeight": block["blockHeight"], "blockTime": block["blockTime"],
+        "rewards": fee_rewards, "tx_count": txs.len(), "signatures": sigs, "fees": fees, "compute_units": cus,
+        "cost_units": costs, "failed": failed, "probe_transactions": probes,
+    })
+}
+
+/// Archives the excerpt of `block` at `slot` into the run, unless that slot is archived already.
+pub fn archive(run: &RunDir, slot: u64, block: &Value, ours: &HashSet<&str>) -> Result<()> {
+    let path = run.path.join("blocks").join(format!("{slot}.json.zst"));
+    if !path.exists() {
+        write_zst(&path, &excerpt(block, ours))?;
+    }
+    Ok(())
+}
+
 /// Finds `signature` in a raw `getBlock` result: (index, meta).
 pub fn locate(block: &Value, signature: &str) -> Option<(usize, Value)> {
     block["transactions"]
@@ -170,7 +223,8 @@ pub async fn resolve(
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    // Fetch each landing block once; archive it verbatim.
+    // Fetch each landing block once; archive its excerpt.
+    let ours: HashSet<&str> = tracked.iter().map(|t| t.signature.as_str()).collect();
     let mut blocks: HashMap<u64, Option<Value>> = HashMap::new();
     let mut leaders: HashMap<u64, String> = HashMap::new();
     for slot in landed.values().map(|(s, _)| *s).collect::<HashSet<_>>() {
@@ -183,10 +237,7 @@ pub async fn resolve(
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
         if let (Some(b), Some(run)) = (&block, run) {
-            let path = run.path.join("blocks").join(format!("{slot}.json.zst"));
-            if !path.exists() {
-                write_zst(&path, b)?;
-            }
+            archive(run, slot, b, &ours)?;
         }
         blocks.insert(slot, block);
         if let Some(l) = rpc.slot_leaders(slot, 1).await?.into_iter().next() {
@@ -257,6 +308,31 @@ mod tests {
         assert_eq!(i, 1);
         assert_eq!(meta["costUnits"], 2335);
         assert!(locate(&block, "ccc").is_none());
+    }
+
+    #[test]
+    fn excerpt_keeps_order_costs_leader_and_our_transactions_only() {
+        let block = json!({"blockhash": "H", "parentSlot": 9, "blockHeight": 7, "rewards": [
+            {"pubkey": "L", "rewardType": "Fee", "lamports": 1}, {"pubkey": "V", "rewardType": "Voting"}],
+        "transactions": [
+            {"transaction": {"signatures": ["aaa"]}, "meta": {"fee": 5000, "err": null, "computeUnitsConsumed": 150}},
+            {"transaction": {"signatures": ["ours"]}, "meta": {"fee": 6000, "err": null, "costUnits": 2335}},
+            {"transaction": {"signatures": ["ccc"]}, "meta": {"fee": 7000, "err": {"x": 1}}},
+        ]});
+        let e = excerpt(&block, &HashSet::from(["ours"]));
+        assert_eq!(e["signatures"], json!(["aaa", "ours", "ccc"]));
+        assert_eq!(e["fees"], json!([5000, 6000, 7000]));
+        assert_eq!(e["failed"], json!([false, false, true]));
+        assert_eq!(e["tx_count"], 3);
+        assert_eq!(
+            e["rewards"],
+            json!([{"pubkey": "L", "rewardType": "Fee", "lamports": 1}])
+        );
+        assert_eq!(e["probe_transactions"]["1"]["meta"]["costUnits"], 2335);
+        assert!(
+            e["probe_transactions"].get("0").is_none(),
+            "other senders' transactions are not stored in full"
+        );
     }
 
     #[test]
