@@ -4,21 +4,20 @@
    "reward_cost"
   ],
   "claims": {
-   "partial:reward_cost": 0.52125,
-   "reward_cost": 0.325,
-   "unidentified": 0.15125,
-   "none": 0.0025
+   "partial:reward_cost": 0.53,
+   "reward_cost": 0.2925,
+   "unidentified": 0.1775
   },
   "by_tier": {
    "extended": {
-    "correct": 0.145,
-    "acceptable": 0.855,
+    "correct": 0.115,
+    "acceptable": 0.885,
     "wrong": 0.0,
     "n": 400
    },
    "core": {
-    "correct": 0.505,
-    "acceptable": 0.495,
+    "correct": 0.47,
+    "acceptable": 0.53,
     "wrong": 0.0,
     "n": 400
    }
@@ -27,7 +26,7 @@
   "family_wrong_upper95": 0.02951304960703993,
   "family_robust_wrong_rate": 0.0,
   "controls_pass_rate": 1.0,
-  "median_pairs_c1": 43,
+  "median_pairs_c1": 42,
   "reps": 100,
   "estimand": "censored"
  },
@@ -36,21 +35,21 @@
    "cu_price"
   ],
   "claims": {
-   "cu_price": 0.59,
-   "partial:cu_price": 0.34,
-   "unidentified": 0.06875,
+   "cu_price": 0.5675,
+   "partial:cu_price": 0.35,
+   "unidentified": 0.08125,
    "none": 0.00125
   },
   "by_tier": {
    "extended": {
-    "correct": 0.3825,
-    "acceptable": 0.6175,
+    "correct": 0.3475,
+    "acceptable": 0.6525,
     "wrong": 0.0,
     "n": 400
    },
    "core": {
-    "correct": 0.7975,
-    "acceptable": 0.2025,
+    "correct": 0.7875,
+    "acceptable": 0.2125,
     "wrong": 0.0,
     "n": 400
    }
@@ -68,9 +67,9 @@
    "reward_cost"
   ],
   "claims": {
-   "none": 0.745,
-   "unidentified": 0.25125,
-   "partial:reward_cost": 0.00375
+   "none": 0.75125,
+   "unidentified": 0.24625,
+   "partial:reward_cost": 0.0025
   },
   "by_tier": {
    "extended": {
@@ -90,7 +89,7 @@
   "family_wrong_upper95": 0.02951304960703993,
   "family_robust_wrong_rate": 0.0,
   "controls_pass_rate": 0.0,
-  "median_pairs_c1": 45,
+  "median_pairs_c1": 44,
   "reps": 100,
   "estimand": "censored"
  },
@@ -99,9 +98,9 @@
    "cu_price"
   ],
   "claims": {
-   "none": 0.78625,
-   "unidentified": 0.19625,
-   "partial:cu_price": 0.0175
+   "none": 0.80375,
+   "unidentified": 0.1725,
+   "partial:cu_price": 0.02375
   },
   "by_tier": {
    "extended": {
@@ -121,7 +120,7 @@
   "family_wrong_upper95": 0.02951304960703993,
   "family_robust_wrong_rate": 0.0,
   "controls_pass_rate": 0.0,
-  "median_pairs_c1": 41,
+  "median_pairs_c1": 39,
   "reps": 100,
   "estimand": "censored"
  }

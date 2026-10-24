@@ -107,3 +107,10 @@ probes. That is 0.0026 SOL of the 0.05 SOL cap.
 - **What went wrong:**
   - The draft design that POWER.md was simulated on (`design.draft.jsonl`) came from an older build of the generator. It still had streaming offsets on multiples of 130 ms, so it is not byte-identical to the frozen design. The simulation is rerun on the frozen design, and POWER.md is updated with the result, as it promised.
   - `design/targets.json` had CRLF endings from a Python text-mode write. It was normalised to LF before hashing, with its content unchanged.
+
+## 2026-10-24 — simulation study rerun on the frozen design (before Stage 1)
+
+- **Scope:** 17 scenarios × 100 campaigns plus the censored-coding comparison, on `design/design.jsonl`. Results in [`data/derived/oc.json`](../data/derived/oc.json) and [POWER.md](POWER.md).
+- **Comparison with the pre-freeze run:** same picture within 3 percentage points in every cell. No wrong claim survives the worst-case selection bounds in any scenario.
+- **Note for REPORT.md:** the frozen pre-registration (§1) quotes the pre-freeze censored-coding figures, 50 % vs 99 % and 0 % vs 51 %. On the frozen design they are 47 % vs 99 % and 0 % vs 48 %. These are illustrative numbers; the analysis plan itself is unchanged.
+- **Scoring fix:** `unidentified:selection` was not counted as an honest non-claim in two scenarios (`fifo_reorder`, `mode_switch_rc_fifo`). Those two were re-scored on the same seeds: same claims, now counted correctly.

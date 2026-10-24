@@ -10,7 +10,7 @@ failures (failed streams, unproduced windows, gossip transitions), so eligibilit
 
 Scoring against an explicit truth table:
 - correct: the claim names the true mechanism;
-- acceptable: an honest non-claim ("none", "unidentified…", a withdrawn claim) or an under-claim (`partial:R` when the
+- acceptable: an honest non-claim ("none", "unidentified…", a withdrawn claim — in every scenario) or an under-claim (`partial:R` when the
   truth is R) — not a full detection, not a falsehood;
 - wrong: anything else (a rule or mixture the scenario does not contain).
 "Any core target wrong" = the share of replicate campaigns in which at least one core target got a wrong claim, with an
@@ -180,7 +180,7 @@ def run(design: Path, targets: Path, reps: int, n_draws: int, seed0: int = 1000,
                     tier = tiers.get(target, "core")
                     # partial:R when the truth is R is an under-claim (R's key named, majority not proven), not a falsehood
                     under = tuple(f"partial:{r}" for r in correct if not r.startswith(("partial:", "mixed:")))
-                    cls = "correct" if c in correct else "acceptable" if c in acceptable + under + ("withdrawn",) else "wrong"
+                    cls = "correct" if c in correct else "acceptable" if c in acceptable + under + NONCLAIMS + ("withdrawn",) else "wrong"
                     by_tier[tier][cls] += 1
                     by_tier[tier]["n"] += 1
                     any_core_wrong |= tier == "core" and cls == "wrong"
