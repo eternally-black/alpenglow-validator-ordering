@@ -886,6 +886,7 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
     let mut not_sent: HashMap<String, String> = HashMap::new();
     let mut transport_errors: HashMap<String, String> = HashMap::new();
     let mut anchors = serde_json::Map::new();
+    let mut reconnects: Vec<ConnectReport> = vec![];
     let max_late = Duration::from_micros((ctx.max_lateness_ms * 1000.0) as u64);
     for phase in [Anchor::Estimate, Anchor::PrevSlot, Anchor::WindowSlot] {
         let items: Vec<&Pending> = pending.iter().filter(|p| p.anchor == phase).collect();
@@ -948,6 +949,15 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
         if phase != Anchor::Estimate && !observed {
             skip("anchor_missed", &mut not_sent)?;
             continue;
+        }
+        // Busy servers evict unstaked connections from a full table between our pre-connect and the send
+        // (`closed by peer: dropped`, seen in the 2026-10-24 smoke). Re-check right before sending: instant while the
+        // connection is alive, a fresh handshake if it was evicted (late sends are then caught by the deadline).
+        if ctx.live.is_some() {
+            let r = ctx.quic.connect(addr).await;
+            if !r.reused {
+                reconnects.push(r);
+            }
         }
         let outgoing: Vec<Outgoing> = items
             .iter()
@@ -1015,6 +1025,7 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
         }
     }
     row["anchors"] = serde_json::Value::Object(anchors);
+    row["reconnects"] = serde_json::to_value(&reconnects)?;
     row["not_sent"] = json!(not_sent.len());
     row["not_sent_reasons"] = json!(not_sent);
     row["transport_errors"] = json!(transport_errors.len());
