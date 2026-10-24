@@ -1,0 +1,51 @@
+{
+ "frozen_at": "2026-10-24T08:16:27Z",
+ "genesis_hash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+ "design_sha256": "cdca861b32af78fe89417a4348f118481f1153adde7616aef227487cb6f5d828",
+ "preregistration_sha256": "478b09b618d5a6f455302149ad3cc607468b0949153fdaf62a75f3105f944c55",
+ "core_targets": [
+  {
+   "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+   "client_id": "Agave",
+   "ingress": "direct"
+  },
+  {
+   "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+   "client_id": "Firedancer",
+   "ingress": "direct"
+  },
+  {
+   "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+   "client_id": "JitoLabs",
+   "ingress": "direct"
+  },
+  {
+   "identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+   "client_id": "AgaveBam",
+   "ingress": "bam_node"
+  },
+  {
+   "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+   "client_id": "HarmonicAgave",
+   "ingress": "harmonic_remote_tpu"
+  },
+  {
+   "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+   "client_id": "HarmonicFiredancer",
+   "ingress": "harmonic_remote_tpu"
+  }
+ ],
+ "extended_targets": [
+  "9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY",
+  "5Cchr1XGEg7dbBXByV5NY2ad8jfxAM7HA3x8D56rq9Ux",
+  "ana2y2YvQ3ZPMwm6qhnN3nJoUSiT3qx5Pvetkq9xcfY",
+  "9jxgosAfHgHzwnxsHw4RAZYaLVokMbnYtmiZBreynGFP"
+ ],
+ "positive_controls": [
+  "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+  "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4"
+ ],
+ "budget": "campaign",
+ "not_after": "2026-10-29T23:59:00Z",
+ "excluded_run_ids": []
+}

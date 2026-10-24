@@ -1,0 +1,92 @@
+[
+ {
+  "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+  "client_id": "Agave",
+  "ingress": "direct",
+  "tier": "core",
+  "k_windows": 80,
+  "t_windows": 16,
+  "hs_windows": 6
+ },
+ {
+  "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+  "client_id": "Firedancer",
+  "ingress": "direct",
+  "tier": "core",
+  "k_windows": 80,
+  "t_windows": 16,
+  "hs_windows": 6
+ },
+ {
+  "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+  "client_id": "JitoLabs",
+  "ingress": "direct",
+  "tier": "core",
+  "k_windows": 80,
+  "t_windows": 16,
+  "hs_windows": 6
+ },
+ {
+  "identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+  "client_id": "AgaveBam",
+  "ingress": "bam_node",
+  "tier": "core",
+  "k_windows": 80,
+  "t_windows": 16,
+  "hs_windows": 6
+ },
+ {
+  "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+  "client_id": "HarmonicAgave",
+  "ingress": "harmonic_remote_tpu",
+  "tier": "core",
+  "k_windows": 80,
+  "t_windows": 16,
+  "hs_windows": 6
+ },
+ {
+  "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+  "client_id": "HarmonicFiredancer",
+  "ingress": "harmonic_remote_tpu",
+  "tier": "core",
+  "k_windows": 80,
+  "t_windows": 16,
+  "hs_windows": 6
+ },
+ {
+  "identity": "9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY",
+  "client_id": "Firedancer",
+  "ingress": "direct",
+  "tier": "extended",
+  "k_windows": 40,
+  "t_windows": 6,
+  "hs_windows": 0
+ },
+ {
+  "identity": "5Cchr1XGEg7dbBXByV5NY2ad8jfxAM7HA3x8D56rq9Ux",
+  "client_id": "AgaveBam",
+  "ingress": "bam_node",
+  "tier": "extended",
+  "k_windows": 40,
+  "t_windows": 6,
+  "hs_windows": 0
+ },
+ {
+  "identity": "ana2y2YvQ3ZPMwm6qhnN3nJoUSiT3qx5Pvetkq9xcfY",
+  "client_id": "Rakurai",
+  "ingress": "direct",
+  "tier": "extended",
+  "k_windows": 40,
+  "t_windows": 6,
+  "hs_windows": 0
+ },
+ {
+  "identity": "9jxgosAfHgHzwnxsHw4RAZYaLVokMbnYtmiZBreynGFP",
+  "client_id": "FireBAM",
+  "ingress": "bam_node",
+  "tier": "extended",
+  "k_windows": 40,
+  "t_windows": 6,
+  "hs_windows": 0
+ }
+]

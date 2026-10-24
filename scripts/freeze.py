@@ -25,7 +25,12 @@ POSITIVE_CONTROL_CLIENTS = ("Agave", "Firedancer")
 
 
 def sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """Hash of the exact bytes a clone will hold. The repository stores LF (`.gitattributes`), so a CR in a hashed
+    file would make the published hash unverifiable from a checkout: refuse it."""
+    data = path.read_bytes()
+    if b"\r" in data:
+        raise SystemExit(f"{path} contains CR line endings; normalise it to LF before freezing")
+    return hashlib.sha256(data).hexdigest()
 
 
 def manifest(targets: list[dict], design: Path, prereg: Path, not_after: str, budget: str = "campaign") -> dict:
@@ -65,7 +70,7 @@ def main() -> None:
     if a.out.exists():
         raise SystemExit(f"{a.out} exists; a frozen manifest is never overwritten")
     m = manifest(json.loads(a.targets.read_text()), a.design, a.prereg, a.not_after)
-    a.out.write_text(json.dumps(m, indent=1) + "\n")
+    a.out.write_bytes((json.dumps(m, indent=1) + "\n").encode())  # LF on every platform
     print(f"itb-prereg v1 prereg={m['preregistration_sha256']} design={m['design_sha256']} manifest={sha256(a.out)}")
 
 

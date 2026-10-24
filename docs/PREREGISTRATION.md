@@ -1,7 +1,7 @@
 # Pre-registration — Inside the Block
 
-> **Status: DRAFT.** Frozen after the pilot, before Stage 1 (target date 2026-10-27). This document is the
-> **normative** analysis plan. Where PLAN.md or other documents differ, this document wins.
+> **Status: FROZEN on 2026-10-24, after the pilot and before Stage 1.** This document is the **normative** analysis
+> plan. Where PLAN.md or other documents differ, this document wins.
 >
 > On freezing:
 > - the SHA-256 of this file, of `design/design.jsonl` and of `design/campaign.json` (the campaign manifest: core targets, positive controls, design and genesis hashes, stop date) are posted on Solana mainnet in a Memo transaction signed by the measurement wallet. `scripts/freeze.py` writes the manifest and prints the Memo text;
@@ -11,6 +11,11 @@
 > Pilot data are kept and reported, and excluded from confirmatory inference.
 >
 > Implementation: `analysis/itb_analysis/stats.py` (§3–§4), `outcomes.py` (§1–§2), `report.py` (§6, §9), and `itb run` (§5).
+>
+> **Frozen inputs.**
+> - **Targets:** `design/targets.json`, 6 core and 4 extended, each with the client and ingress kind it showed in gossip on 2026-10-24.
+> - **Design:** `design/design.jsonl`, written by `itb design --seed 20261023`: 796 windows, worst-case fees 0.0387 SOL. That fits inside the cap headroom left after the smoke test and the pilots, so no fee ever has to be released.
+> - **Execution parameters, calibrated in the pilot (docs/CAMPAIGN-LOG.md):** `--anchor-event first-shred`, `--max-lateness-ms 100`, `--concurrency 2`, `--obs-lag-ms 0` (achieved buffered offsets matched the design), budget `campaign`, `--not-after 2026-10-29T23:59:00Z`.
 
 ## 1. Estimands
 
