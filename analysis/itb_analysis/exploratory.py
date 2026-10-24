@@ -34,11 +34,13 @@ class Stage2:
     probes: pd.DataFrame  # with evaluable / client / ingress of the probe's window
 
 
-def load_stage2(raw: Path, design: Path) -> Stage2:
+def load_stage2(raw: Path, design: Path, budget: str = "campaign") -> Stage2:
+    """Live stage-2 runs of one study, told apart by the budget their runs were charged to (Study 1: `campaign`)."""
     def start(d: Path) -> dict:
         return json.loads((d / "run_start.json").read_text())
 
-    dirs = [d for d in run_dirs(raw) if start(d).get("stage") == 2 and start(d).get("mode") == "live"]
+    dirs = [d for d in run_dirs(raw)
+            if start(d).get("stage") == 2 and start(d).get("mode") == "live" and start(d).get("budget") == budget]
     run = load_runs(dirs)
     w = outcomes.window_table(run, load_designs([design]))
     p = outcomes.probe_table(run)

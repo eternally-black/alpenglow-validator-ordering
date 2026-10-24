@@ -25,6 +25,10 @@ pub enum Kit {
     H,
     /// Stage 2, shared ingress: spill-over map (−150 ms, −1 s).
     S,
+    /// Study 2, stage 2: race curve on the fine Δt grid (+ one equal-key pair on direct ingress).
+    R,
+    /// Study 2, stage 2: equal-key pairs only.
+    E,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,6 +102,15 @@ pub struct TargetSpec {
     pub k_windows: u32,
     pub t_windows: u32,
     pub hs_windows: u32,
+    /// Study 2: race-curve windows.
+    #[serde(default)]
+    pub r_windows: u32,
+    /// Study 2: equal-key-only windows.
+    #[serde(default)]
+    pub e_windows: u32,
+    /// Study 2: one equal-key pair in every R window.
+    #[serde(default)]
+    pub equal_key_in_r: bool,
 }
 
 fn default_tier() -> String {
@@ -124,6 +137,20 @@ pub const RACE_START_OFFSET_MS: f64 = 5.0;
 /// ≈235 ms/slot, so −3 s is safely inside the hold horizon and −7 s (≈30 slots) safely outside it.
 pub const H_OFFSETS_MS: [f64; 3] = [-500.0, -3_000.0, -7_000.0];
 pub const S_OFFSETS_MS: [f64; 2] = [-150.0, -1_000.0];
+
+/// Study 2 race allocation per R target: (Δt ms, races with `lo` sent first, races with `hi` sent first). At Δt = 0
+/// both go out together and "first" is only the stream order, so that cell is balanced. 105 races = 35 windows × 3.
+pub const STUDY2_RACE_CELLS: [(f64, u32, u32); 6] = [
+    (0.0, 6, 6),
+    (2.0, 36, 0),
+    (5.0, 15, 3),
+    (10.0, 12, 0),
+    (25.0, 12, 3),
+    (50.0, 12, 0),
+];
+pub const STUDY2_RACES_PER_WINDOW: usize = 3;
+pub const STUDY2_EQUAL_KEY_DT_MS: f64 = 10.0;
+pub const STUDY2_EQUAL_KEY_PER_E_WINDOW: usize = 2;
 
 fn is_direct(ingress: IngressKind) -> bool {
     matches!(ingress, IngressKind::Direct)
@@ -179,6 +206,107 @@ fn pair(
     }
 }
 
+/// Stage-1 K windows (PLAN §2.1): regimes blocked by ingress kind, send order balanced per contrast, pair order
+/// shuffled inside the burst. Study 2 drops the exploratory uncontended C2 pair (`with_c2u = false`); for Study 1
+/// the random draws happen in the same order as when `design/design.jsonl` was frozen.
+fn k_windows(t: &TargetSpec, rng: &mut ChaCha20Rng, with_c2u: bool) -> Vec<WindowPlan> {
+    let mut out = vec![];
+    let direct = is_direct(t.ingress);
+    let n_k = t.k_windows as usize;
+    // Regime blocks of 4 for direct ingress: 3 buffered + 1 streaming.
+    let mut regimes: Vec<Regime> = (0..n_k)
+        .map(|i| {
+            if direct && i % 4 != 3 {
+                Regime::Buffered
+            } else {
+                Regime::Streaming
+            }
+        })
+        .collect();
+    for block in regimes.chunks_mut(4) {
+        block.shuffle(rng);
+    }
+    let mut order_c1 = balanced_flags(n_k, rng);
+    let mut order_c2 = balanced_flags(n_k, rng);
+    let mut order_c3 = balanced_flags(n_k, rng);
+    let mut order_c2u = with_c2u.then(|| balanced_flags(n_k, rng));
+    for (seq, regime) in regimes.into_iter().enumerate() {
+        let burst_offset_ms = match (regime, direct) {
+            (Regime::Buffered, _) => BUFFERED_OFFSET_MS,
+            (_, true) => STREAMING_DIRECT_OFFSET_MS,
+            // Shared ingress: uniform in [40, 500] ms after the window's first shred, avoiding ±15 ms around the
+            // observed in-window slot boundaries (k·130 ms).
+            (_, false) => loop {
+                let x: f64 = rng.gen_range(40.0..500.0);
+                if [1.0, 2.0, 3.0]
+                    .iter()
+                    .all(|k| (x - k * OBSERVED_INSIDE_SLOT_MS).abs() > 15.0)
+                {
+                    break x.round();
+                }
+            },
+        };
+        let id = |p: &str| format!("{}/{seq:03}/{p}", &t.identity[..8]);
+        let mut pairs = vec![
+            pair(
+                id("c1"),
+                PairKind::C1,
+                ("A", library::A),
+                ("B", library::B),
+                order_c1.pop().unwrap(),
+                0.0,
+                true,
+                0,
+            ),
+            pair(
+                id("c2"),
+                PairKind::C2,
+                ("A'", library::A_PRIME),
+                ("B", library::B),
+                order_c2.pop().unwrap(),
+                0.0,
+                true,
+                2,
+            ),
+            pair(
+                id("c3"),
+                PairKind::C3,
+                ("A", library::A),
+                ("A'", library::A_PRIME),
+                order_c3.pop().unwrap(),
+                0.0,
+                true,
+                4,
+            ),
+        ];
+        if let Some(order) = order_c2u.as_mut() {
+            pairs.push(pair(
+                id("c2u"),
+                PairKind::C2Uncontended,
+                ("A'", library::A_PRIME),
+                ("B", library::B),
+                order.pop().unwrap(),
+                0.0,
+                false,
+                6,
+            ));
+        }
+        pairs.shuffle(rng); // pair order inside the burst
+        out.push(WindowPlan {
+            target_identity: t.identity.clone(),
+            tier: t.tier.clone(),
+            seq: seq as u32,
+            stage: 1,
+            kit: Kit::K,
+            regime,
+            burst_offset_ms,
+            blockhash_age_slots: AGED_BLOCKHASH_SLOTS,
+            pairs,
+        });
+    }
+    out
+}
+
 /// Generates every window plan for every target. Deterministic in (`seed`, `targets`).
 pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
     let mut out = vec![];
@@ -192,96 +320,7 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
         let direct = is_direct(t.ingress);
         let n_k = t.k_windows as usize;
 
-        // ---- Stage 1: K windows ----
-        // Regime blocks of 4 for direct ingress: 3 buffered + 1 streaming.
-        let mut regimes: Vec<Regime> = (0..n_k)
-            .map(|i| {
-                if direct && i % 4 != 3 {
-                    Regime::Buffered
-                } else {
-                    Regime::Streaming
-                }
-            })
-            .collect();
-        for block in regimes.chunks_mut(4) {
-            block.shuffle(&mut rng);
-        }
-        let mut order_c1 = balanced_flags(n_k, &mut rng);
-        let mut order_c2 = balanced_flags(n_k, &mut rng);
-        let mut order_c3 = balanced_flags(n_k, &mut rng);
-        let mut order_c2u = balanced_flags(n_k, &mut rng);
-        for (seq, regime) in regimes.into_iter().enumerate() {
-            let burst_offset_ms = match (regime, direct) {
-                (Regime::Buffered, _) => BUFFERED_OFFSET_MS,
-                (_, true) => STREAMING_DIRECT_OFFSET_MS,
-                // Shared ingress: uniform in [40, 500] ms after the window's first shred, avoiding ±15 ms around the
-                // observed in-window slot boundaries (k·130 ms).
-                (_, false) => loop {
-                    let x: f64 = rng.gen_range(40.0..500.0);
-                    if [1.0, 2.0, 3.0]
-                        .iter()
-                        .all(|k| (x - k * OBSERVED_INSIDE_SLOT_MS).abs() > 15.0)
-                    {
-                        break x.round();
-                    }
-                },
-            };
-            let id = |p: &str| format!("{}/{seq:03}/{p}", &t.identity[..8]);
-            let mut pairs = vec![
-                pair(
-                    id("c1"),
-                    PairKind::C1,
-                    ("A", library::A),
-                    ("B", library::B),
-                    order_c1.pop().unwrap(),
-                    0.0,
-                    true,
-                    0,
-                ),
-                pair(
-                    id("c2"),
-                    PairKind::C2,
-                    ("A'", library::A_PRIME),
-                    ("B", library::B),
-                    order_c2.pop().unwrap(),
-                    0.0,
-                    true,
-                    2,
-                ),
-                pair(
-                    id("c3"),
-                    PairKind::C3,
-                    ("A", library::A),
-                    ("A'", library::A_PRIME),
-                    order_c3.pop().unwrap(),
-                    0.0,
-                    true,
-                    4,
-                ),
-                pair(
-                    id("c2u"),
-                    PairKind::C2Uncontended,
-                    ("A'", library::A_PRIME),
-                    ("B", library::B),
-                    order_c2u.pop().unwrap(),
-                    0.0,
-                    false,
-                    6,
-                ),
-            ];
-            pairs.shuffle(&mut rng); // pair order inside the burst
-            out.push(WindowPlan {
-                target_identity: t.identity.clone(),
-                tier: t.tier.clone(),
-                seq: seq as u32,
-                stage: 1,
-                kit: Kit::K,
-                regime,
-                burst_offset_ms,
-                blockhash_age_slots: AGED_BLOCKHASH_SLOTS,
-                pairs,
-            });
-        }
+        out.extend(k_windows(t, &mut rng, true));
 
         // ---- Stage 2: T windows, then H (direct) or S (shared) windows, interleaved at random ----
         let mut stage2: Vec<Kit> = std::iter::repeat_n(Kit::T, t.t_windows as usize)
@@ -399,12 +438,131 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
                         pairs,
                     }
                 }
-                Kit::K => unreachable!(),
+                Kit::K | Kit::R | Kit::E => {
+                    unreachable!("Study 1 stage 2 has only T, H and S windows")
+                }
             };
             out.push(plan);
         }
     }
     out
+}
+
+/// An equal-key pair: two identical A probes `dt` ms apart, sharing a lock; buffered on direct ingress (both pending
+/// at slot start), at the race start on shared ingress (as in Study 1).
+fn equal_key_pair(pair_id: String, dt: f64, lock_base: u32, direct: bool) -> PairPlan {
+    let mut p = pair(
+        pair_id,
+        PairKind::EqualKey,
+        ("A", library::A),
+        ("A", library::A),
+        true,
+        dt,
+        true,
+        lock_base,
+    );
+    let base = if direct {
+        BUFFERED_OFFSET_MS
+    } else {
+        RACE_START_OFFSET_MS
+    };
+    for m in &mut p.members {
+        m.send_offset_ms += base;
+    }
+    p.members[1].label = "A#2".into();
+    p
+}
+
+/// Study 2 (docs/STUDY2-PLAN.md): stage 1 repeats the K kit without the uncontended pair; stage 2 interleaves R windows
+/// (the race allocation of `STUDY2_RACE_CELLS`, shuffled across the target's windows) and E windows at random.
+/// Deterministic in (`seed`, `targets`) and independent of the Study 1 generator's draws.
+pub fn generate_study2(seed: u64, targets: &[TargetSpec]) -> anyhow::Result<Vec<WindowPlan>> {
+    let mut out = vec![];
+    for t in targets {
+        let tseed = u64::from_le_bytes(
+            Sha256::digest(format!("study2/{seed}/{}", t.identity).as_bytes())[..8]
+                .try_into()
+                .expect("8 bytes"),
+        );
+        let mut rng = ChaCha20Rng::seed_from_u64(tseed);
+        let direct = is_direct(t.ingress);
+        out.extend(k_windows(t, &mut rng, false));
+
+        let mut races: Vec<(f64, bool)> = vec![];
+        if t.r_windows > 0 {
+            for (dt, lo_first, hi_first) in STUDY2_RACE_CELLS {
+                races.extend(std::iter::repeat_n((dt, false), lo_first as usize));
+                races.extend(std::iter::repeat_n((dt, true), hi_first as usize));
+            }
+            if races.len() != t.r_windows as usize * STUDY2_RACES_PER_WINDOW {
+                anyhow::bail!(
+                    "{}: {} R windows hold {} races, the allocation has {}",
+                    t.identity,
+                    t.r_windows,
+                    t.r_windows as usize * STUDY2_RACES_PER_WINDOW,
+                    races.len()
+                );
+            }
+            races.shuffle(&mut rng);
+        }
+        let mut stage2: Vec<Kit> = std::iter::repeat_n(Kit::R, t.r_windows as usize)
+            .chain(std::iter::repeat_n(Kit::E, t.e_windows as usize))
+            .collect();
+        stage2.shuffle(&mut rng);
+        for (k, kit) in stage2.into_iter().enumerate() {
+            let seq = (t.k_windows as usize + k) as u32;
+            let id = |p: &str| format!("{}/{seq:03}/{p}", &t.identity[..8]);
+            let mut pairs = vec![];
+            if kit == Kit::R {
+                for r in 0..STUDY2_RACES_PER_WINDOW {
+                    let (dt, hi_first) = races.pop().expect("allocation checked above");
+                    let mut p = pair(
+                        id(&format!("race{r}")),
+                        PairKind::Race,
+                        ("hi", library::HI),
+                        ("lo", library::LO),
+                        hi_first,
+                        dt,
+                        true,
+                        (r * 2) as u32,
+                    );
+                    for m in &mut p.members {
+                        m.send_offset_ms += RACE_START_OFFSET_MS;
+                    }
+                    pairs.push(p);
+                }
+            }
+            let n_equal = match kit {
+                Kit::R if t.equal_key_in_r => 1,
+                Kit::E => STUDY2_EQUAL_KEY_PER_E_WINDOW,
+                _ => 0,
+            };
+            for e in 0..n_equal {
+                pairs.push(equal_key_pair(
+                    id(&format!("eq{e}")),
+                    STUDY2_EQUAL_KEY_DT_MS,
+                    (10 + e * 2) as u32,
+                    direct,
+                ));
+            }
+            out.push(WindowPlan {
+                target_identity: t.identity.clone(),
+                tier: t.tier.clone(),
+                seq,
+                stage: 2,
+                kit,
+                regime: if kit == Kit::E && direct {
+                    Regime::Buffered
+                } else {
+                    Regime::Streaming
+                },
+                burst_offset_ms: 0.0,
+                blockhash_age_slots: AGED_BLOCKHASH_SLOTS,
+                pairs,
+            });
+        }
+    }
+    Ok(out)
 }
 
 /// The labels a pair kind must contain (as a sorted multiset); each label names one library template.
@@ -541,7 +699,119 @@ mod tests {
             k_windows: 40,
             t_windows: 16,
             hs_windows: 6,
+            r_windows: 0,
+            e_windows: 0,
+            equal_key_in_r: false,
         }
+    }
+
+    fn study2_targets() -> Vec<TargetSpec> {
+        let r = |id: &str, client: &str, ingress: IngressKind, eq: bool| TargetSpec {
+            k_windows: 56,
+            t_windows: 0,
+            hs_windows: 0,
+            r_windows: 35,
+            equal_key_in_r: eq,
+            ..spec(id, client, ingress)
+        };
+        vec![
+            r(&"A".repeat(44), "Agave", IngressKind::Direct, true),
+            r(
+                &"H".repeat(44),
+                "HarmonicAgave",
+                IngressKind::HarmonicRemoteTpu,
+                false,
+            ),
+            TargetSpec {
+                k_windows: 0,
+                t_windows: 0,
+                hs_windows: 0,
+                e_windows: 12,
+                tier: "extended".into(),
+                ..spec(&"F".repeat(44), "Firedancer", IngressKind::Direct)
+            },
+        ]
+    }
+
+    #[test]
+    fn study2_follows_the_race_allocation_and_validates() {
+        let plans = generate_study2(7, &study2_targets()).unwrap();
+        validate(&plans).unwrap();
+        assert_eq!(
+            plans,
+            generate_study2(7, &study2_targets()).unwrap(),
+            "deterministic"
+        );
+        for t in study2_targets() {
+            let mine: Vec<&WindowPlan> = plans
+                .iter()
+                .filter(|p| p.target_identity == t.identity)
+                .collect();
+            let k: Vec<_> = mine.iter().filter(|p| p.kit == Kit::K).collect();
+            assert_eq!(k.len(), t.k_windows as usize);
+            assert!(
+                k.iter().all(|p| p.pairs.len() == 3
+                    && p.pairs.iter().all(|q| q.kind != PairKind::C2Uncontended)),
+                "Study 2 K windows carry C1, C2, C3 only"
+            );
+            let races: Vec<&PairPlan> = mine
+                .iter()
+                .flat_map(|p| &p.pairs)
+                .filter(|q| q.kind == PairKind::Race)
+                .collect();
+            for (dt, lo_first, hi_first) in STUDY2_RACE_CELLS {
+                let cell = |first: &str| {
+                    races
+                        .iter()
+                        .filter(|q| q.race_dt_ms == Some(dt) && q.first_sent_label == first)
+                        .count()
+                };
+                let n = if t.r_windows > 0 {
+                    (lo_first, hi_first)
+                } else {
+                    (0, 0)
+                };
+                assert_eq!(
+                    (cell("lo"), cell("hi")),
+                    (n.0 as usize, n.1 as usize),
+                    "Δt {dt}"
+                );
+            }
+            for p in mine.iter().filter(|p| p.kit == Kit::R) {
+                let eq = p
+                    .pairs
+                    .iter()
+                    .filter(|q| q.kind == PairKind::EqualKey)
+                    .count();
+                assert_eq!(eq, usize::from(t.equal_key_in_r));
+                let latest = p
+                    .pairs
+                    .iter()
+                    .filter(|q| q.kind == PairKind::Race)
+                    .flat_map(|q| &q.members)
+                    .map(|m| m.send_offset_ms)
+                    .fold(f64::MIN, f64::max);
+                assert!(
+                    latest < OBSERVED_INSIDE_SLOT_MS,
+                    "a race ends inside the first observed slot"
+                );
+            }
+            for p in mine.iter().filter(|p| p.kit == Kit::E) {
+                assert_eq!(p.regime, Regime::Buffered);
+                assert!(
+                    p.pairs.len() == STUDY2_EQUAL_KEY_PER_E_WINDOW
+                        && p.pairs.iter().all(|q| q.kind == PairKind::EqualKey
+                            && q.race_dt_ms == Some(STUDY2_EQUAL_KEY_DT_MS))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn study2_refuses_r_windows_that_do_not_hold_the_allocation() {
+        let mut t = study2_targets();
+        t[0].r_windows = 34;
+        assert!(generate_study2(7, &t).is_err());
     }
 
     fn targets() -> Vec<TargetSpec> {

@@ -18,6 +18,10 @@
 //! sub-budgets (e.g. "smoke", "pilot") inside the campaign cap, and stores the campaign's opening on-chain balance
 //! for cumulative reconciliation. SQLite in WAL mode with `BEGIN IMMEDIATE` makes every check-and-insert atomic and
 //! durable. One ledger file covers the whole campaign.
+//!
+//! A later study can continue under the same cap in a new ledger file: its *carry-over* records what earlier studies
+//! cost (once, before any reservation). It counts against the cap like a fee, but not in on-chain reconciliation,
+//! which only compares the new owned accounts' drop with what this ledger has committed since they opened.
 
 use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
@@ -99,6 +103,8 @@ pub struct Totals {
     pub expired_charged: u64,
     /// Unexplained on-chain balance drops charged by reconciliation.
     pub adjustments: u64,
+    /// Spend of earlier studies carried into this ledger (counts against the cap, not in reconciliation).
+    pub carried_over: u64,
     pub landed_count: u64,
     pub open_count: u64,
     pub expired_count: u64,
@@ -106,7 +112,12 @@ pub struct Totals {
 }
 
 impl Totals {
+    /// Everything that counts against the cap.
     pub fn committed(&self) -> u64 {
+        self.committed_since_opening() + self.carried_over
+    }
+    /// What this ledger's owned accounts can have lost on chain: `committed` without the carry-over.
+    pub fn committed_since_opening(&self) -> u64 {
         self.spent + self.reserved + self.expired_charged + self.adjustments
     }
     pub fn headroom(&self) -> u64 {
@@ -124,6 +135,8 @@ const CHARGED_FEE_SQL: &str = "COALESCE(SUM(CASE WHEN status = 'landed' THEN act
                                                WHEN status IN ('reserved', 'expired_charged') THEN max_fee
                                                ELSE 0 END), 0)";
 const SCHEMA_VERSION: &str = "2";
+const CARRY_OVER_SQL: &str =
+    "COALESCE((SELECT CAST(value AS INTEGER) FROM meta WHERE key = 'carry_over_lamports'), 0)";
 
 impl Ledger {
     /// Opens (or creates) the ledger. The cap is fixed at creation; re-opening with a different cap is refused, so a
@@ -253,7 +266,7 @@ impl Ledger {
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let committed: i64 = tx.query_row(
             &format!(
-                "SELECT {CHARGED_FEE_SQL} + (SELECT COALESCE(SUM(lamports), 0) FROM adjustments) FROM reservations"
+                "SELECT {CHARGED_FEE_SQL} + (SELECT COALESCE(SUM(lamports), 0) FROM adjustments) + {CARRY_OVER_SQL} FROM reservations"
             ),
             [],
             |r| r.get(0),
@@ -452,12 +465,15 @@ impl Ledger {
             [],
             |r| r.get(0),
         )?;
+        let carried_over: i64 =
+            conn.query_row(&format!("SELECT {CARRY_OVER_SQL}"), [], |r| r.get(0))?;
         Ok(Totals {
             cap: self.cap,
             spent: spent as u64,
             reserved: max_fees("reserved")? as u64,
             expired_charged: max_fees("expired_charged")? as u64,
             adjustments: adjustments as u64,
+            carried_over: carried_over as u64,
             landed_count: count("landed")? as u64,
             open_count: count("reserved")? as u64,
             expired_count: count("expired_charged")? as u64,
@@ -507,6 +523,38 @@ impl Ledger {
                 Ok(v.parse()?)
             }
         }
+    }
+
+    /// Records the spend of earlier studies, once, on a ledger that has not reserved or charged anything yet.
+    pub fn record_carry_over(&self, lamports: u64, reason: &str) -> Result<()> {
+        if lamports == 0 || lamports > self.cap {
+            bail!(
+                "carry-over {lamports} lamports must be positive and within the cap {}",
+                self.cap
+            );
+        }
+        if reason.trim().is_empty() {
+            bail!("a carry-over needs a reason (where the earlier spend is documented)");
+        }
+        let mut conn = self.conn.lock().expect("ledger mutex");
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let used: i64 = tx.query_row(
+            "SELECT (SELECT COUNT(*) FROM reservations) + (SELECT COUNT(*) FROM adjustments)
+                    + (SELECT COUNT(*) FROM meta WHERE key = 'carry_over_lamports')",
+            [],
+            |r| r.get(0),
+        )?;
+        if used > 0 {
+            bail!(
+                "a carry-over is recorded only once, before the ledger reserves or charges anything"
+            );
+        }
+        tx.execute(
+            "INSERT INTO meta (key, value) VALUES ('carry_over_lamports', ?1), ('carry_over_reason', ?2)",
+            params![lamports.to_string(), reason],
+        )?;
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn external_deposits(&self) -> Result<u64> {
@@ -751,6 +799,57 @@ mod tests {
         assert_eq!(l.campaign_opening(&owned, 900_000).unwrap(), 1_000_000);
         assert!(l.campaign_opening(&["a".to_string()], 1).is_err());
         assert_eq!(l.add_external_deposit(50_000).unwrap(), 50_000);
+    }
+
+    #[test]
+    fn carry_over_counts_against_the_cap_but_not_in_reconciliation() {
+        let (l, _) = temp_ledger(50_000);
+        l.record_carry_over(30_000, "study 1").unwrap();
+        assert!(
+            l.record_carry_over(1, "again").is_err(),
+            "a carry-over is recorded once"
+        );
+        let err = l
+            .reserve_batch(&[r("s1", 20_001, "p1", "run")])
+            .unwrap_err();
+        assert!(err.downcast_ref::<CapExceeded>().is_some());
+        l.reserve_batch(&[r("s2", 20_000, "p2", "run")]).unwrap(); // exactly at the cap is allowed
+        let t = l.totals().unwrap();
+        assert_eq!(
+            (t.committed(), t.committed_since_opening(), t.headroom()),
+            (50_000, 20_000, 0)
+        );
+        // The new accounts may have lost what this ledger committed, not the carry-over on top of it.
+        let cap_left = t.cap - t.carried_over;
+        assert_eq!(
+            reconcile(1_000_000, 0, 980_000, t.committed_since_opening(), cap_left),
+            Ok(20_000)
+        );
+        assert_eq!(
+            reconcile(1_000_000, 0, 979_999, t.committed_since_opening(), cap_left),
+            Err(ReconcileError::OverCap {
+                dropped: 20_001,
+                cap: 20_000
+            }),
+            "the carry-over shrinks what the new accounts may lose"
+        );
+        assert!(matches!(
+            reconcile(1_000_000, 0, 989_999, 10_000, cap_left),
+            Err(ReconcileError::Unaccounted { excess: 1, .. })
+        ));
+    }
+
+    #[test]
+    fn carry_over_is_refused_once_the_ledger_was_used() {
+        let (l, _) = temp_ledger(50_000);
+        l.reserve_batch(&[r("s1", 1_000, "p1", "run")]).unwrap();
+        assert!(l.record_carry_over(10_000, "study 1").is_err());
+        let (l, _) = temp_ledger(50_000);
+        assert!(l.record_carry_over(50_001, "above the cap").is_err());
+        assert!(
+            l.record_carry_over(10_000, "  ").is_err(),
+            "a reason is required"
+        );
     }
 
     #[test]

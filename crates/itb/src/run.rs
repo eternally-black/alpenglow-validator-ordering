@@ -633,9 +633,8 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
         handles.push(tokio::spawn(async move {
             let t = plan.target_identity.clone();
             let seq = plan.seq;
-            let r = execute_window(ctx, plan, (first, last)).await;
+            let r = execute_window(ctx, plan, (first, last), permit).await;
             in_flight.lock().expect("in flight").remove(&t);
-            drop(permit);
             if let Err(e) = r {
                 tracing::error!(target = %t, error = %e, "window failed");
                 failures
@@ -740,7 +739,15 @@ fn sc_now(_sc: &SlotClock) -> i64 {
     RunClock::new().now_unix_ns()
 }
 
-async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) -> Result<()> {
+/// `send_permit` bounds how many windows prepare and send at once; it is released as soon as the last probe has gone
+/// out, so a window's outcome collection never delays the next window's preparation (in Study 1 it did: windows that
+/// waited for a permit held through collection started too close to their leader slot).
+async fn execute_window(
+    ctx: WindowCtx,
+    plan: WindowPlan,
+    window: (u64, u64),
+    send_permit: tokio::sync::OwnedSemaphorePermit,
+) -> Result<()> {
     let target = plan.target_identity.clone();
     let cadence = ctx.slot_clock.cadence();
     let slot_ms = cadence.mean_slot_ms();
@@ -1086,6 +1093,7 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
     } else {
         0
     });
+    drop(send_permit);
 
     // Which of the window's slots the target actually produced (eligibility criterion (c)).
     tokio::time::sleep(Duration::from_secs(3)).await;

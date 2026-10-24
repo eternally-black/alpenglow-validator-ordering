@@ -206,6 +206,9 @@ enum Cmd {
         seed: u64,
         #[arg(long)]
         out: PathBuf,
+        /// 1: the Study 1 generator (frozen design/design.jsonl); 2: Study 2 (docs/STUDY2-PLAN.md).
+        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=2))]
+        study: u8,
     },
     /// Show spend-ledger totals and open reservations.
     Ledger {
@@ -216,6 +219,12 @@ enum Cmd {
         /// Record an external top-up of the owned accounts (keeps on-chain reconciliation exact).
         #[arg(long)]
         add_deposit_lamports: Option<u64>,
+        /// On a fresh ledger: record what earlier studies cost, so this ledger's cap covers them too.
+        #[arg(long, requires = "carry_over_reason")]
+        carry_over_lamports: Option<u64>,
+        /// Where the carried-over spend is documented.
+        #[arg(long, requires = "carry_over_lamports")]
+        carry_over_reason: Option<String>,
     },
 }
 
@@ -545,10 +554,19 @@ async fn main() -> Result<()> {
             c.reconcile_now(&rpc).await?;
             println!("{}", serde_json::to_string_pretty(&c.ledger.totals()?)?);
         }
-        Cmd::Design { targets, seed, out } => {
+        Cmd::Design {
+            targets,
+            seed,
+            out,
+            study,
+        } => {
             let specs: Vec<design::TargetSpec> =
                 serde_json::from_str(&std::fs::read_to_string(&targets)?)?;
-            let plans = design::generate(seed, &specs);
+            let plans = if study == 2 {
+                design::generate_study2(seed, &specs)?
+            } else {
+                design::generate(seed, &specs)
+            };
             design::validate(&plans)?;
             let mut text = String::new();
             for p in &plans {
@@ -583,12 +601,18 @@ async fn main() -> Result<()> {
             ledger,
             max_spend_sol,
             add_deposit_lamports,
+            carry_over_lamports,
+            carry_over_reason,
         } => {
-            // Recording a deposit writes the ledger: hold the campaign lock for it.
-            let _lock = add_deposit_lamports
-                .map(|_| campaign::CampaignLock::acquire(&ledger, "ledger-deposit"))
+            // Recording a deposit or a carry-over writes the ledger: hold the campaign lock for it.
+            let _lock = (add_deposit_lamports.is_some() || carry_over_lamports.is_some())
+                .then(|| campaign::CampaignLock::acquire(&ledger, "ledger-write"))
                 .transpose()?;
             let l = ledger::Ledger::open(&ledger, auth::sol_to_lamports(max_spend_sol)?)?;
+            if let (Some(n), Some(reason)) = (carry_over_lamports, &carry_over_reason) {
+                l.record_carry_over(n, reason)?;
+                println!("carry-over of {n} lamports recorded: {reason}");
+            }
             if let Some(d) = add_deposit_lamports {
                 println!(
                     "external deposits now {} lamports",

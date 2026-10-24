@@ -1,0 +1,86 @@
+[
+ {
+  "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+  "client_id": "Agave",
+  "ingress": "direct",
+  "tier": "core",
+  "k_windows": 56,
+  "t_windows": 0,
+  "hs_windows": 0,
+  "r_windows": 35,
+  "e_windows": 0,
+  "equal_key_in_r": true
+ },
+ {
+  "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+  "client_id": "JitoLabs",
+  "ingress": "direct",
+  "tier": "core",
+  "k_windows": 56,
+  "t_windows": 0,
+  "hs_windows": 0,
+  "r_windows": 35,
+  "e_windows": 0,
+  "equal_key_in_r": true
+ },
+ {
+  "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+  "client_id": "Firedancer",
+  "ingress": "direct",
+  "tier": "core",
+  "k_windows": 56,
+  "t_windows": 0,
+  "hs_windows": 0,
+  "r_windows": 35,
+  "e_windows": 0,
+  "equal_key_in_r": true
+ },
+ {
+  "identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+  "client_id": "AgaveBam",
+  "ingress": "bam_node",
+  "tier": "core",
+  "k_windows": 56,
+  "t_windows": 0,
+  "hs_windows": 0,
+  "r_windows": 35,
+  "e_windows": 0,
+  "equal_key_in_r": false
+ },
+ {
+  "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+  "client_id": "HarmonicAgave",
+  "ingress": "harmonic_remote_tpu",
+  "tier": "core",
+  "k_windows": 56,
+  "t_windows": 0,
+  "hs_windows": 0,
+  "r_windows": 35,
+  "e_windows": 0,
+  "equal_key_in_r": false
+ },
+ {
+  "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+  "client_id": "HarmonicFiredancer",
+  "ingress": "harmonic_remote_tpu",
+  "tier": "core",
+  "k_windows": 56,
+  "t_windows": 0,
+  "hs_windows": 0,
+  "r_windows": 35,
+  "e_windows": 0,
+  "equal_key_in_r": false
+ },
+ {
+  "identity": "9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY",
+  "client_id": "Firedancer",
+  "ingress": "direct",
+  "tier": "extended",
+  "k_windows": 0,
+  "t_windows": 0,
+  "hs_windows": 0,
+  "r_windows": 0,
+  "e_windows": 12,
+  "equal_key_in_r": false
+ }
+]

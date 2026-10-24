@@ -140,8 +140,8 @@ impl Campaign {
             self.opening,
             self.ledger.external_deposits()?,
             current,
-            t.committed(),
-            t.cap,
+            t.committed_since_opening(),
+            t.cap - t.carried_over,
         ) {
             Ok(dropped) => Ok(dropped),
             Err(e) => {
