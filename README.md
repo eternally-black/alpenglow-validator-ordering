@@ -10,7 +10,7 @@
 | **Status** | Code, analysis and simulation complete; localnet end-to-end green. Mainnet campaign 2026-10-27 → 10-29 (hard stop `--not-after`), then [REPORT.md](REPORT.md) with per-validator verdicts, intervals, measurement dates and the "what went wrong" log |
 | **Reproduce (offline, no keys)** | `docker compose up --build` |
 | **Re-check claims on chain** | `docker compose --profile verify up` |
-| **Pre-registration** | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md) (normative analysis plan). Its SHA-256, the design's and the manifest's are posted in a mainnet Memo before the campaign; the signature goes here and in REPORT.md |
+| **Pre-registration** | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md), the normative analysis plan, frozen on 2026-10-24 before the campaign. Its SHA-256 and those of [the design](design/design.jsonl) and [the manifest](design/campaign.json) are in mainnet Memo [`5vRM47a8…QcyG`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg) (slot 460,779,153, signed by the measurement wallet). Check: `sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json` |
 | **Does the method work?** | [docs/POWER.md](docs/POWER.md): the analysis is run on simulated schedulers with known rules, including look-alikes built to fool it |
 
 ---

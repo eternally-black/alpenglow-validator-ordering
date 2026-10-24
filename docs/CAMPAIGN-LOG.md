@@ -90,3 +90,20 @@ probes. That is 0.0026 SOL of the 0.05 SOL cap.
 - **Second external deposit:** 4,518 lamports to payer `CtkaziuR…` (slot 460,774,514, fee payer `HhQXNqM1…`), recorded with `itb ledger --add-deposit-lamports 4518`. `scripts/foreign_transfers.py` lists every foreign transaction touching the owned accounts: the funding and these two deposits.
 
 **Pilot cost (both pilots, budget `pilot`):** 3,256,500 lamports of landed fees plus 98,000 lamports charged for expired probes. **Campaign total so far:** 3,428,500 lamports of landed fees plus 98,000 expired, 0.0035 SOL of the 0.05 SOL cap. The ledger and the chain agree to the lamport once the two recorded deposits are counted.
+
+## 2026-10-24 08:16 UTC — freeze
+
+- **Inputs:** after both pilots, the targets were checked against live gossip: all 10 still show the client and ingress kind of `design/targets.json`.
+- **Frozen files** (commit `5ddcc97`):
+
+  | File | SHA-256 |
+  |---|---|
+  | `docs/PREREGISTRATION.md` | `478b09b618d5a6f455302149ad3cc607468b0949153fdaf62a75f3105f944c55` |
+  | `design/design.jsonl` (`itb design --seed 20261023`, 796 windows, worst case 0.0387 SOL) | `cdca861b32af78fe89417a4348f118481f1153adde7616aef227487cb6f5d828` |
+  | `design/campaign.json` | `857825e066f341b3755ddfc60ff43e8437a5c3ebd90c980a675bc07640022bc7` |
+
+- **Memo:** [`5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg), finalized in slot 460,779,153 at 08:16:46 UTC. Program spl-memo, signer the measurement wallet, text `itb-prereg v1 prereg=… design=… manifest=…` with the three hashes above. Fee: 5,000 lamports.
+- **Re-checked from git:** the committed blobs of the three files hash to exactly these values; the repository stores LF, and `scripts/freeze.py` refuses CR bytes.
+- **What went wrong:**
+  - The draft design that POWER.md was simulated on (`design.draft.jsonl`) came from an older build of the generator. It still had streaming offsets on multiples of 130 ms, so it is not byte-identical to the frozen design. The simulation is rerun on the frozen design, and POWER.md is updated with the result, as it promised.
+  - `design/targets.json` had CRLF endings from a Python text-mode write. It was normalised to LF before hashing, with its content unchanged.
