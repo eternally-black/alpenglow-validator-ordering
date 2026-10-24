@@ -31,6 +31,16 @@ services:
       - ./:/work:ro
     network_mode: none # proves the result needs nothing but the committed data
 
+  # ---------------------------------------------------------------- figures (README / REPORT), redrawn offline
+  figures:
+    <<: *analysis
+    profiles: ["figures"]
+    command: ["figures", "--out", "figures"]
+    volumes:
+      - ./:/work:ro
+      - ./figures:/work/figures
+    network_mode: none
+
   # ---------------------------------------------------------------- chain verification
   verify:
     <<: *analysis

@@ -92,7 +92,7 @@ def select_runs(raw_root: Path, manifest: dict | None) -> tuple[list[Path], list
     return chosen, rejected
 
 
-def _achieved_offsets(run: Run) -> pd.DataFrame:
+def achieved_offsets(run: Run) -> pd.DataFrame:
     """Per window: first send (stream finished) minus the *observed* first-shred event of the target's first slot, in
     ms (createdBank for localnet runs, which anchor on it). Windows without that observed event get no value — an
     estimated anchor is never substituted."""
@@ -220,7 +220,7 @@ def analyse(dirs: list[Path], manifest: dict | None, designs: dict | None, n_dra
     pairs = outcomes.pair_table(run, designs=designs, windows=windows)
     all_pairs = pairs
     if sensitivities:
-        offsets = _achieved_offsets(run)
+        offsets = achieved_offsets(run)
         if len(pairs) and len(offsets):
             pairs = pairs.merge(offsets, on=["run_id", "target_identity", "seq"], how="left")
     core = {c["identity"]: (c["client_id"], c["ingress"]) for c in manifest.get("core_targets", [])} if manifest else {}

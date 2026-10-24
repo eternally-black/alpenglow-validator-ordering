@@ -4,6 +4,7 @@ reproduce  offline: recompute every derived number from data/raw and compare wit
 verify     re-check claims against the chain (sample) or the archived blocks
 report     recompute and overwrite data/derived (after new data)
 oc         operating characteristics on simulated scenarios
+figures    redraw figures/ (light and dark SVG) from data/derived/results.json and data/raw
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import oc, report, verify
+from . import figures, oc, report, verify
 from .load import load_designs, run_dirs
 
 
@@ -34,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
                             "under --raw is analysed and nothing is confirmatory")
         p.add_argument("--design", type=Path, action="append", default=None,
                        help="frozen design file(s) to validate windows against (default: every design/*.jsonl)")
+        p.add_argument("--figures", type=Path, default=Path("figures"), help="committed figures to re-check (reproduce)")
     v = sub.add_parser("verify")
     v.add_argument("--raw", type=Path, default=Path("data/raw"))
     v.add_argument("--source", choices=["chain", "archive"], default="chain")
@@ -46,6 +48,12 @@ def main(argv: list[str] | None = None) -> int:
     o.add_argument("--reps", type=int, default=20)
     o.add_argument("--n-draws", type=int, default=2_000)
     o.add_argument("--out", type=Path, default=Path("data/derived/oc.json"))
+    f = sub.add_parser("figures")
+    f.add_argument("--results", type=Path, default=Path("data/derived/results.json"))
+    f.add_argument("--raw", type=Path, default=Path("data/raw"))
+    f.add_argument("--manifest", type=Path, default=Path("design/campaign.json"))
+    f.add_argument("--design", type=Path, default=Path("design/design.jsonl"))
+    f.add_argument("--out", type=Path, default=Path("figures"))
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -67,6 +75,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\nREPRODUCTION FAILED: {len(diffs)} differences, e.g.:\n  " + "\n  ".join(diffs[:20]))
             return 1
         print(f"\nREPRODUCED: every number in {committed_path} recomputed from {a.raw} ({len(fresh.get('runs', []))} runs).")
+        if a.manifest is not None and a.figures.is_dir():
+            stale = figures.check(committed_path, a.raw, a.manifest, Path("design/design.jsonl"), a.figures)
+            if stale:
+                print(f"FIGURES NOT REPRODUCED: {', '.join(stale)} (redraw with `itb-analysis figures`)")
+                return 1
+            print(f"REPRODUCED: every figure in {a.figures}/ redrawn byte for byte.")
         return 0
     if a.cmd == "verify":
         rep = verify.verify(run_dirs(a.raw), a.source, a.rpc_url, None if a.sample == 0 else a.sample)
@@ -74,6 +88,10 @@ def main(argv: list[str] | None = None) -> int:
         if a.json:
             a.json.write_text(json.dumps(rep, indent=1))
         return 0 if rep["passed"] else 1
+    if a.cmd == "figures":
+        for path in figures.build(a.results, a.raw, a.manifest, a.design, a.out):
+            print(f"wrote {path}")
+        return 0
     if a.cmd == "oc":
         res = oc.run(a.design, a.targets, a.reps, a.n_draws)
         a.out.parent.mkdir(parents=True, exist_ok=True)

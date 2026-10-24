@@ -34,7 +34,7 @@ def main() -> None:
     w = outcomes.window_table(run, designs)
     pairs = outcomes.pair_table(run, designs=designs, windows=w)
     probes = outcomes.probe_table(run)
-    offsets = report._achieved_offsets(run)
+    offsets = report.achieved_offsets(run)
 
     print(f"live pilot runs: {[d.name for d in dirs]}\n")
     print("| Validator | Client | Ingress | Windows (evaluable) | Probes landed | Main pairs both landed | "

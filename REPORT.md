@@ -37,6 +37,12 @@ Each step, its cost and its problems are in [docs/CAMPAIGN-LOG.md](docs/CAMPAIGN
 L_C = P(x lands before y), with exact Clopper–Pearson intervals, Bonferroni-adjusted over the 36-effect family.
 Windows are the unit, so n is the number of evaluable windows where both members of the pair landed.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/identification-dark.svg">
+  <img src="figures/identification.svg" width="100%" alt="Three panels, one per contrast (C1 A vs B, C2 A-prime vs B, C3 A vs A-prime), ten validator groups each. Priority-label estimates sit near 1, 0 and 1, the pattern only reward divided by cost predicts; send-order estimates sit near 0.5 inside the tie band for every group.">
+</picture>
+
+
 | Validator | Client | Ingress | L_C1 (A before B) | L_C2 (A′ before B) | L_C3 (A before A′) | Published claim | Strictness ≥ | Selection-robust |
 |---|---|---|---|---|---|---|---|---|
 | `7QQGNm3p` | Agave | direct | 0.90 [0.67, 0.99] n=40 | 0.12 [0.02, 0.36] n=40 | 0.88 [0.64, 0.98] n=40 | **reward_cost** | 0.70 | yes |
@@ -66,6 +72,12 @@ Windows are the unit, so n is the number of evaluable windows where both members
 
 Strictness is the share of complete windows where *all three* contrasts went reward/cost's way (one-sided 95 %
 lower bound). The send regime explains the gap between the two groups (sensitivity §6.4, regime split):
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/arrival-dark.svg">
+  <img src="figures/arrival.svg" width="100%" alt="One dot per leader window, positioned by when our first probe finished sending relative to the leader's first shred. Agave, Jito-Solana and Rakurai follow reward divided by cost in every window queued before the slot (75 of 75) but in only 8 of 25 windows that arrive during the slot. Firedancer and the BAM and Harmonic builders follow it in 215 of 216 windows either way.">
+</picture>
+
 
 | Group | Buffered windows: probes arrive ≈ 150 ms before the leader's slot | Streaming windows: probes arrive during the window |
 |---|---|---|
@@ -107,6 +119,12 @@ intervals and no multiplicity claims. Full tables: [`data/derived/exploratory_st
 from `scripts/exploratory_stage2.py`. 156 windows, 118 of them evaluable.
 
 **Races: how big a head start can a higher-priority transaction overcome?**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/races-dark.svg">
+  <img src="figures/races.svg" width="100%" alt="Four small panels: the share of races in which the higher-priority probe overtook the lower-priority one's head start, against head starts of 5, 25, 60 and 100 ms. Agave family: never (horizon under 5 ms). Firedancer and Firedancer plus Harmonic: about 5 to 25 ms. Agave plus Harmonic: about 25 to 60 ms.">
+</picture>
+
 - Each race pairs `hi` (3,000,000 µlamports/CU) against `lo` (1,000,000 µlamports/CU with a 64 MiB data request),
   one sent Δt ms after the other, starting just after the target's first shred. `hi` has the higher priority under
   every candidate key.
@@ -139,6 +157,12 @@ from `scripts/exploratory_stage2.py`. 156 windows, 118 of them evaluable.
 - Harmonic and BAM groups: mostly FIFO (first-sent first 0.50–1.00 per group and Δt, small samples).
 
 **Hold cliff: identical probes sent 7 s, 3 s and 0.5 s before the window.**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/hold-dark.svg">
+  <img src="figures/hold.svg" width="100%" alt="Unit chart: probes sent 7, 3 and 0.5 seconds before the target window. Agave and Jito-Solana: all 8 probes sent 7 s early expired, all sent 3 s and 0.5 s early landed. Firedancer: all probes landed, including the 7 s ones.">
+</picture>
+
 - Agave and Jito-Solana: every probe sent 7 s early expired (8/8). Those sent 3 s and 0.5 s early landed (21/21).
   Agave drops packets held longer than 20 slots (≈ 4 s at the observed cadence).
 - Firedancer: the 7 s probes landed in the target window (4/4). It keeps pending transactions until their blockhash
@@ -195,7 +219,7 @@ from `scripts/exploratory_stage2.py`. 156 windows, 118 of them evaluable.
 ## 9. Verify and reproduce
 
 ```bash
-docker compose up --build                       # recompute every number here from data/raw (offline) and diff
+docker compose up --build                       # recompute every number and redraw every figure from data/raw (offline), diff both
 docker compose --profile verify up              # re-check a sample of landings against mainnet blocks
 sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json   # = the hashes in the Memo
 ```

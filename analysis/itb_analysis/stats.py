@@ -287,11 +287,9 @@ def _window_agreement(pairs: pd.DataFrame, rule: str, estimand: str) -> pd.Serie
     return df.groupby("window")["hit"].mean()
 
 
-def strictness(pairs: pd.DataFrame, rule: str, estimand: str = "cc") -> dict:
-    """Window-level strictness: share of *complete* windows in which every directional prediction of `rule` held,
-    with an exact one-sided 95 % lower bound — one Bernoulli trial per window. A window is complete for `rule` only if
-    every contrast carrying one of its directional predictions was observed there (both members landed): a window
-    with a single surviving contrast cannot certify the whole rule. Incomplete windows are counted, not scored."""
+def window_hits(pairs: pd.DataFrame, rule: str, estimand: str = "cc") -> pd.DataFrame:
+    """Per window (index run_id, seq): `n` contrasts observed among those carrying a directional prediction of
+    `rule`, `needed` of them in all, and `all_hit` = 1.0 if every observed one went the rule's way."""
     xc, oc_ = ESTIMANDS[estimand]
     if rule == "fifo":
         needed, col, want = list(CONTRASTS), oc_, {c: 1.0 for c in CONTRASTS}
@@ -301,8 +299,16 @@ def strictness(pairs: pd.DataFrame, rule: str, estimand: str = "cc") -> dict:
         want = {c: 1.0 if RULES[rule]["label"][c] == "x" else 0.0 for c in needed}
     df = pairs[pairs["pair_kind"].isin(needed) & pairs["evaluable"]].dropna(subset=[col])
     hits = df.assign(hit=[float(v == want[c]) for v, c in zip(df[col], df["pair_kind"])])
-    per_window = hits.groupby(["run_id", "seq"]).agg(n=("hit", "size"), all_hit=("hit", "min"))
-    complete = per_window[per_window["n"] == len(needed)]
+    return hits.groupby(["run_id", "seq"]).agg(n=("hit", "size"), all_hit=("hit", "min")).assign(needed=len(needed))
+
+
+def strictness(pairs: pd.DataFrame, rule: str, estimand: str = "cc") -> dict:
+    """Window-level strictness: share of *complete* windows in which every directional prediction of `rule` held,
+    with an exact one-sided 95 % lower bound — one Bernoulli trial per window. A window is complete for `rule` only if
+    every contrast carrying one of its directional predictions was observed there (both members landed): a window
+    with a single surviving contrast cannot certify the whole rule. Incomplete windows are counted, not scored."""
+    per_window = window_hits(pairs, rule, estimand)
+    complete = per_window[per_window["n"] == per_window["needed"]]
     k, n = int(complete["all_hit"].sum()), int(len(complete))
     incomplete = int(len(per_window) - n)
     # `lower95_worst` counts every incomplete window as a failure: what strictness is without the selection assumption.
