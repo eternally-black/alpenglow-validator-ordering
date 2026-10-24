@@ -7,6 +7,7 @@ secrets/
 *-keypair.json
 id.json
 keys/
+keys-*/
 
 # --- build output ---
 target/
