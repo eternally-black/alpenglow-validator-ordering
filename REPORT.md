@@ -219,7 +219,9 @@ to the lamport, once the two recorded spam deposits are counted.
 | Pilots (100 windows) | 3,256,500 | 98,000 | 97 |
 | Campaign Stage 1 (413 windows) | 15,797,000 | 686,500 | 616 |
 | Campaign Stage 2 (156 windows) | 5,362,000 | 102,000 | 219 |
-| **Total** | **24,592,500 (0.0246 SOL)** | **886,500** | |
+| Closing: sweep of the 24 payers and return of the remainder to the funder | 125,000 | 0 | — |
+| **Total** | **24,717,500 (0.0247 SOL)** | **886,500** | |
 
 The cap was 0.05 SOL, compiled into the binary and enforced by the ledger. The highest charge it ever held was
-0.0255 SOL.
+0.0255 SOL. The wallet received 0.1 SOL, plus 13,023 lamports of spam deposits, and returned 75,295,523 lamports to its funder
+([`5j8PEKpj…LA3D`](https://explorer.solana.com/tx/5j8PEKpj5djzEbXGwcqxqdut6HTkMG9h71TV16EoRKfXVfKKq3L1iSGM7AVJv79BjDjvUp5pCVcPUp62d4mJLA3D)). The difference, 24,717,500 lamports, is the whole cost of the measurement.

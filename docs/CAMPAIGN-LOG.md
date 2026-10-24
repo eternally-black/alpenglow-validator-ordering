@@ -146,3 +146,10 @@ probes. That is 0.0026 SOL of the 0.05 SOL cap.
 - **Final confirmatory report**, rerun with both runs present: identical validator-level results, Holm p-values and positive controls; only the funnel now also counts Stage-2 windows. The offline `docker compose up` reproduction passes.
 
 **Campaign total:** 24,592,500 lamports of landed fees plus 886,500 charged for expired probes, i.e. 0.0255 SOL of the 0.05 SOL cap.
+
+## 2026-10-24 16:55–18:14 UTC — closing the wallet
+
+- **Sweep** (16:55): `itb setup sweep` returned every payer's balance to the master, in 24 transfers costing 120,000 lamports of fees. All payers are empty. The master then held 75,300,523 lamports, exactly the opening 0.1 SOL plus the 13,023 lamports of recorded deposits minus 24,712,500 lamports of fees charged by the ledger.
+- **Return to the funder** (18:14:23): 75,295,523 lamports sent to `3cB1N3xVpPjfjnZmYEsijL5znEKudNGMCMQmse9BoD5Y`, the address that funded the wallet. Transaction [`5j8PEKpj…LA3D`](https://explorer.solana.com/tx/5j8PEKpj5djzEbXGwcqxqdut6HTkMG9h71TV16EoRKfXVfKKq3L1iSGM7AVJv79BjDjvUp5pCVcPUp62d4mJLA3D), slot 460,948,160, fee 5,000. The wallet owner ran it, not the tool. The master balance is 0.
+- **Total cost of the whole measurement:** 100,000,000 + 13,023 − 75,295,523 = 24,717,500 lamports (0.0247 SOL). That covers smoke, setup, pilots, both campaign stages, the sweep and the return.
+- The keypairs (`keys/`, never in git) are deleted by the wallet owner after this entry.
