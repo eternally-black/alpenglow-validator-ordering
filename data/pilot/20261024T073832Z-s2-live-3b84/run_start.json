@@ -1,0 +1,37 @@
+{
+  "alpenglow": {
+    "activated_at_slot": 459648000,
+    "feature_gate": "A1pengvuM6JEcyNuTnMqepBKhwHE3N6PmUrdATGawhJS",
+    "first_alpenglow_slot": 459653008
+  },
+  "anchor_event": "first_shred",
+  "budget": "pilot",
+  "campaign_opening_lamports": 100000000,
+  "design_file": "design/design.pilot.jsonl",
+  "design_sha256": "ba263b2382ef0a975fead8491157a6bb6d3e9d86f52c5fd6d73d79a967ac5471",
+  "genesis_hash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+  "itb_version": "0.1.0",
+  "max_lateness_ms": 100.0,
+  "mode": "live",
+  "not_after_unix": 1792850400,
+  "obs_lag_ms": 0.0,
+  "rpc": "https://mainnet.helius-rpc.com/<redacted>",
+  "run_id": "20261024T073832Z-s2-live-3b84",
+  "stage": 2,
+  "started_at": "2026-10-24T07:38:33.972836139Z",
+  "stop_at_unix_ns": 1792833512966473276,
+  "targets": [
+    "5Cchr1XGEg7dbBXByV5NY2ad8jfxAM7HA3x8D56rq9Ux",
+    "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+    "9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY",
+    "9jxgosAfHgHzwnxsHw4RAZYaLVokMbnYtmiZBreynGFP",
+    "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+    "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+    "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+    "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+    "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+    "ana2y2YvQ3ZPMwm6qhnN3nJoUSiT3qx5Pvetkq9xcfY"
+  ],
+  "tpu_override": null,
+  "ws": "wss://mainnet.helius-rpc.com/<redacted>"
+}

@@ -89,6 +89,8 @@ pub enum Anchor {
 /// Sends inside the hand-over gap are anchored on the previous leader's last slot; the gap is ≥ ~280 ms in every
 /// observation so far, so −250 ms is the deepest offset that still lands after the anchor event.
 pub const PREV_SLOT_MAX_LEAD_MS: f64 = 250.0;
+/// Time reserved for preparing a window before its earliest send.
+const PREP_MARGIN_MS: f64 = 3_000.0;
 
 fn anchor_for(nominal_ms: f64) -> Anchor {
     if nominal_ms >= 0.0 {
@@ -432,26 +434,49 @@ pub async fn run(rpc: Arc<Rpc>, ws_url: &str, args: RunArgs) -> Result<()> {
     let current_state: Arc<RwLock<HashMap<String, Validator>>> =
         Arc::new(RwLock::new(HashMap::new()));
     let states = Arc::new(run.jsonl("target_states.jsonl")?);
+    // The first snapshot of a run is archived whole (stake shares, context); later ones keep only the targets' raw
+    // gossip entries plus the node count and the SHA-256 of the full answer — ~1 KB instead of ~230 KB a minute.
+    let first_snapshot = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let snapshot_once = {
-        let (rpc, run, states, ids, cur) = (
+        let (rpc, run, states, ids, cur, first) = (
             rpc.clone(),
             run.clone(),
             states.clone(),
             target_ids.clone(),
             current_state.clone(),
+            first_snapshot.clone(),
         );
         move || {
-            let (rpc, run, states, ids, cur) = (
+            let (rpc, run, states, ids, cur, first) = (
                 rpc.clone(),
                 run.clone(),
                 states.clone(),
                 ids.clone(),
                 cur.clone(),
+                first.clone(),
             );
             async move {
                 let (vals, raw) = targets::snapshot(&rpc).await?;
                 let at = clock.now_unix_ns();
-                run.write_zst(&format!("gossip/{at}.json.zst"), &raw)?;
+                if first.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                    run.write_zst(&format!("gossip/{at}.json.zst"), &raw)?;
+                } else {
+                    let nodes = raw.as_array().cloned().unwrap_or_default();
+                    let kept: Vec<serde_json::Value> = nodes
+                        .iter()
+                        .filter(|n| {
+                            n["pubkey"]
+                                .as_str()
+                                .is_some_and(|k| ids.iter().any(|i| i == k))
+                        })
+                        .cloned()
+                        .collect();
+                    let full_sha = format!("{:x}", Sha256::digest(serde_json::to_vec(&raw)?));
+                    run.write_zst(
+                        &format!("gossip/{at}.targets.json.zst"),
+                        &json!({"nodes_total": nodes.len(), "full_sha256": full_sha, "targets": kept}),
+                    )?;
+                }
                 let mut map = cur.write().expect("state lock");
                 for id in &ids {
                     let v = vals.iter().find(|v| &v.identity == id);
@@ -726,7 +751,9 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
         .flat_map(|p| &p.members)
         .map(|m| nominal(m.send_offset_ms))
         .fold(0.0f64, f64::min);
-    let prep_slots = (((-earliest_ms).max(0.0) + 1_500.0) / slot_ms).ceil() as u64;
+    // Preparation (blockhash, signing, the durable claim and reservation, the connection check) gets 3 s before the
+    // earliest send: 1.5 s was too tight on a slow disk in the pilot.
+    let prep_slots = (((-earliest_ms).max(0.0) + PREP_MARGIN_MS) / slot_ms).ceil() as u64;
     if ctx.require_post_alpenglow && !alpenglow::is_post_alpenglow(window.0) {
         bail!("window {} precedes the first Alpenglow block", window.0);
     }
@@ -915,6 +942,9 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
         }
         let skip = |reason: &str, not_sent: &mut HashMap<String, String>| -> Result<()> {
             for p in &items {
+                if not_sent.contains_key(&p.probe_id) {
+                    continue; // already released (e.g. cancelled as late)
+                }
                 not_sent.insert(p.probe_id.clone(), reason.to_string());
                 if let (true, Some(l)) = (reserved, &ctx.live) {
                     l.campaign.ledger.cancel_unsent(&p.signature)?;
@@ -922,6 +952,15 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
             }
             Ok(())
         };
+        // Re-check the connection before waiting for the anchor as well: an eviction during preparation is repaired
+        // seconds ahead, so the fresh connection already holds stream credits when the send is due (pilot,
+        // 2026-10-24: a reconnect made right before the send waited one round trip for credits and missed it).
+        if ctx.live.is_some() {
+            let r = ctx.quic.connect(addr).await;
+            if !r.reused {
+                reconnects.push(r);
+            }
+        }
         let (anchor_slot, extra_ms) = match phase {
             Anchor::Estimate => (window.0, 0.0),
             Anchor::PrevSlot => (window.0 - 1, cadence.boundary_ms),
@@ -973,9 +1012,22 @@ async fn execute_window(ctx: WindowCtx, plan: WindowPlan, window: (u64, u64)) ->
                 }
             })
             .collect();
-        let earliest = outgoing.iter().map(|o| o.at).min().expect("non-empty");
-        if tokio::time::Instant::now() > earliest + max_late {
-            skip("late", &mut not_sent)?;
+        // Lateness is per probe: a phase can hold sends seconds apart (H kit), and one passed instant must not cancel
+        // the ones still ahead.
+        let now = tokio::time::Instant::now();
+        let (late, outgoing): (Vec<Outgoing>, Vec<Outgoing>) =
+            outgoing.into_iter().partition(|o| now > o.at + max_late);
+        for o in &late {
+            not_sent.insert(o.probe_id.clone(), "late".into());
+            if let (true, Some(l), Some(p)) = (
+                reserved,
+                &ctx.live,
+                items.iter().find(|p| p.probe_id == o.probe_id),
+            ) {
+                l.campaign.ledger.cancel_unsent(&p.signature)?;
+            }
+        }
+        if outgoing.is_empty() {
             continue;
         }
         if tokio::time::Instant::now() >= stop_at || outgoing.iter().all(|o| o.at > stop_at) {

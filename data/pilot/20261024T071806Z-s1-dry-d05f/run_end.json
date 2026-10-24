@@ -1,0 +1,14 @@
+{
+  "anchor_event": "firstShredReceived",
+  "cadence": {
+    "boundary_ms": 265.332669,
+    "inside_ms": 198.233202,
+    "samples_boundary": 33,
+    "samples_inside": 101
+  },
+  "finished_at": "2026-10-24T07:18:35.126751243Z",
+  "payers_still_leased": 0,
+  "run_id": "20261024T071806Z-s1-dry-d05f",
+  "window_failures": [],
+  "windows_started": 3
+}
