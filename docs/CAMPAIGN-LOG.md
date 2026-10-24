@@ -114,3 +114,21 @@ probes. That is 0.0026 SOL of the 0.05 SOL cap.
 - **Comparison with the pre-freeze run:** same picture within 3 percentage points in every cell. No wrong claim survives the worst-case selection bounds in any scenario.
 - **Note for REPORT.md:** the frozen pre-registration (§1) quotes the pre-freeze censored-coding figures, 50 % vs 99 % and 0 % vs 51 %. On the frozen design they are 47 % vs 99 % and 0 % vs 48 %. These are illustrative numbers; the analysis plan itself is unchanged.
 - **Scoring fix:** `unidentified:selection` was not counted as an honest non-claim in two scenarios (`fifo_reorder`, `mode_switch_rc_fifo`). Those two were re-scored on the same seeds: same claims, now counted correctly.
+
+## 2026-10-24 10:31–12:58 UTC — campaign Stage 1 (confirmatory)
+
+- **Run:** [`data/raw/20261024T103156Z-s1-live-916e`](../data/raw/20261024T103156Z-s1-live-916e). Frozen design (hash checked by `--design-sha256`), budget `campaign` capped at 0.044 SOL, parameters as frozen in PREREGISTRATION. The PC was idle during the run.
+- **Scope:** 413 windows. 3,105 probes landed in their target windows (19,230,500 lamports of fees) and 127 expired (784,500 lamports charged). 722 were never sent, at no cost. The ledger and the chain agree to the lamport.
+- **Stopping:**
+  - 40 or more informative pairs per contrast for five core targets: `7QQGNm3p` (in 42 windows), `EvnRmnMr`, `Fd7btgyS`, `HEL1USMZ`, `JUPiTERr`.
+  - 20 for each extended target.
+  - `DRpbCBMx` (AgaveBam, core) used all 80 plans and finished with 36, the pre-registered stop on exhausted plans.
+- **What went wrong:**
+  - About half of `DRpbCBMx`'s streaming windows were "late", plus BAM-node evictions. A likely cause is the frozen concurrency of 2: a window that waits for a slot held by a previous window's outcome collection starts too close to its leader slot.
+  - Slow-schedule targets needed most of the 2.5 hours.
+- **Confirmatory analysis** (`itb_analysis.cli report --manifest design/campaign.json`): every validator group orders our probes by Agave's reward/cost priority. A goes before B in C1; B goes before A′ in C2, although A′ pays the higher CU price, because its 64 MiB loaded-data request raises its cost; A goes before A′ in C3. The send order does not matter (O ≈ 0.5 everywhere).
+  - Both positive controls passed, no §9 gate fired, and the selection check passed everywhere.
+  - All six core claims are `reward_cost` and selection-robust.
+  - Strictness lower bounds: 0.89–0.93 for Firedancer, Harmonic and BAM; 0.70 for Agave and JitoLabs, where B went before A in a few windows.
+  - Extended targets (exploratory): `9eGrDohd` and `9jxgosAf` reward_cost; `5Cchr1XG` reward_cost (assumes selection); `ana2y2Yv` partial:reward_cost.
+- **Verification:** all 2,553 claims check out against the archive, and no window block holds an unclaimed probe (1,640 blocks). A random sample of 60 claims checks out against mainnet blocks fetched again from the RPC. Files: [`data/derived/verify-archive.json`](../data/derived/verify-archive.json), [`data/derived/verify-chain-sample.json`](../data/derived/verify-chain-sample.json).
