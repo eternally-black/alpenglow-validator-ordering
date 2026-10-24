@@ -7,7 +7,7 @@
 
 | | |
 |---|---|
-| **Status** | Code, analysis and simulation complete; localnet end-to-end green. Mainnet campaign 2026-10-27 → 10-29 (hard stop `--not-after`), then [REPORT.md](REPORT.md) with per-validator verdicts, intervals, measurement dates and the "what went wrong" log |
+| **Result** | On 2026-10-24, after Alpenglow, all 10 validator groups (8 client types, including BAM nodes and Harmonic builders) ordered our probes by Agave's **reward ÷ (cost + 1)** priority. Neither CU price, nor lamport fee, nor arrival order explains it. Firedancer, BAM and Harmonic follow it in almost every window. The Agave family follows it for transactions already pending when the slot starts, but not for transactions arriving during its slot. Full report with intervals, measurement times and what went wrong: [REPORT.md](REPORT.md) |
 | **Reproduce (offline, no keys)** | `docker compose up --build` |
 | **Re-check claims on chain** | `docker compose --profile verify up` |
 | **Pre-registration** | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md), the normative analysis plan, frozen on 2026-10-24 before the campaign. Its SHA-256 and those of [the design](design/design.jsonl) and [the manifest](design/campaign.json) are in mainnet Memo [`5vRM47a8…QcyG`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg) (slot 460,779,153, signed by the measurement wallet). Check: `sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json` |

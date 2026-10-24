@@ -198,6 +198,10 @@ def window_table(run: Run, designs: dict | None = None) -> pd.DataFrame:
     reasons = []
     for _, r in w.iterrows():
         why = []
+        if pd.notna(r.get("skipped")):
+            # Never attempted (no probes): its only reason is the skip itself, not the checks that follow from it.
+            reasons.append(f"skipped:{r.get('skipped')}")
+            continue
         if r["duplicate_records"]:
             why.append("duplicate_records")
         if r["design_check"]:

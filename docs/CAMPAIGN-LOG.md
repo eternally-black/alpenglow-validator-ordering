@@ -118,7 +118,8 @@ probes. That is 0.0026 SOL of the 0.05 SOL cap.
 ## 2026-10-24 10:31–12:58 UTC — campaign Stage 1 (confirmatory)
 
 - **Run:** [`data/raw/20261024T103156Z-s1-live-916e`](../data/raw/20261024T103156Z-s1-live-916e). Frozen design (hash checked by `--design-sha256`), budget `campaign` capped at 0.044 SOL, parameters as frozen in PREREGISTRATION. The PC was idle during the run.
-- **Scope:** 413 windows. 3,105 probes landed in their target windows (19,230,500 lamports of fees) and 127 expired (784,500 lamports charged). 722 were never sent, at no cost. The ledger and the chain agree to the lamport.
+- **Scope:** 413 windows, 3,280 probes. 2,553 landed in their target windows (15,797,000 lamports of fees) and 111 expired (686,500 lamports charged). 616 were never sent, at no cost. The ledger and the chain agree to the lamport.
+  - Correction: an earlier version of this entry gave the cumulative ledger totals since the campaign opened, which include the smoke test and the pilots (3,105 landed, 19,230,500 lamports, 127 expired, 722 unsent), as Stage 1's.
 - **Stopping:**
   - 40 or more informative pairs per contrast for five core targets: `7QQGNm3p` (in 42 windows), `EvnRmnMr`, `Fd7btgyS`, `HEL1USMZ`, `JUPiTERr`.
   - 20 for each extended target.
@@ -132,3 +133,16 @@ probes. That is 0.0026 SOL of the 0.05 SOL cap.
   - Strictness lower bounds: 0.89–0.93 for Firedancer, Harmonic and BAM; 0.70 for Agave and JitoLabs, where B went before A in a few windows.
   - Extended targets (exploratory): `9eGrDohd` and `9jxgosAf` reward_cost; `5Cchr1XG` reward_cost (assumes selection); `ana2y2Yv` partial:reward_cost.
 - **Verification:** all 2,553 claims check out against the archive, and no window block holds an unclaimed probe (1,640 blocks). A random sample of 60 claims checks out against mainnet blocks fetched again from the RPC. Files: [`data/derived/verify-archive.json`](../data/derived/verify-archive.json), [`data/derived/verify-chain-sample.json`](../data/derived/verify-chain-sample.json).
+
+## 2026-10-24 13:38–14:53 UTC — campaign Stage 2 (exploratory)
+
+- **Run:** [`data/raw/20261024T133825Z-s2-live-4ab3`](../data/raw/20261024T133825Z-s2-live-4ab3). Frozen design and parameters, budget `campaign`.
+- **Scope:** 156 windows (T races, H hold cliff, S spill-over), 1,042 probes. 807 landed in their target windows (5,362,000 lamports) and 16 expired (102,000 charged); 219 were never sent. The ledger and the chain agree to the lamport.
+- **Results** (REPORT.md §5, `data/derived/exploratory_stage2.md`):
+  - **Effective reordering horizon:** under 5 ms for the Agave family, about 5–25 ms for Firedancer and Harmonic/Firedancer, about 25–60 ms for Harmonic/Agave.
+  - **Equal key:** Agave is FIFO; Firedancer leans later-arrival-first at 10 ms, below the pre-registered identification threshold.
+  - **Hold cliff:** confirmed. Agave and Jito-Solana drop the 7 s probes; Firedancer keeps them.
+  - **Spill-over:** pre-window sends to BAM and Harmonic land in the target window, never with the previous leader.
+- **Final confirmatory report**, rerun with both runs present: identical validator-level results, Holm p-values and positive controls; only the funnel now also counts Stage-2 windows. The offline `docker compose up` reproduction passes.
+
+**Campaign total:** 24,592,500 lamports of landed fees plus 886,500 charged for expired probes, i.e. 0.0255 SOL of the 0.05 SOL cap.
