@@ -1,0 +1,27 @@
+{
+  "anchor_event": "firstShredReceived",
+  "cadence": {
+    "boundary_ms": 276.641297,
+    "inside_ms": 198.692583,
+    "samples_boundary": 64,
+    "samples_inside": 192
+  },
+  "finished_at": "2026-10-24T08:04:10.918262335Z",
+  "ledger": {
+    "adjustments": 0,
+    "cancelled_count": 100,
+    "cap": 50000000,
+    "expired_charged": 92000,
+    "expired_count": 15,
+    "landed_count": 533,
+    "open_count": 0,
+    "reserved": 0,
+    "spent": 3320500
+  },
+  "owned_lamports_drop_since_campaign_opening": 3315982,
+  "payers_still_leased": 0,
+  "run_id": "20261024T075910Z-s1-live-c37d",
+  "sending_stopped": false,
+  "window_failures": [],
+  "windows_started": 20
+}

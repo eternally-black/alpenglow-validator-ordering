@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pilot calibration summary (PREREGISTRATION: pilot data are reported, never confirmatory).
 
-    PYTHONPATH=analysis python scripts/pilot_summary.py --raw data/pilot --design design/design.pilot.jsonl
+    PYTHONPATH=analysis python scripts/pilot_summary.py --raw data/pilot
 
 Per validator group: windows attempted / evaluable and the exclusion reasons, probe landing rate, the share of
 contrast pairs with both members landed (what the stopping rule counts), achieved send offsets against the observed
@@ -25,11 +25,12 @@ from itb_analysis.load import load_designs, load_runs, run_dirs
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--raw", type=Path, default=Path("data/pilot"))
-    ap.add_argument("--design", type=Path, default=Path("design/design.pilot.jsonl"))
+    ap.add_argument("--design", type=Path, action="append", default=None,
+                    help="pilot design file(s); default design/design.pilot*.jsonl")
     a = ap.parse_args()
     dirs = [d for d in run_dirs(a.raw) if json.loads((d / "run_start.json").read_text()).get("mode") == "live"]
     run = load_runs(dirs)
-    designs = load_designs([a.design])
+    designs = load_designs(a.design or sorted(Path("design").glob("design.pilot*.jsonl")))
     w = outcomes.window_table(run, designs)
     pairs = outcomes.pair_table(run, designs=designs, windows=w)
     probes = outcomes.probe_table(run)
