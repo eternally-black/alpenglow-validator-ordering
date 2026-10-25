@@ -221,3 +221,63 @@ or scoped in the text before freezing, each fix with a test that fails on the re
   on the Study 2 ledger, so it also recorded the opening: master 60,000,000 lamports, 24 empty payers.
 - **Payer funding** (06:14:47, 06:14:50): `itb setup fund --lamports-per-payer 2000000`, two transfers (16 and 8
   payers), fees 10,000. Study 2 spend so far: 15,000 lamports.
+
+## 2026-10-25 06:15–09:04 UTC — Study 2 Stage 1 (replication, confirmatory)
+
+- **Run:** [`data/raw/20261025T061534Z-s1-live-4e60`](../data/raw/20261025T061534Z-s1-live-4e60), the frozen design
+  (hash checked at run time) and the frozen parameters, on the binary rebuilt from the freeze commit.
+- **Pace:** 316 windows in 2 h 49 min. With the send-only concurrency fix, windows no longer waited for another
+  window's outcome collection: 200 windows in the first 45 minutes, about three times Study 1's pace.
+- **Probes:** 1,896 planned. 288 were never sent; they cost nothing and their windows are excluded. Of the 1,608
+  sent, 1,521 landed in the target window (94.6 %) and 87 expired.
+- **Stopping (§5 with ≤ 56 plans):**
+  - Jito-Solana, Agave + Harmonic and Firedancer + Harmonic reached 40 informative pairs per contrast.
+  - Agave also reached 40, last, at 09:04; its ≈ 12 windows an hour set the pace.
+  - Agave + BAM `DRpbCBMx` (39) and Firedancer C2 (38) used all 56 plans: the pre-registered stop on exhausted plans.
+    `DRpbCBMx`'s far BAM node again lost the most probes before sending.
+- **End:** no window failure, no open reservation. Reconciliation: the owned balance fell by 9,391,500 lamports,
+  exactly the fees the ledger recorded.
+- **Payer top-up** (09:05): `itb setup fund --lamports-per-payer 2000000`, two transfers, fees 10,000.
+
+## 2026-10-25 09:05–11:16 UTC — Study 2 Stage 2 (races and equal-key pairs, confirmatory H1–H3)
+
+- **Run:** [`data/raw/20261025T090530Z-s2-live-0b4f`](../data/raw/20261025T090530Z-s2-live-0b4f), 234 windows:
+  35 R windows for each of the six race targets and 24 E windows for `9eGrDohd`. Every plan was executed.
+- **Probes:** 1,518 planned. 244 were never sent. **All 1,274 sent probes landed in the target window.**
+- **Achieved send gaps** (stream finish to stream finish, medians):
+
+  | Planned gap | Achieved median |
+  |---|---|
+  | 2 ms | 2.20–2.23 ms per group |
+  | 5 ms | 4.65 ms |
+  | 10 ms | 10.07 ms |
+  | 25 ms | 25.0 ms |
+  | 50 ms | 50.1 ms |
+  | Equal-key 10 ms | 10.25 ms |
+  | Simultaneous | 0.003 ms |
+
+  Every gate of PREREGISTRATION-2 §8 passed.
+- **End:** no window failure, no open reservation. Reconciliation: the owned balance fell by 18,083,500 lamports
+  since the opening, exactly the fees recorded.
+
+## 2026-10-25 11:17 UTC — sweep
+
+- `itb setup sweep`: 24 transfers returned every payer's balance to the master, fees 120,000. All payers are empty.
+- The master holds 41,796,500 lamports: exactly 60,000,000 − 18,203,500, the Study 2 fees the ledger recorded
+  (Memo, three funding transfers, both stages, the sweep). The ledger also charges 539,500 lamports of expired probes
+  at their worst case. Those never left the accounts on chain, so its committed total, 43,460,500 with the carry-over,
+  is above the true spend.
+- **Total cost of both studies on chain:** 24,717,500 (Study 1) + 18,203,500 (Study 2) = 42,921,000 lamports
+  (0.0429 SOL), before the final return transfer (5,000).
+
+## 2026-10-25 — Study 2 analysis and verification
+
+- `itb-analysis study2 report` → [`data/derived/study2/`](../data/derived/study2/summary.md).
+  - Replication: 6 of 6 core targets keep their Study 1 claim (`reward_cost`). Both positive controls passed, and every
+    claim is selection-robust.
+  - H1–H3: 6 of 6 supported and selection-robust, with no gate fired.
+- `scripts/verify_frozen_study2.py`: the analysis tree frozen in the manifest (`cd83bbc9`) reproduces every number.
+- Archive check: all 2,795 Study 2 landings verified (26 checks each). The completeness check found no probe in any of
+  the 2,200 archived window blocks without a matching claim. Chain check: a random sample of 60 verified against
+  public mainnet RPC.
+- `docker compose up` reproduces Study 1, every figure (Study 2's included) and Study 2.

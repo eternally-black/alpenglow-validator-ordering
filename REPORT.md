@@ -3,32 +3,45 @@
 **Question.** By what rule does each validator order the transactions in its block, how strictly does the rule
 hold, and is there a rule at all?
 
-**Answer (post-Alpenglow mainnet, 2026-10-24, our probe transactions).** Every validator group we measured orders our
-probes by **Agave's priority, reward ÷ (cost + 1)**: 6 core and 4 extended targets, 8 client types, including BAM
-nodes and Harmonic block builders. Neither CU price nor lamport fee, and not arrival order.
+**Answer (post-Alpenglow mainnet, our own probe transactions; two pre-registered studies, 2026-10-24 and
+2026-10-25).** Every validator group we measured orders our probes by **Agave's priority, reward ÷ (cost + 1)**.
+That covers 6 core and 4 extended targets and 8 client types, including BAM nodes and Harmonic block builders. Neither
+CU price nor lamport fee explains the order, and neither does arrival order. **On the second day, a separate
+pre-registered study replicated the result for all six core targets.**
 
-- **Cost counts.** The *requested* compute and loaded-data limits enter the cost, so a probe that pays the higher CU
+- **Cost counts.** The *requested* compute and loaded-data limits enter the cost. A probe that pays the higher CU
   price but requests a 64 MiB data limit is placed after a cheaper one.
-- **Strictness depends on the client and on when the transactions arrive.** Firedancer, BAM and Harmonic follow the
-  rule in nearly every window, also for transactions arriving during the slot. The Agave family (Agave, Jito-Solana,
-  Rakurai) follows it perfectly for transactions already pending when the slot starts. For transactions arriving
-  during its slot, its order no longer follows any of the candidate keys.
+- **How strictly the rule holds depends on the client and on when the transactions arrive.**
+  - Firedancer, BAM and Harmonic follow the rule in nearly every window, also for transactions arriving during the
+    slot.
+  - The Agave family (Agave, Jito-Solana, Rakurai) follows it perfectly for transactions already pending when the slot
+    starts. For transactions arriving during its slot, it does not.
+  - Study 2 measured how far each one reorders against arrival. In the Agave family, a higher-priority transaction
+    overtakes a 2 ms head start in only 20 % of races, and a 5 ms one never.
+  - Firedancer and the Harmonic builders overtake a 2 ms head start in 97–100 % of races (both pre-registered and
+    supported). Their horizons run from 5–10 ms to beyond 50 ms (exploratory).
+- **Ties.** Of two identical buffered probes, Firedancer lands the later-sent one first, in 50 of 54 pairs
+  (pre-registered, supported).
 
-Everything here is recomputed from raw data by `docker compose up`, and every landing is checkable on chain
-(§7). The analysis was pre-registered before the campaign: hashes in mainnet Memo
-[`5vRM47a8…QcyG`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg),
-slot 460,779,153.
+Everything here is recomputed from raw data by `docker compose up`, and every landing is checkable on chain (§10).
+Both studies were pre-registered before their first probe. The hashes are in mainnet Memos
+[`5vRM47a8…QcyG`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg) (Study 1, slot 460,779,153) and
+[`2T6ha9FD…D5ww`](https://explorer.solana.com/tx/2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww) (Study 2, slot 461,151,605).
 
-## 1. When each measurement was taken (all 2026-10-24, UTC, slots ≥ 460,725,000, post-Alpenglow)
+## 1. When each measurement was taken (UTC, slots ≥ 460,725,000, post-Alpenglow)
 
-| Time (UTC) | What | Data | Role |
-|---|---|---|---|
-| 05:23 | Live smoke: reachability per ingress kind | `data/smoke/20261024T052311Z-smoke-live-f540` | engineering check |
-| 07:18–07:48 | Pilot, stages 1 and 2 (70 windows) | `data/pilot/20261024T0718*`, `…0738*` | calibration, not confirmatory |
-| 07:59–08:12 | Second pilot (30 windows), after execution fixes | `data/pilot/20261024T0759*`, `…0804*` | calibration, not confirmatory |
-| 08:16:46 | **Pre-registration frozen**; Memo on mainnet | `docs/PREREGISTRATION.md`, `design/` | — |
-| 10:31–12:58 | **Campaign Stage 1** (413 windows) | `data/raw/20261024T103156Z-s1-live-916e` | **confirmatory** |
-| 13:38–14:53 | Campaign Stage 2 (T, H, S kits; 156 windows) | `data/raw/20261024T133825Z-s2-live-4ab3` | exploratory |
+| Date | Time (UTC) | What | Data | Role |
+|---|---|---|---|---|
+| 10-24 | 05:23 | Live smoke: reachability per ingress kind | `data/smoke/20261024T052311Z-smoke-live-f540` | engineering check |
+| 10-24 | 07:18–07:48 | Pilot, stages 1 and 2 (70 windows) | `data/pilot/20261024T0718*`, `…0738*` | calibration, not confirmatory |
+| 10-24 | 07:59–08:12 | Second pilot (30 windows), after execution fixes | `data/pilot/20261024T0759*`, `…0804*` | calibration, not confirmatory |
+| 10-24 | 08:16:46 | **Pre-registration frozen**; Memo on mainnet | `docs/PREREGISTRATION.md`, `design/` | — |
+| 10-24 | 10:31–12:58 | **Study 1, Stage 1** (413 windows) | `data/raw/20261024T103156Z-s1-live-916e` | **confirmatory** |
+| 10-24 | 13:38–14:53 | Study 1, Stage 2 (T, H, S kits; 156 windows) | `data/raw/20261024T133825Z-s2-live-4ab3` | exploratory |
+| 10-25 | 03:53–03:57 | Mainnet dry run of the Study 2 design (12 windows, nothing sent) | local only (`data/dryrun/`) | engineering check |
+| 10-25 | 04:27 / 06:14 | **Pre-registration 2 frozen** / its Memo on mainnet | `docs/PREREGISTRATION-2.md`, `design/*study2*` | — |
+| 10-25 | 06:15–09:04 | **Study 2, Stage 1**: replication (316 windows) | `data/raw/20261025T061534Z-s1-live-4e60` | **confirmatory** |
+| 10-25 | 09:05–11:16 | **Study 2, Stage 2**: races and equal-key pairs (234 windows) | `data/raw/20261025T090530Z-s2-live-0b4f` | **confirmatory** (H1–H3) |
 
 Each step, its cost and its problems are in [docs/CAMPAIGN-LOG.md](docs/CAMPAIGN-LOG.md).
 
@@ -112,10 +125,10 @@ lower bound). The send regime explains the gap between the two groups (sensitivi
 6. **Including transition-ambiguous windows.** No campaign window was transition-ambiguous, so the analysis is
    identical.
 
-## 5. Exploratory (Stage 2, PREREGISTRATION §7)
+## 5. Exploratory (Study 1, Stage 2, PREREGISTRATION §7)
 
 All of this section is **exploratory** (PREREGISTRATION §7), descriptive, with plain 95 % Clopper–Pearson
-intervals and no multiplicity claims. Full tables: [`data/derived/exploratory_stage2.md`](data/derived/exploratory_stage2.md),
+intervals and no multiplicity claims. Study 2 (§6) then tested its race and tie-break findings confirmatorily. Full tables: [`data/derived/exploratory_stage2.md`](data/derived/exploratory_stage2.md),
 from `scripts/exploratory_stage2.py`. 156 windows, 118 of them evaluable.
 
 **Races: how big a head start can a higher-priority transaction overcome?**
@@ -176,7 +189,134 @@ from `scripts/exploratory_stage2.py`. 156 windows, 118 of them evaluable.
 - The builders hold a transaction for the leader it was addressed to, rather than passing it to whoever leads at the
   moment.
 
-## 6. What went wrong
+## 6. Study 2: a second day, and how far each client reorders (pre-registered)
+
+Study 2 was planned after Study 1 to close what Study 1 left open ([plan](docs/STUDY2-PLAN.md)):
+- one day only;
+- streaming samples of 5–11 windows;
+- race cells of 1–7 races;
+- a tie-break result two pairs short of its threshold.
+
+It has its own normative plan, [PREREGISTRATION-2.md](docs/PREREGISTRATION-2.md), frozen after two independent reviews
+([dispositions](docs/review/STUDY2-prefreeze-dispositions.md)). The hashes of that plan, the design and the manifest
+are in mainnet Memo [`2T6ha9FD…D5ww`](https://explorer.solana.com/tx/2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww), posted before the first probe. The manifest also pins the git tree of the
+analysis code. Operating characteristics, simulated under known schedulers: [POWER-2.md](docs/POWER-2.md).
+
+Study 2 ran with a new wallet and its own ledger. That ledger carries Study 1's cost, so the compiled 0.05 SOL cap
+covers both studies. Full tables: [`data/derived/study2/summary.md`](data/derived/study2/summary.md).
+
+### 6.1 Replication (hypothesis R)
+
+The Study 1 confirmatory procedure (PREREGISTRATION §1–§9), unchanged:
+- the same six core targets in the same frozen groups;
+- the same 36-effect family;
+- the same decision rules and gates.
+
+A target replicates when its published claim is the same as in Study 1.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/study2-replication-dark.svg">
+  <img src="figures/study2-replication.svg" width="100%" alt="Forest plot of the three label contrasts for the six core targets, Study 1 in grey and Study 2 in blue. Both studies sit near 1, 0 and 1 for every target: the reward-divided-by-cost pattern, again.">
+</picture>
+
+| Target | Client | Ingress | Study 2: L_C1 / L_C2 / L_C3 | Study 1 claim | Study 2 claim | Replicated |
+|---|---|---|---|---|---|---|
+| `7QQGNm3p` | Agave | direct | 0.88 / 0.07 / 0.93 (n=40) | reward_cost | **reward_cost** | yes |
+| `HEL1USMZ` | Jito-Solana | direct | 0.93 / 0.05 / 0.95 (n=40) | reward_cost | **reward_cost** | yes |
+| `EvnRmnMr` | Firedancer | direct | 0.98 / 0.00 / 1.00 (n=45 / 38 / 45) | reward_cost | **reward_cost** | yes |
+| `DRpbCBMx` | Agave + BAM | BAM node | 1.00 / 0.00 / 1.00 (n=39) | reward_cost | **reward_cost** | yes |
+| `Fd7btgyS` | Agave + Harmonic | Harmonic remote TPU | 1.00 / 0.00 / 1.00 (n=40 / 40 / 43) | reward_cost | **reward_cost** | yes |
+| `JUPiTERr` | Firedancer + Harmonic | Harmonic remote TPU | 1.00 / 0.00 / 0.98 (n=40 / 43 / 41) | reward_cost | **reward_cost** | yes |
+
+- **Everything replicated:** all six claims, both positive controls, and selection-robustness for every claim. Send
+  order again sits near 0.5: 0.425–0.575 for every core contrast.
+- **The regime split replicated too:**
+  - Agave and Jito-Solana follow the rule in every buffered window, but not in streaming ones:
+    - Agave: 1.00 / 0.00 / 1.00 with n = 30, against 0.50 / 0.30 / 0.70 with n = 10;
+    - Jito-Solana: 1.00 / 0.00 / 1.00, against 0.70 / 0.20 / 0.80.
+  - Firedancer stays at 1.00 / 0.00 / 1.00 in streaming windows (n = 14).
+- **Stopping:** `DRpbCBMx` (39) and Firedancer's C2 (38) used all 56 plans. That is the pre-registered stop on
+  exhausted plans.
+
+### 6.2 Hypotheses H1–H3 (confirmatory)
+
+A race pairs `hi` against `lo`, which ranks below it under every key, with `lo` sent Δt ms earlier. The two start
+5 ms after the target's first shred. O(Δt) is the share of races in which `hi` still landed first.
+
+The confirmatory test is in the 2 ms cell:
+- one-sided exact binomial test against one half;
+- Holm over six hypotheses;
+- a selection bound;
+- two gates.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/study2-races-dark.svg">
+  <img src="figures/study2-races.svg" width="100%" alt="Six small panels, one per validator group, of the share of races in which the high-priority probe overtook a low-priority one sent 0, 2, 5, 10, 25 or 50 ms earlier. Agave and Jito-Solana fall from most races at 0 ms to 7 of 35 and 6 of 29 at 2 ms and to none from 5 ms on. Firedancer EvnRmnMr overtakes at every head start up to 50 ms. The Harmonic builders overtake 2 ms head starts almost always and fall to none by 50 ms; Agave plus BAM falls to none at 50 ms.">
+</picture>
+
+| Hypothesis | k / n | Estimate [95 % CI] | Holm p | Published claim |
+|---|---|---|---|---|
+| `H1-agave`: Agave, `hi` overtakes a 2 ms head start in fewer than half of the races | 7 / 35 | 0.20 [0.08, 0.37] | 0.0005 | **supported** |
+| `H1-jito`: Jito-Solana, the same | 6 / 29 | 0.21 [0.08, 0.40] | 0.0012 | **supported** |
+| `H2-firedancer`: Firedancer `EvnRmnMr`, in more than half | 31 / 31 | 1.00 [0.89, 1.00] | < 10⁻⁷ | **supported** |
+| `H2-firedancer-harmonic`: Firedancer + Harmonic, the same | 32 / 33 | 0.97 [0.84, 1.00] | < 10⁻⁷ | **supported** |
+| `H2-agave-harmonic`: Agave + Harmonic, the same | 30 / 31 | 0.97 [0.83, 1.00] | < 10⁻⁷ | **supported** |
+| `H3-firedancer-ties`: of two identical buffered probes 10 ms apart, the later-sent one lands first in more than half of the pairs (first-sent first: k / n) | 4 / 54 | 0.07 [0.02, 0.18] | < 10⁻⁷ | **supported** |
+
+- **Every claim is selection-robust, and no gate fired.**
+  - Every probe Stage 2 sent landed, so no pair was incomplete.
+  - The hi-first controls lost 0 of their 5–6 races per group.
+  - The achieved send gaps had medians of 2.20–2.23 ms in the 2 ms cells and 10.25 ms for the equal-key pairs.
+- **H3 per target:** `EvnRmnMr` 1/31 and `9eGrDohd` 3/23, the same direction.
+  - In every one of the 54 pairs, both probes were sent before the leader's first shred.
+  - Reading the result as a tie-break by later *arrival* assumes the network kept our send order (PREREGISTRATION-2
+    §2).
+- **Sensitivity:** all five pre-specified analyses give the same six verdicts:
+  - censored coding;
+  - including transition-ambiguous windows;
+  - achieved gap within 0.5 ms;
+  - same-slot pairs;
+  - buffering evidence.
+
+### 6.3 How far each client reorders (exploratory)
+
+Cells: races in which `hi` landed first / races, both landed, evaluable windows. At 0 ms both probes go out together,
+counted in either stream order.
+
+| Group | 0 ms | 2 ms | 5 ms | 10 ms | 25 ms | 50 ms | Horizon bracket | Equal key, first-sent first (10 ms) |
+|---|---|---|---|---|---|---|---|---|
+| Agave `7QQGNm3p` | 10/12 | 7/35 | 0/15 | 0/12 | 0/12 | 0/13 | 0–2 ms | 23/35 |
+| Jito-Solana `HEL1USMZ` | 7/10 | 6/29 | 0/13 | 0/9 | 0/10 | 0/11 | 0–2 ms | 10/29 |
+| Firedancer + Harmonic `JUPiTERr` | 12/12 | 32/33 | 7/13 | 4/12 | 1/12 | 0/11 | 5–10 ms | – |
+| Agave + Harmonic `Fd7btgyS` | 10/10 | 30/31 | 11/13 | 7/12 | 1/10 | 0/11 | 10–25 ms | – |
+| Agave + BAM `DRpbCBMx` | 3/3 | 14/14 | 4/6 | 5/5 | 3/6 | 0/5 | 25–50 ms (non-monotone, small cells) | – |
+| Firedancer `EvnRmnMr` | 10/10 | 31/31 | 13/13 | 10/10 | 10/10 | 12/13 | > 50 ms | 1/31 |
+| Firedancer `9eGrDohd` (equal-key windows only) | – | – | – | – | – | – | – | 3/23 |
+
+- **Agave family: priority acts only over a couple of milliseconds.**
+  - Sent together at the start of the slot, the higher-priority probe lands first in 17 of 22 races.
+  - With a 2 ms head start for the other one, it lands first in 13 of 64. From 5 ms on, it never does (0 of 95).
+  - Together with the regime split, this fits a scheduler that orders what is waiting at the same moment. A
+    transaction arriving a few milliseconds later meets one that is already being processed.
+- **Firedancer `EvnRmnMr` held priority order against every head start up to 50 ms** (12 of 13 at 50 ms). In Study 1
+  the Firedancer direct group reordered within about 5–25 ms. That group was pooled with `9eGrDohd` and had 3–7 races
+  per cell. So the horizon is a property of a validator's setup on a given day, not a constant of the client. Pack's
+  scheduling intervals are configurable; we cannot see which setting changed.
+- **The builders** reorder over 5–10 ms (Firedancer + Harmonic), 10–25 ms (Agave + Harmonic) and 25–50 ms
+  (Agave + BAM). Study 1 had too few races to measure BAM at all.
+- **Equal keys in the Agave family** are not the plain FIFO that Study 1's 20 of 20 pairs suggested. First-sent first
+  happened in 23/35 pairs for Agave and 10/29 for Jito-Solana. It is descriptive, and outside any hypothesis.
+
+### 6.4 What Study 2 changes in the answer
+
+- The rule is not an artefact of one day or one session: the confirmatory procedure, rerun unchanged, gives the same
+  claim for every core target.
+- "How strictly" now has a measured scale. The Agave family's priority ordering spans about 2 ms of arrival. Firedancer
+  and the builders reorder over tens of milliseconds, and the span differs between validators and days.
+- Firedancer's equal-priority tie-break, unidentified in Study 1, is now confirmed among buffered probes:
+  later-sent first.
+
+## 7. What went wrong
 
 - **Connection eviction.** Busy servers evict unstaked QUIC connections from full tables between our pre-connect and
   the send. We first saw this in the smoke test; the worst cases are BAM nodes. Mitigation, before the freeze: the
@@ -193,18 +333,44 @@ from `scripts/exploratory_stage2.py`. 156 windows, 118 of them evaluable.
   the draft's illustrative censored-coding figures (50 % / 51 %); the frozen-design figures are 47 % / 48 %.
 - **Line endings.** Two files to be hashed had CRLF endings from Windows writes. They were normalised to LF before
   hashing, and `scripts/freeze.py` now refuses CR bytes.
+- **Study 2: the same weak spots, smaller.**
+  - The far BAM node `DRpbCBMx` again lost the most probes before sending: 39 pairs from all 56 plans.
+  - 288 of 1,896 Stage-1 probes and 244 of 1,518 Stage-2 probes were never sent (no fee). Every probe that was sent
+    in Stage 2 landed.
+  - The concurrency fix (§8) made Study 2 about three times faster than Study 1.
+- **Study 2: problems found before the freeze.**
+  - The two independent reviews found five blocking problems in the draft pre-registration and analysis. One example:
+    simultaneous races counted as controls, where noise could withdraw a valid result.
+  - Each was fixed, with a test, before the Memo
+    ([dispositions](docs/review/STUDY2-prefreeze-dispositions.md)).
+- **Study 2: a platform-dependent string.** The Study 2 results first recorded the manifest path with a Windows
+  backslash, so the Linux reproduction differed in that one field. The calling code now passes the path in POSIX
+  form; the frozen decision code was not touched.
 - **Earlier problems** found by the code reviews, the pilots and the localnet tests are listed with their fixes in
   [docs/review/CODE-gate1b-dispositions.md](docs/review/CODE-gate1b-dispositions.md) and
   [docs/CAMPAIGN-LOG.md](docs/CAMPAIGN-LOG.md).
 
-## 7. Deviations from the pre-registration
+## 8. Deviations from the pre-registrations
 
 - **Analysis plan:** none. Estimands, decision rules, family, gates and stopping were applied as frozen.
 - **Execution:** none. The frozen design (hash checked at run time) and the frozen parameters were used.
 - **Reporting fix after the freeze, no effect on any estimate:** the funnel labels a window that was skipped before
   any send (3 in Stage 1) only by its skip reason. Before the fix it was also labelled `design_mismatch` and so on.
+- **Study 1 results file after Study 2:** `data/derived/results.json` now lists the two Study 2 runs under
+  `rejected_runs` (other budget and design). Every number is unchanged.
 
-## 8. What this design does not separate
+**Study 2 (PREREGISTRATION-2):**
+- **Analysis plan:** none. Hypotheses, tests, Holm, selection bound, gates and sensitivity analyses were applied as
+  frozen.
+- **Execution:** none. The frozen design (hash checked at run time) and the frozen parameters were used.
+- **Send concurrency:** a window now holds its concurrency slot only while preparing and sending, not during outcome
+  collection. This tool change was announced in the plan and the pre-registration before the freeze, so it is not a
+  deviation.
+- **Analysis code:** the decision code (`study2.py` and the modules it uses) is byte-identical to the tree pinned in
+  the manifest (`cd83bbc9`). Reporting code (tables, figures, the reproduce hook) was added after the freeze.
+  `scripts/verify_frozen_study2.py` re-decides Study 2 with the pinned tree and reproduces every number.
+
+## 9. What this design does not separate
 
 - **Priority fee vs total fee.** With one signature they rank our probes identically.
 - **A builder's own sort vs the validator's scheduler behind it.** BAM and Harmonic groups are reported as the
@@ -215,14 +381,23 @@ from `scripts/exploratory_stage2.py`. 156 windows, 118 of them evaluable.
   scope.
 - **Staked or SWQoS senders.** We are an unstaked sender. Eviction, landing and timing may differ for staked
   connections.
+- **Send-side gaps (Study 2).** Δt is the gap between our two sends, measured at the sender. The gap at the scheduler
+  can be larger or smaller. Equal-key results read as an arrival tie-break only if the network kept the send order.
+- **Why a horizon is what it is.** We measure how far a validator reorders, not its scheduler's settings. Firedancer
+  `EvnRmnMr`'s horizon differed between the two days for reasons we cannot see.
 
-## 9. Verify and reproduce
+## 10. Verify and reproduce
 
 ```bash
-docker compose up --build                       # recompute every number and redraw every figure from data/raw (offline), diff both
+docker compose up --build                       # both studies: recompute every number, redraw every figure, diff all
 docker compose --profile verify up              # re-check a sample of landings against mainnet blocks
-sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json   # = the hashes in the Memo
+sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json   # = the hashes in the Study 1 Memo
+sha256sum docs/PREREGISTRATION-2.md design/design-study2.jsonl design/campaign-study2.json   # = the Study 2 Memo
+python scripts/verify_frozen_study2.py          # re-decide Study 2 with the analysis tree pinned in its manifest
 ```
+
+**Probe explorer:** [docs/explorer](docs/explorer/index.html). Every window and every probe of both studies, with
+eligibility, landing slot and index, each linked to Solana Explorer (`python scripts/build_explorer.py`).
 
 - **Archive check:** all 2,553 Stage-1 landing claims verified, with 26 checks each (signed bytes, signature,
   probe atom, block index, on-chain message, fee, leader, window). The completeness check found no probe in any of the
@@ -230,10 +405,18 @@ sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json   # =
 - **Chain check:** a random sample of 60 claims verified against mainnet blocks fetched again from the RPC.
   [`data/derived/verify-archive.json`](data/derived/verify-archive.json),
   [`data/derived/verify-chain-sample.json`](data/derived/verify-chain-sample.json).
+- **Study 2:** all 2,795 landings verified against the archive. The completeness check covered 2,200 archived window
+  blocks and found no unclaimed probe. A random sample of 60 was verified against public mainnet RPC:
+  [`data/derived/study2/verify-archive.json`](data/derived/study2/verify-archive.json),
+  [`verify-chain-sample.json`](data/derived/study2/verify-chain-sample.json).
 
-## 10. Cost
+## 11. Cost
 
-All amounts in lamports, from the spend ledger (`state/ledger.sqlite`). The owned accounts' on-chain balances agree
+**Both studies together: 42,921,000 lamports (0.0429 SOL) on chain**, under the 0.05 SOL cap. The final return
+transfer of Study 2 adds 5,000. The cap is compiled into the binary and enforced over both studies by the Study 2
+ledger, which carries Study 1's cost.
+
+**Study 1.** All amounts in lamports, from the spend ledger (`state/ledger.sqlite`). The owned accounts' on-chain balances agree
 to the lamport, once the two recorded spam deposits are counted.
 
 | Step | Landed fees | Charged for expired probes | Probes never sent (no fee) |
@@ -249,3 +432,16 @@ to the lamport, once the two recorded spam deposits are counted.
 The cap was 0.05 SOL, compiled into the binary and enforced by the ledger. The highest charge it ever held was
 0.0255 SOL. The wallet received 0.1 SOL, plus 13,023 lamports of spam deposits, and returned 75,295,523 lamports to its funder
 ([`5j8PEKpj…LA3D`](https://explorer.solana.com/tx/5j8PEKpj5djzEbXGwcqxqdut6HTkMG9h71TV16EoRKfXVfKKq3L1iSGM7AVJv79BjDjvUp5pCVcPUp62d4mJLA3D)). The difference, 24,717,500 lamports, is the whole cost of the measurement.
+
+**Study 2.** From its ledger (`state/ledger-study2.sqlite`), opened with the compiled cap and Study 1's 24,717,500
+lamports as a carry-over. The owned accounts' on-chain balances agree to the lamport.
+
+| Step | Landed fees | Charged for expired probes | Probes never sent (no fee) |
+|---|---|---|---|
+| Setup: Memo, payer funding (2), top-up (2), sweep (24) | 145,000 | 0 | — |
+| Stage 1, replication (316 windows) | 9,376,500 | 539,500 | 288 |
+| Stage 2, races and equal keys (234 windows) | 8,682,000 | 0 | 244 |
+| **Total** | **18,203,500 (0.0182 SOL)** | **539,500** | |
+
+The wallet received 0.06 SOL and holds 41,796,500 lamports after the sweep, exactly 60,000,000 − 18,203,500. The rest
+goes back to the funder.

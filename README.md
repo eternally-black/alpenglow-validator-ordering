@@ -7,12 +7,14 @@
 
 | | |
 |---|---|
-| **Result** | On 2026-10-24, after Alpenglow, all 10 validator groups (8 client types, including BAM nodes and Harmonic builders) ordered our probes by Agave's **reward ÷ (cost + 1)** priority. Neither CU price, nor lamport fee, nor arrival order explains it. Firedancer, BAM and Harmonic follow it in almost every window. The Agave family follows it for transactions already pending when the slot starts, but not for transactions arriving during its slot. Full report with intervals, measurement times and what went wrong: [REPORT.md](REPORT.md) |
+| **Result** | After Alpenglow, all 10 validator groups (8 client types, including BAM nodes and Harmonic builders) ordered our probes by Agave's **reward ÷ (cost + 1)** priority. Neither CU price, nor lamport fee, nor arrival order explains it. **A second pre-registered study on the next day replicated it for all 6 core targets.** Firedancer, BAM and Harmonic follow it in almost every window. The Agave family follows it only for transactions pending at slot start or arriving within about 2 ms of each other. Firedancer and the builders reorder over 5 to more than 50 ms. Full report with intervals, measurement times and what went wrong: [REPORT.md](REPORT.md) |
 | **Reproduce (offline, no keys)** | `docker compose up --build` |
 | **Re-check claims on chain** | `docker compose --profile verify up` |
 | **Pre-registration** | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md), the normative analysis plan, frozen on 2026-10-24 before the campaign. Its SHA-256 and those of [the design](design/design.jsonl) and [the manifest](design/campaign.json) are in mainnet Memo [`5vRM47a8…QcyG`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg) (slot 460,779,153, signed by the measurement wallet). Check: `sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json` |
 | **Does the method work?** | [docs/POWER.md](docs/POWER.md): the analysis is run on simulated schedulers with known rules, including look-alikes built to fool it |
-| **Study 2 (in progress)** | A pre-registered replication on a second day plus head-start races on a fine grid ([plan](docs/STUDY2-PLAN.md), [pre-registration 2](docs/PREREGISTRATION-2.md), [operating characteristics](docs/POWER-2.md)). Hashes in mainnet Memo [`2T6ha9FD…D5ww`](https://explorer.solana.com/tx/2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww) (slot 461,151,605). Both studies together stay under the 0.05 SOL cap, enforced by one ledger |
+| **Study 2 (2026-10-25)** | A pre-registered replication plus head-start races on a fine grid ([plan](docs/STUDY2-PLAN.md), [pre-registration 2](docs/PREREGISTRATION-2.md), [operating characteristics](docs/POWER-2.md), [results](REPORT.md#6-study-2-a-second-day-and-how-far-each-client-reorders-pre-registered)). Replication 6/6; all six hypotheses supported, no gate fired. Hashes, including the analysis code's git tree, in mainnet Memo [`2T6ha9FD…D5ww`](https://explorer.solana.com/tx/2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww) (slot 461,151,605) |
+| **Probe explorer** | [docs/explorer](docs/explorer/index.html): every window and probe of both studies, linked to Solana Explorer |
+| **Cost** | Both studies together: 0.0429 SOL on chain, under the 0.05 SOL cap compiled into the binary and enforced over both studies by one ledger |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/identification-dark.svg">
@@ -22,6 +24,11 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/arrival-dark.svg">
   <img src="figures/arrival.svg" width="100%" alt="One dot per leader window, positioned by when our first probe finished sending relative to the leader's first shred. Agave, Jito-Solana and Rakurai follow reward divided by cost in every window queued before the slot (75 of 75) but in only 8 of 25 windows that arrive during the slot. Firedancer and the BAM and Harmonic builders follow it in 215 of 216 windows either way.">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/study2-races-dark.svg">
+  <img src="figures/study2-races.svg" width="100%" alt="Study 2, pre-registered: six panels of the share of races in which a higher-priority probe overtook a lower-priority one sent 0 to 50 ms earlier. Agave and Jito-Solana: 7 of 35 and 6 of 29 at 2 ms, none from 5 ms on. Firedancer EvnRmnMr: nearly all, up to 50 ms. The Harmonic builders and Agave plus BAM: nearly all at 2 ms, falling to none by 50 ms.">
 </picture>
 
 ---
@@ -94,9 +101,11 @@ Each decision links to the evidence behind it.
 ## 4. Verify it yourself
 
 ```bash
-docker compose up --build                  # recompute every number and redraw every figure from data/raw (no network, no keys), diff both
+docker compose up --build                  # both studies: recompute every number and redraw every figure from data/raw (no network, no keys), diff all
 docker compose --profile verify up         # re-fetch blocks for a sample of claims from mainnet and check them
 VERIFY_SAMPLE=0 docker compose --profile verify up   # all claims (slow on the public RPC: ~6 getBlock / 10 s)
+sha256sum docs/PREREGISTRATION-2.md design/design-study2.jsonl design/campaign-study2.json   # = the Study 2 Memo
+python scripts/verify_frozen_study2.py     # re-decide Study 2 with the analysis code pinned in its manifest
 ```
 
 For each landed probe, the verifier checks that:
@@ -134,6 +143,7 @@ design/              target list, frozen design and campaign manifest (hashes in
 data/raw/<run_id>/   every observation of every run (signed probes, sends, outcomes, blocks, gossip)
 data/derived/        numbers in the report, regenerated by `docker compose up`
 figures/             light and dark SVG figures; `docker compose up` checks them byte for byte, `--profile figures` redraws
+docs/explorer/       probe explorer page (static; `python scripts/build_explorer.py` rebuilds its data)
 docs/                PLAN, PREREGISTRATION, POWER, DATA, research notes, independent reviews
 docker/              Dockerfiles; docker/LOCALNET.md
 ```
