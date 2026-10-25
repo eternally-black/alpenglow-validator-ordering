@@ -88,6 +88,17 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"FIGURES NOT REPRODUCED: {', '.join(stale)} (redraw with `itb-analysis figures`)")
                 return 1
             print(f"REPRODUCED: every figure in {a.figures}/ redrawn byte for byte.")
+        # Study 2, once frozen and analysed: the same check against data/derived/study2. The manifest path goes in as a
+        # POSIX string, because the results record it and must be the same bytes on every platform.
+        manifest2, committed2 = Path("design/campaign-study2.json"), a.derived / "study2" / "results.json"
+        if a.manifest is not None and manifest2.exists() and committed2.exists():
+            fresh2 = report._clean(study2.compute(a.raw, manifest2.as_posix(), _designs(a.design), committed_path))
+            diffs2 = report.compare(json.loads(json.dumps(fresh2)), json.loads(committed2.read_text()), tol=1e-9)
+            print("\n" + report2.markdown_summary(fresh2))
+            if diffs2:
+                print(f"STUDY 2 REPRODUCTION FAILED: {len(diffs2)} differences, e.g.:\n  " + "\n  ".join(diffs2[:20]))
+                return 1
+            print(f"REPRODUCED: every Study 2 number in {committed2} recomputed from {a.raw}.")
         return 0
     if a.cmd == "verify":
         rep = verify.verify(run_dirs(a.raw), a.source, a.rpc_url, None if a.sample == 0 else a.sample)
@@ -96,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
             a.json.write_text(json.dumps(rep, indent=1))
         return 0 if rep["passed"] else 1
     if a.cmd == "study2":
-        fresh = report._clean(study2.compute(a.raw, a.manifest, _designs(None), a.study1_results))
+        fresh = report._clean(study2.compute(a.raw, a.manifest.as_posix(), _designs(None), a.study1_results))
         print(report2.markdown_summary(fresh))
         path = a.derived / "results.json"
         if a.action == "report":

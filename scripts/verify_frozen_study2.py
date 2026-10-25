@@ -38,7 +38,7 @@ def main() -> int:
 
         assert Path(study2.__file__).resolve().is_relative_to(Path(tmp).resolve()), "imported the checkout, not the tree"
         designs = load.load_designs(sorted(Path("design").glob("*.jsonl")))
-        fresh = report._clean(study2.compute(a.raw, a.manifest, designs, a.study1_results))
+        fresh = report._clean(study2.compute(a.raw, a.manifest.as_posix(), designs, a.study1_results))
         diffs = report.compare(json.loads(json.dumps(fresh)), json.loads(a.results.read_text()), tol=1e-9)
     if diffs:
         print(f"MISMATCH with the frozen analysis tree {tree}: {len(diffs)} differences, e.g.:\n  " + "\n  ".join(diffs[:20]))

@@ -217,7 +217,22 @@
   "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE": true,
   "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4": true
  },
- "rejected_runs": [],
+ "rejected_runs": [
+  {
+   "reasons": [
+    "design_sha256 mismatch",
+    "budget=study2 (pilot or other purpose)"
+   ],
+   "run_id": "20261025T061534Z-s1-live-4e60"
+  },
+  {
+   "reasons": [
+    "design_sha256 mismatch",
+    "budget=study2 (pilot or other purpose)"
+   ],
+   "run_id": "20261025T090530Z-s2-live-0b4f"
+  }
+ ],
  "runs": [
   {
    "budget": "campaign",
