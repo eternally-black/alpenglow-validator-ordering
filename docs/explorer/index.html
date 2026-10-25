@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inside the Block Probe Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a sticky header band, then a validator rail beside the selected validator's windows; one column on phones. */
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --ink: #14171c; --muted: #5d6673; --line: #e1e4ea; --soft: #eef0f4;
+  --accent: #2a6fd6; --accent-soft: #e3edfb; --against: #d0602a; --against-soft: #fbe9df; --ok: #1d7a4d;
+  --display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1216; --surface: #171b21; --ink: #e8ebf0; --muted: #9aa3b0; --line: #2a3039; --soft: #1e232b;
+  --accent: #5d9cf2; --accent-soft: #1b2b44; --against: #e58153; --against-soft: #3a2418; --ok: #4cc28a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1216; --surface: #171b21; --ink: #e8ebf0; --muted: #9aa3b0; --line: #2a3039; --soft: #1e232b;
+  --accent: #5d9cf2; --accent-soft: #1b2b44; --against: #e58153; --against-soft: #3a2418; --ok: #4cc28a; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); margin: 0 }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface) }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line) }
+header .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding-block: 12px }
+h1 { font: 700 21px/1.1 var(--display); letter-spacing: .01em; margin: 0; text-wrap: balance }
+h1 small { display: block; font: 400 12.5px/1.4 var(--body); color: var(--muted); letter-spacing: 0; margin-top: 3px }
+.tabs { display: flex; gap: 4px; background: var(--soft); padding: 3px; border-radius: 8px }
+.tabs button { font: 500 13px var(--body); color: var(--muted); background: none; border: 0; padding: 6px 12px; border-radius: 6px; cursor: pointer }
+.tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08) }
+.search { margin-left: auto; display: flex; gap: 6px; min-width: 0; flex: 1 1 260px; max-width: 420px }
+.search input { flex: 1; min-width: 0; font: 13px var(--mono); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink) }
+.search button, .chipbtn { font: 500 13px var(--body); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 6px; padding: 6px 10px; cursor: pointer }
+.lede { padding-block: 18px 6px; color: var(--muted); max-width: 78ch; font-size: 14px }
+.lede strong { color: var(--ink) }
+main .wrap { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; padding-block: 12px 48px; align-items: start }
+@media (max-width: 860px) { main .wrap { grid-template-columns: minmax(0, 1fr) } .rail { position: static !important; max-height: none !important } }
+.rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 76px); max-height: calc(100vh - 100px); overflow: auto; display: flex; flex-direction: column; gap: 4px }
+.rail h2, .panel h2 { font: 600 11px/1 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px }
+.group { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; text-align: left; width: 100%; padding: 9px 10px; border: 1px solid transparent; border-radius: 8px; background: none; color: inherit; cursor: pointer; font: inherit }
+.group:hover { background: var(--soft) }
+.group[aria-current="true"] { background: var(--surface); border-color: var(--line) }
+.group .name { font-weight: 600; font-size: 14px }
+.group .id { font: 12px var(--mono); color: var(--muted) }
+.group .claim { grid-column: 1 / -1; font-size: 12px; color: var(--muted) }
+.pill { display: inline-block; font: 500 11.5px/1.6 var(--body); padding: 0 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); white-space: nowrap }
+.pill.muted { background: var(--soft); color: var(--muted) }
+.pill.warn { background: var(--against-soft); color: var(--against) }
+.panel { min-width: 0 }
+.summary { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; gap: 12px }
+.summary h3 { font: 700 19px/1.2 var(--display); margin: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline }
+.summary h3 .id { font: 13px var(--mono); color: var(--muted) }
+.stats { display: flex; flex-wrap: wrap; gap: 10px 28px; font-size: 13px }
+.stats div b { display: block; font: 600 17px var(--mono); font-variant-numeric: tabular-nums }
+.stats div span { color: var(--muted) }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px }
+.filters select, .filters label { font: 13px var(--body); color: var(--ink) }
+.filters select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface) }
+.count { color: var(--muted); font-size: 13px; margin-left: auto }
+.windows { display: flex; flex-direction: column; gap: 6px; margin-top: 10px }
+.win { background: var(--surface); border: 1px solid var(--line); border-radius: 8px }
+.win.hit { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft) }
+.win > button { display: grid; grid-template-columns: 64px 128px minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; padding: 9px 12px; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer }
+@media (max-width: 560px) { .win > button { grid-template-columns: 1fr; gap: 4px } }
+.seq { font: 500 13px var(--mono); font-variant-numeric: tabular-nums }
+.seq small { display: block; font: 11.5px var(--body); color: var(--muted) }
+.meta { font-size: 12px; color: var(--muted); line-height: 1.35 }
+.pairs { display: flex; flex-wrap: wrap; gap: 6px }
+.pair { display: inline-flex; align-items: center; gap: 4px; font: 12px var(--mono); padding: 2px 6px; border-radius: 5px; background: var(--soft); white-space: nowrap }
+.pair .k { color: var(--muted); margin-right: 2px }
+.pair.follows { background: var(--accent-soft) } .pair.follows .v { color: var(--accent) }
+.pair.against { background: var(--against-soft) } .pair.against .v { color: var(--against) }
+.pair .v { font-weight: 600 }
+.detail { border-top: 1px solid var(--line); padding: 10px 12px 12px; overflow-x: auto }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px }
+th { text-align: left; font: 600 11px var(--body); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 4px 8px; border-bottom: 1px solid var(--line) }
+td { padding: 5px 8px; border-bottom: 1px solid var(--soft); font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap }
+td.sig a { font-family: var(--mono) }
+.st-L { color: var(--ok) } .st-E, .st-N, .st-U { color: var(--muted) } .st-S, .st-W { color: var(--against) }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); margin-top: 8px }
+.empty { padding: 24px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 10px }
+footer { color: var(--muted); font-size: 12.5px; padding-block: 0 40px }
+@media (prefers-reduced-motion: no-preference) { .win { transition: box-shadow .2s, border-color .2s } }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>Inside the Block <small>Every probe of the study, from each validator's claim down to the transaction on chain</small></h1>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <form class="search" id="search" role="search">
+    <input id="q" name="q" placeholder="Find a probe by signature (paste it)" aria-label="Probe signature" autocomplete="off" spellcheck="false">
+    <button type="submit">Find</button>
+  </form>
+</div></header>
+
+<div class="wrap lede" id="lede">Loading the probe ledger…</div>
+
+<main><div class="wrap">
+  <nav class="rail" id="rail" aria-label="Validator groups"></nav>
+  <section class="panel" id="panel" aria-live="polite"></section>
+</div></main>
+
+<footer><div class="wrap" id="foot"></div></footer>
+
+<script>
+const NAMES = {Agave: "Agave", JitoLabs: "Jito-Solana", Rakurai: "Rakurai", Firedancer: "Firedancer", AgaveBam: "Agave + BAM",
+  FireBAM: "Firedancer + BAM", HarmonicAgave: "Agave + Harmonic", HarmonicFiredancer: "Firedancer + Harmonic"};
+const FAMILY = ["Agave", "JitoLabs", "Rakurai", "Firedancer", "AgaveBam", "FireBAM", "HarmonicAgave", "HarmonicFiredancer"];
+const KITS = {k: "Contrasts (K)", t: "Races (T)", h: "Hold cliff (H)", s: "Spill-over (S)", r: "Race curve (R)", e: "Equal key (E)"};
+const STATUS = {L: "landed in the window", E: "expired", N: "not sent", S: "landed with another leader", W: "landed in a later window", U: "unresolved"};
+// Who reward ÷ (cost + 1) puts first in each contrast (PREREGISTRATION §3); races: hi outranks lo under every key.
+const PREDICTED = {c1: "A", c2: "B", c3: "A", c2_uncontended: "B", race: "hi"};
+const STUDY_DAY = {1: "2026-10-24", 2: "2026-10-25"};
+const EXPLORER = "https://explorer.solana.com";
+let data = null, state = {study: 1, group: null, kit: "", ev: false, hit: null};
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const short = (s, n = 8) => s ? s.slice(0, n) : "";
+const gkey = (w) => `${w.t}|${w.c}|${w.ing}`;
+const study = () => data.studies.find((s) => s.id === state.study);
+
+function rank(m) { return m.st === "L" ? [m.slot, m.i] : null; }
+function before(a, b) { const ra = rank(a), rb = rank(b); return ra && rb && (ra[0] < rb[0] || (ra[0] === rb[0] && ra[1] < rb[1])); }
+
+function pairInfo(p) {
+  const [x, y] = p.m;
+  if (!y) return {both: false, firstLanded: null, verdict: ""};  // hold-cliff and spill-over probes are single
+  const both = x.st === "L" && y.st === "L";
+  const firstLanded = both ? (before(x, y) ? x : y) : null;
+  let verdict = "";
+  const pred = PREDICTED[p.kind];
+  if (both && pred) verdict = firstLanded.l === pred ? "follows" : "against";
+  return {both, firstLanded, verdict};
+}
+
+function groupsOf(s) {
+  const g = new Map();
+  for (const w of s.windows) {
+    const k = gkey(w);
+    if (!g.has(k)) g.set(k, {key: k, t: w.t, c: w.c, ing: w.ing, windows: [], ev: 0});
+    const e = g.get(k); e.windows.push(w); if (w.ev) e.ev++;
+  }
+  return [...g.values()].sort((a, b) => (FAMILY.indexOf(a.c) - FAMILY.indexOf(b.c)) || a.t.localeCompare(b.t));
+}
+
+function claimOf(s, g) {
+  const v = s.groups[g.key];
+  const hyp = (s.hypotheses || []).filter((h) => h.groups.some((x) => `${x.identity}|${x.client_id}|${x.ingress}` === g.key));
+  return {claim: v ? v.claim : null, confirmatory: v ? v.confirmatory : false, hyp, label: v ? v.label : null};
+}
+
+function renderTabs() {
+  $("tabs").innerHTML = data.studies.map((s) =>
+    `<button role="tab" id="tab-${s.id}" aria-selected="${s.id === state.study}" data-study="${s.id}">Study ${s.id} · ${STUDY_DAY[s.id] || ""}</button>`).join("");
+  $("tabs").querySelectorAll("button").forEach((b) => b.onclick = () => { state.study = +b.dataset.study; state.group = null; state.kit = ""; render(); });
+}
+
+function renderLede() {
+  const s = study(), n = s.windows.length, ev = s.windows.filter((w) => w.ev).length;
+  const probes = s.windows.reduce((a, w) => a + w.pairs.reduce((b, p) => b + p.m.length, 0), 0);
+  const landed = s.windows.reduce((a, w) => a + w.pairs.reduce((b, p) => b + p.m.filter((m) => m.st === "L").length, 0), 0);
+  $("lede").innerHTML = `<strong>Study ${s.id}</strong>: ${n.toLocaleString()} leader windows (${ev.toLocaleString()} evaluable), ${probes.toLocaleString()} probes, ` +
+    `${landed.toLocaleString()} landed. The analysis plan was frozen before the first probe; its hashes are in mainnet Memo ` +
+    `<a href="${EXPLORER}/tx/${s.memo}" target="_blank" rel="noopener">${short(s.memo)}…</a>. Pick a validator, open any window, and every probe links to its transaction.`;
+}
+
+function renderRail() {
+  const s = study(), groups = groupsOf(s);
+  if (!state.group || !groups.some((g) => g.key === state.group)) state.group = groups[0]?.key;
+  const conf = groups.filter((g) => claimOf(s, g).confirmatory), other = groups.filter((g) => !claimOf(s, g).confirmatory);
+  const item = (g) => {
+    const c = claimOf(s, g);
+    const claim = c.claim ? `<span class="pill ${c.claim.startsWith("exploratory") ? "muted" : ""}">${esc(c.claim)}</span>` :
+      (c.hyp.length ? c.hyp.map((h) => `<span class="pill ${h.claim && h.claim.startsWith("supported") ? "" : "muted"}">${esc(h.id)}: ${esc(h.claim || "pending")}</span>`).join(" ") : "");
+    return `<button class="group" data-key="${esc(g.key)}" aria-current="${g.key === state.group}">
+      <span class="name">${esc(NAMES[g.c] || g.c)}</span><span class="id">${short(g.t)}</span>
+      <span class="claim">${g.windows.length} windows · ${g.ev} evaluable ${claim ? "<br>" + claim : ""}</span></button>`;
+  };
+  $("rail").innerHTML = (conf.length ? `<h2>Confirmatory groups</h2>${conf.map(item).join("")}` : "") +
+    (other.length ? `<h2>${conf.length ? "Other groups" : "Validator groups"}</h2>${other.map(item).join("")}` : "");
+  $("rail").querySelectorAll(".group").forEach((b) => b.onclick = () => { state.group = b.dataset.key; state.kit = ""; state.hit = null; render(); });
+}
+
+function pairChip(p) {
+  const info = pairInfo(p), label = p.kind.replace("_uncontended", "u").replace("equal_key", "eq");
+  const dt = p.dt !== null && p.dt !== undefined ? ` Δ${p.dt}` : "";
+  let v;
+  if (info.both) v = `${esc(info.firstLanded.l)} first`;
+  else v = p.m.map((m) => `${esc(m.l)}:${m.st}`).join(" ");
+  const title = info.verdict === "follows" ? "the member reward ÷ cost prefers landed first" : info.verdict === "against" ? "the other member landed first" : "";
+  return `<span class="pair ${info.verdict}" title="${title}"><span class="k">${esc(label)}${dt}</span><span class="v">${v}</span></span>`;
+}
+
+function windowRow(w) {
+  const open = state.hit && state.hit.w === w;
+  const status = w.ev ? `<span class="pill">evaluable</span>` : `<span class="pill warn" title="excluded from inference">${esc(w.ex || "excluded")}</span>`;
+  const rows = w.pairs.flatMap((p) => p.m.map((m, j) => `<tr${state.hit && state.hit.sig === m.sig ? ' style="background:var(--accent-soft)"' : ""}>
+      <td>${j === 0 ? esc(p.id) + (p.dt !== null && p.dt !== undefined ? ` (Δt ${p.dt} ms)` : "") : ""}</td><td>${esc(m.l)}</td><td>${p.m.length < 2 ? "single" : j === 0 ? "first" : "second"}</td>
+      <td class="st-${m.st}">${STATUS[m.st] || m.st}</td>
+      <td>${m.slot ? `<a href="${EXPLORER}/block/${m.slot}" target="_blank" rel="noopener">${m.slot.toLocaleString("en-US")}</a>` : "–"}</td>
+      <td>${m.i !== null && m.i !== undefined ? `${m.i} / ${m.n}` : "–"}</td>
+      <td class="sig"><a href="${EXPLORER}/tx/${m.sig}" target="_blank" rel="noopener">${short(m.sig, 16)}…</a></td></tr>`)).join("");
+  return `<div class="win${open ? " hit" : ""}" id="w-${esc(w.run)}-${w.seq}">
+    <button aria-expanded="${open}" data-seq="${w.seq}" data-run="${esc(w.run)}">
+      <span class="seq">#${w.seq}<small>${esc(KITS[w.kit] || w.kit)}</small></span>
+      <span class="meta">slots ${w.slots[0].toLocaleString("en-US")}–${String(w.slots[1]).slice(-3)}<br>${esc(w.reg)} · ${status}</span>
+      <span class="pairs">${w.pairs.map(pairChip).join("")}</span>
+    </button>
+    <div class="detail" ${open ? "" : "hidden"}><table><thead><tr><th>Pair</th><th>Label</th><th>Sent</th><th>Outcome</th><th>Slot</th><th>Index / txs</th><th>Signature</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="legend"><span>Window ${w.slots[0].toLocaleString("en-US")}–${w.slots[1].toLocaleString("en-US")} · run ${esc(w.run)}</span>
+    <span><a href="${EXPLORER}/block/${w.slots[0]}" target="_blank" rel="noopener">first block of the window</a></span></div></div></div>`;
+}
+
+function renderPanel() {
+  const s = study(), g = groupsOf(s).find((x) => x.key === state.group);
+  if (!g) { $("panel").innerHTML = `<div class="empty">No windows in this study yet.</div>`; return; }
+  const c = claimOf(s, g);
+  let ws = g.windows.slice().sort((a, b) => a.run.localeCompare(b.run) || a.seq - b.seq);
+  const kits = [...new Set(ws.map((w) => w.kit))];
+  if (state.kit) ws = ws.filter((w) => w.kit === state.kit);
+  if (state.ev) ws = ws.filter((w) => w.ev);
+  let follows = 0, against = 0;
+  for (const w of g.windows.filter((w) => w.ev)) for (const p of w.pairs) { const i = pairInfo(p); if (p.kind.startsWith("c") && i.verdict) i.verdict === "follows" ? follows++ : against++; }
+  const L = c.label ? ["c1", "c2", "c3"].map((k) => c.label[k] && c.label[k].n ? `<div><b>${c.label[k].est.toFixed(2)}</b><span>L<sub>${k.toUpperCase()}</sub>, n = ${c.label[k].n}</span></div>` : "").join("") : "";
+  const hyp = c.hyp.map((h) => `<div><b>${h.k}/${h.n}</b><span>${esc(h.id)}: ${esc(h.claim || "pending")}</span></div>`).join("");
+  $("panel").innerHTML = `<div class="summary">
+      <h3>${esc(NAMES[g.c] || g.c)} <span class="id">${esc(g.t)}</span> ${c.claim ? `<span class="pill ${c.claim.startsWith("exploratory") ? "muted" : ""}">${esc(c.claim)}</span>` : ""}</h3>
+      <div class="stats">${L}${hyp}<div><b>${follows}/${follows + against}</b><span>contrast pairs that went reward ÷ cost's way</span></div>
+        <div><b>${g.ev}/${g.windows.length}</b><span>windows evaluable · ${esc(g.ing.replaceAll("_", " "))}</span></div></div>
+    </div>
+    <div class="filters">
+      <select id="kit" aria-label="Kit"><option value="">All kits</option>${kits.map((k) => `<option value="${k}"${k === state.kit ? " selected" : ""}>${esc(KITS[k] || k)}</option>`).join("")}</select>
+      <label><input type="checkbox" id="ev"${state.ev ? " checked" : ""}> Evaluable only</label>
+      <span class="count">${ws.length} windows</span>
+    </div>
+    <div class="legend"><span class="pair follows"><span class="v">A first</span></span> the member reward ÷ (cost + 1) prefers landed first
+      <span class="pair against"><span class="v">B first</span></span> the other member landed first
+      <span class="pair"><span class="v">A:E B:L</span></span> not both landed (L landed, E expired, N not sent)</div>
+    <div class="windows">${ws.map(windowRow).join("") || `<div class="empty">No windows match these filters.</div>`}</div>`;
+  $("kit").onchange = (e) => { state.kit = e.target.value; renderPanel(); };
+  $("ev").onchange = (e) => { state.ev = e.target.checked; renderPanel(); };
+  $("panel").querySelectorAll(".win > button").forEach((b) => b.onclick = () => {
+    const d = b.nextElementSibling; d.hidden = !d.hidden; b.setAttribute("aria-expanded", String(!d.hidden)); });
+}
+
+function renderFoot() {
+  $("foot").innerHTML = `Built by <code>scripts/build_explorer.py</code> from <code>data/raw</code>: the runs each study's frozen manifest selects, ` +
+    `with eligibility computed by the same analysis code as the report. Probes that landed are verified against the archived blocks ` +
+    `(<code>itb-analysis verify</code>). Claims and intervals: REPORT.md. Explorer links open Solana Explorer.`;
+}
+
+function render() { renderTabs(); renderLede(); renderRail(); renderPanel(); syncHash(); }
+
+function syncHash() {
+  const g = study() && groupsOf(study()).find((x) => x.key === state.group);
+  try { if (g) history.replaceState(null, "", `#s${state.study}-${short(g.t)}`); } catch (e) { /* the viewer may not allow it */ }
+}
+
+function openHash() {
+  const m = /^#s(\d)-([1-9A-HJ-NP-Za-km-z]{4,})$/.exec(location.hash || "");
+  if (!m) return;
+  const s = data.studies.find((x) => x.id === +m[1]); if (!s) return;
+  const g = groupsOf(s).find((x) => x.t.startsWith(m[2])); if (!g) return;
+  state.study = s.id; state.group = g.key;
+}
+
+$("search").onsubmit = (e) => {
+  e.preventDefault();
+  const q = $("q").value.trim();
+  if (q.length < 8) return;
+  for (const s of data.studies) for (const w of s.windows) for (const p of w.pairs) for (const m of p.m) {
+    if (m.sig.startsWith(q)) {
+      state = {...state, study: s.id, group: gkey(w), kit: "", ev: false, hit: {w, sig: m.sig}};
+      render();
+      document.getElementById(`w-${w.run}-${w.seq}`)?.scrollIntoView({block: "center"});
+      return;
+    }
+  }
+  $("lede").innerHTML = `No probe of either study has a signature starting with <code>${esc(q.slice(0, 20))}</code>. Paste the full signature or its first characters.`;
+};
+
+fetch("data.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((d) => {
+  data = d; renderFoot(); openHash(); render();
+  window.addEventListener("hashchange", () => { openHash(); render(); });
+}).catch(() => { $("lede").textContent = "The probe ledger (data.json) could not be loaded. It is built by scripts/build_explorer.py next to this page."; });
+</script>
+</body>
+</html>
