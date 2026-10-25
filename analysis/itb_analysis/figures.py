@@ -362,6 +362,106 @@ def fig_hold(hold: dict[tuple, dict[str, int]], t: Theme) -> plt.Figure:
     return c.fig
 
 
+# ------------------------------------------------------------------------------------------------ Study 2
+STUDY2_DTS = (0.0, 2.0, 5.0, 10.0, 25.0, 50.0)
+
+
+def _claim_for(res2: dict, c: dict) -> str:
+    """'H1-agave: supported' for the hypothesis whose frozen group this curve is, else 'exploratory'."""
+    for h in res2.get("hypotheses", []):
+        if h["pair_kind"] == "race" and any((g["identity"], g["client_id"], g["ingress"]) == (c["target_identity"], c["client_id"], c["ingress"])
+                                            for g in h["groups"]):
+            return f"{h['id']}: {h.get('published_claim', h['verdict'])}"
+    return "exploratory"
+
+
+def _day(runs: list[dict]) -> str:
+    days = sorted({r["started_at"][:10] for r in runs if r.get("started_at")})
+    return days[0] if len(days) == 1 else (f"{days[0]}…{days[-1]}" if days else "")
+
+
+def fig_study2_races(res2: dict, t: Theme) -> plt.Figure:
+    curves = _ordered([c for c in res2.get("curves", {}).values() if c["overtake_lo_first"]])
+    ncol = 3
+    nrow = max(1, -(-len(curves) // ncol))
+    width, top, gap, ph = 10.0, 1.75, 0.35, 1.9
+    c0 = Canvas(t, width, top + nrow * (ph + 0.95) + 0.55)
+    c0.header("How far does each client reorder against arrival?",
+              f"Study 2, pre-registered, {_day(res2.get('runs', []))}. Share of races in which the high-priority probe landed before a low-priority one sent\n"
+              "Δt ms earlier (at 0 ms both go out together). The 2 ms cell decides H1 / H2; the other cells are exploratory.")
+    pw = (width - 0.6 - 0.25 - (ncol - 1) * gap) / ncol
+    for i, c in enumerate(curves):
+        r, col = divmod(i, ncol)
+        x0, y0 = 0.6 + col * (pw + gap), top + r * (ph + 0.95)
+        ax = c0.axes(x0, y0, pw, ph)
+        ax.set_xlim(-0.4, len(STUDY2_DTS) - 0.6)
+        ax.set_ylim(-0.04, 1.04)
+        for y in (0, 0.5, 1):
+            ax.axhline(y, color=t.grid if y else t.axis, lw=PX, zorder=0)
+        ax.axvspan(0.6, 1.4, color=t.band, lw=0, zorder=0)
+        ax.set_xticks(range(len(STUDY2_DTS)), [f"{dt:g}" for dt in STUDY2_DTS])
+        ax.set_yticks([0, 0.5, 1], ["0", "0.5", "1"] if col == 0 else [])
+        ax.set_xlabel("head start Δt, ms", fontsize=8, color=t.muted, labelpad=3)
+        name = f"{NAMES.get(c['client_id'], c['client_id'])}"
+        c0.text(x0, y0 - 0.40, name, fontsize=10, fontweight="bold", color=t.ink, va="bottom")
+        c0.text(x0 + pw, y0 - 0.40, c["target_identity"][:8], fontsize=7.5, family="DejaVu Sans Mono", color=t.muted,
+                va="bottom", ha="right")
+        c0.text(x0, y0 - 0.20, _claim_for(res2, c), fontsize=7.5, color=t.ink2, va="bottom")
+        pts = [(j, *c["overtake_lo_first"].get(f"{dt:g}", (0, 0))) for j, dt in enumerate(STUDY2_DTS)]
+        xs = [j for j, k, n in pts if n]
+        ax.plot(xs, [pts[j][1] / pts[j][2] for j in xs], color=t.series[0], lw=2 * PX, zorder=2, solid_joinstyle="round")
+        for j, k, n in pts:
+            if not n:
+                continue
+            lo, hi = stats.clopper_pearson(k, n, 0.05)
+            ax.plot([j, j], [lo, hi], color=t.series[0], lw=PX, alpha=0.55, zorder=1)
+            ax.plot([j], [k / n], "o", ms=7 if j != 1 else 8.5, mfc=t.series[0], mec=t.surface, mew=1.5, zorder=3)
+            ax.text(j + 0.13, k / n + (0.07 if k / n < 0.88 else -0.09), f"{k}/{n}", fontsize=7, color=t.ink2, va="center")
+    c0.footnote("Dots: overtakes / races where both landed, in evaluable windows. Thin lines: exact 95 % Clopper–Pearson intervals. Shaded: the "
+                "confirmatory 2 ms cell (Holm over six,\none-sided exact binomial; PREREGISTRATION-2 §3–§4). Δt is the gap between our two sends. "
+                "Tables: REPORT.md, data/derived/study2/summary.md.")
+    return c0.fig
+
+
+def fig_replication(res1: dict, res2: dict, t: Theme) -> plt.Figure:
+    rep = res2.get("replication", {}).get("validators", {})
+    keys = [k for k, v in res1["validators"].items() if v["confirmatory"] and k in rep]
+    rows: list[tuple[str, dict | str]] = [("row", res1["validators"][k]) for k in
+                                          sorted(keys, key=lambda k: (FAMILY.index(res1["validators"][k]["client_id"])
+                                                                      if res1["validators"][k]["client_id"] in FAMILY else 99, k))]
+    slot, top, label_w, gap, right = 0.42, 2.0, 2.75, 0.32, 0.25
+    width = 10.0
+    c = Canvas(t, width, top + slot * max(len(rows), 1) + 0.95)
+    c.header("A second day, the same rule",
+             f"The Study 1 confirmatory procedure, unchanged, on {_day(res2.get('replication', {}).get('runs', []))} (Study 2) against {_day(res1.get('runs', []))} "
+             "(Study 1), for the six core targets.\nOnly reward ÷ (cost + 1) predicts the pattern 1 · 0 · 1; a target replicates when its published claim is the same.")
+    c.legend(0.25, 1.05, [_dot(t, t.muted), _dot(t, t.series[0])], ["Study 1", "Study 2"], ncol=2)
+    pw = (width - label_w - right - 2 * gap) / 3
+    first_ax = None
+    for i, (cid, (title, ylab, pred)) in enumerate(PANELS.items()):
+        ax = c.axes(label_w + i * (pw + gap), top, pw, slot * max(len(rows), 1))
+        first_ax = first_ax or ax
+        ax.set_xlim(-0.05, 1.05)
+        ax.set_ylim(len(rows) - 0.5, -0.5)
+        ax.axvspan(0.35, 0.65, color=t.band, lw=0, zorder=0)
+        for x in (0, 0.5, 1):
+            ax.axvline(x, color=t.grid, lw=PX, zorder=1)
+        ax.set_yticks([])
+        ax.set_xticks([0, 0.5, 1], ["0", "0.5", "1"])
+        c.text(label_w + i * (pw + gap), top - 0.50, title, fontsize=10, fontweight="bold", color=t.ink, va="bottom")
+        c.text(label_w + i * (pw + gap), top - 0.30, ylab, fontsize=8, color=t.ink2, va="bottom")
+        c.text(label_w + i * (pw + gap), top - 0.12, pred, fontsize=7.5, color=t.muted, va="bottom")
+        for y, (_, v) in enumerate(rows):
+            key = f"{v['target_identity']}|{v['client_id']}|{v['ingress']}"
+            for d, eff, color in ((-0.12, v["label"][cid], t.muted), (0.12, rep[key]["label"][cid], t.series[0])):
+                if eff["n"]:
+                    _interval(ax, *eff["ci_bonferroni"], eff["estimate"], y + d, color, t)
+    _row_labels(c, first_ax, rows, 0.25, label_w - 0.3)
+    c.footnote("Dots: estimates. Lines: exact 95 % Clopper–Pearson intervals, Bonferroni-adjusted over each study's 36-effect family. "
+               "The windows of the two studies\nare never pooled. Replication table: REPORT.md, data/derived/study2/summary.md.")
+    return c.fig
+
+
 # ------------------------------------------------------------------------------------------------ driver
 def _svg(fig: plt.Figure) -> bytes:
     buf = io.StringIO()  # no newline translation, so the bytes are LF on every platform
@@ -377,12 +477,19 @@ def render(results: Path, raw: Path, manifest: Path, design: Path) -> dict[str, 
     wf = window_frame(raw, manifest, designs)
     s2 = exploratory.load_stage2(raw, design)
     races, hold = exploratory.races(s2.probes), exploratory.hold(s2.probes)
+    # Study 2 figures join once its results are committed next to Study 1's (data/derived/study2/results.json).
+    study2_path = results.parent / "study2" / "results.json"
+    res2 = json.loads(study2_path.read_text()) if study2_path.exists() else None
     out = {}
     for t in THEMES:
         suffix = "" if t is LIGHT else "-dark"
         with plt.rc_context(_rc(t)):
-            for name, make in (("identification", lambda: fig_identification(res, t)), ("arrival", lambda: fig_arrival(wf, t)),
-                               ("races", lambda: fig_races(races, t)), ("hold", lambda: fig_hold(hold, t))):
+            makers = [("identification", lambda: fig_identification(res, t)), ("arrival", lambda: fig_arrival(wf, t)),
+                      ("races", lambda: fig_races(races, t)), ("hold", lambda: fig_hold(hold, t))]
+            if res2 is not None:
+                makers += [("study2-races", lambda: fig_study2_races(res2, t)),
+                           ("study2-replication", lambda: fig_replication(res, res2, t))]
+            for name, make in makers:
                 out[f"{name}{suffix}.svg"] = _svg(make())
     return out
 
