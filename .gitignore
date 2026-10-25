@@ -36,3 +36,4 @@ data/dryrun/
 data/smoke/*-dry/
 # scratch left by an external review tool (owned by its sandbox user)
 Usersvalera*/
+data/dryrun/

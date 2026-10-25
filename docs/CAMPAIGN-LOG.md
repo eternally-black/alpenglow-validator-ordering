@@ -153,3 +153,35 @@ probes. That is 0.0026 SOL of the 0.05 SOL cap.
 - **Return to the funder** (18:14:23): 75,295,523 lamports sent to `3cB1N3xVpPjfjnZmYEsijL5znEKudNGMCMQmse9BoD5Y`, the address that funded the wallet. Transaction [`5j8PEKpj…LA3D`](https://explorer.solana.com/tx/5j8PEKpj5djzEbXGwcqxqdut6HTkMG9h71TV16EoRKfXVfKKq3L1iSGM7AVJv79BjDjvUp5pCVcPUp62d4mJLA3D), slot 460,948,160, fee 5,000. The wallet owner ran it, not the tool. The master balance is 0.
 - **Total cost of the whole measurement:** 100,000,000 + 13,023 − 75,295,523 = 24,717,500 lamports (0.0247 SOL). That covers smoke, setup, pilots, both campaign stages, the sweep and the return.
 - The keypairs (`keys/`, never in git) are deleted by the wallet owner after this entry.
+
+# Study 2
+
+Plan: [STUDY2-PLAN.md](STUDY2-PLAN.md), approved by the wallet owner on 2026-10-25. Normative analysis plan:
+[PREREGISTRATION-2.md](PREREGISTRATION-2.md).
+
+## 2026-10-24/25 — wallet, payers and ledger (offline)
+
+- **Master** `6hoQGYN4Di3aseUv32YLoJQiTMeAZRAJPeWCx8tHdp4q`, generated with `solana-keygen` for Study 2 only, in
+  `keys-study2/` (git-ignored like every `keys-*` directory). Funded by the wallet owner; everything left at the end
+  returns to the funder.
+- **Payers:** 24 fresh keypairs (`keys-init`, `keys-study2/payers/`).
+- **Ledger** `state/ledger-study2.sqlite`, opened with the compiled 0.05 SOL cap. Before anything else it records
+  Study 1's total cost, 24,717,500 lamports, as a carry-over (`itb ledger --carry-over-lamports`). Headroom for
+  Study 2: 25,282,500 lamports. The ledger refuses any reservation that would take the two studies together past
+  0.05 SOL; on-chain reconciliation still compares only the Study 2 accounts' drop with what this ledger committed.
+
+## 2026-10-25 03:53–03:57 UTC — mainnet dry run of the Study 2 design
+
+- Design `design/design-study2.jsonl` (`itb design --study 2 --seed 20261025`, 570 windows, worst case 0.0228 SOL,
+  SHA-256 `2c9a18fb…87f3`), with the frozen execution parameters and budget `study2`. Dry run: nothing signed or sent.
+- `20261025T035350Z-s1-dry-d3d1`: 4 K windows (Jito-Solana, Agave + Harmonic, Agave + BAM, Firedancer + Harmonic).
+- `20261025T035515Z-s2-dry-e963`: 8 stage-2 windows, 7 R (Firedancer, both Harmonic builders, Agave + BAM) and 1 E
+  (`9eGrDohd`).
+- Every window anchored and scheduled every planned probe; no skip, no failure. The output is local
+  (`data/dryrun/`, git-ignored).
+
+## 2026-10-25 — operating characteristics of the Study 2 hypotheses
+
+The frozen design, simulated under known schedulers at 90 % landing with Study 1's observation failures, 40
+campaigns per scenario ([POWER-2.md](POWER-2.md), `scripts/oc_study2.py`). If Study 1's exploratory picture holds,
+each hypothesis is supported in 97–100 % of campaigns. If every hypothesis is false, none is ever supported.

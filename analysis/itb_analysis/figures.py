@@ -29,7 +29,7 @@ from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch, Rectangle  # noqa: E402
 from matplotlib.transforms import blended_transform_factory  # noqa: E402
 
-from . import exploratory, outcomes, report, stats  # noqa: E402
+from . import exploratory, outcomes, report, stats, study2  # noqa: E402
 from .load import load_designs, load_runs  # noqa: E402
 
 
@@ -268,12 +268,10 @@ RACE_GROUPS = (("Agave family", ("Agave", "JitoLabs", "Rakurai"), "direct"),
 
 
 def _horizon(points: list[tuple[float, int, int]]) -> str:
-    """Where the share of overtakes falls below one half: between the last Δt at or above it and the next one."""
-    above = [dt for dt, k, n in points if n and k / n >= 0.5]
-    if not above:
-        return f"horizon < {points[0][0]:.0f} ms"
-    later = [dt for dt, k, n in points if dt > max(above) and n]
-    return f"horizon ≈ {max(above):.0f}–{later[0]:.0f} ms" if later else f"horizon > {max(above):.0f} ms"
+    lo, hi = study2.horizon(points)
+    if lo is None:
+        return f"horizon < {hi:.0f} ms"
+    return f"horizon ≈ {lo:.0f}–{hi:.0f} ms" if hi is not None else f"horizon > {lo:.0f} ms"
 
 
 def fig_races(races: dict[tuple, list[int]], t: Theme) -> plt.Figure:

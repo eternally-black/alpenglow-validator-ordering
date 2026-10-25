@@ -1,4 +1,4 @@
-# Study 2 — plan (draft for approval, not frozen)
+# Study 2 — plan (approved 2026-10-25; normative text: [PREREGISTRATION-2.md](PREREGISTRATION-2.md))
 
 Study 1 (2026-10-24, [REPORT.md](../REPORT.md)) answered the brief's three questions for 10 validator groups. It left
 four things open, and Study 2 is built to close exactly those, with a second pre-registration and a second mainnet
@@ -7,7 +7,7 @@ Memo before any Study 2 probe is sent:
 | Open after Study 1 | Why it matters | Study 2 answer |
 |---|---|---|
 | One day, one session | A single day cannot separate the rule from that day's conditions (load, relayer configuration) | **Replication**: the Study 1 confirmatory procedure, unchanged, on a weekday |
-| Agave family in streaming windows: n = 5–11 per group | The most interesting result (no priority order for transactions arriving during the slot) rests on 25 windows | **Race curve** with simultaneous and staggered arrivals inside the slot, ≥ 36 races per cell that matters |
+| Agave family in streaming windows: n = 5–11 per group | The most interesting result (no priority order for transactions arriving during the slot) rests on 25 windows | **Race curve** with simultaneous and staggered arrivals inside the slot, 35 races (one per window) in the cell that matters |
 | Reordering horizons from 1–7 races per cell | "Agave < 5 ms, Firedancer 5–25 ms, Harmonic 25–60 ms" is suggestive, not established | **Fine Δt grid** 0, 2, 5, 10, 25, 50 ms; two pre-registered directional hypotheses |
 | Firedancer equal-key tie-break: n = 38 (< 40 pre-registered) | Firedancer's code predicts later-arrival-first; Study 1 saw it at 10 ms but could not claim it | **Confirmatory test** with ≈ 60 pairs |
 
@@ -42,16 +42,18 @@ Agave + BAM `DRpbCBMx` (no Study 1 prediction, so not in the confirmatory family
 |---|---|---|---|---|
 | 1 | **K** (Study 1 kit without the exploratory uncontended pair) | 6 core: Agave, Jito-Solana, Firedancer, Agave + BAM, Agave + Harmonic, Firedancer + Harmonic | C1, C2, C3 pairs; direct ingress 3 buffered : 1 streaming | stop at 40 informative pairs per contrast, ≤ 56 plans |
 | 2 | **R** (race curve) | Agave, Jito-Solana, Firedancer `EvnRmnMr`, Agave + BAM, Agave + Harmonic, Firedancer + Harmonic | 3 hi/lo races starting 5 ms after the first shred; direct ingress also 1 equal-key pair (buffered, 10 ms apart) | 35 |
-| 2 | **E** (equal key) | Firedancer `9eGrDohd` | 2 equal-key pairs, buffered, 10 ms apart | 12 |
+| 2 | **E** (equal key) | Firedancer `9eGrDohd` | 1 equal-key pair, buffered, 10 ms apart | 24 |
 
 Race allocation per R target (105 races, balanced and shuffled across its 35 windows):
 
 | Δt (ms) | 0 | 2 | 5 | 10 | 25 | 50 |
 |---|---|---|---|---|---|---|
-| lo sent first (head start) | 6 + 6 (simultaneous, order balanced) | **36** | 15 | 12 | 12 | 12 |
+| lo sent first (head start) | 6 + 6 (simultaneous, order balanced) | **35** | 15 | 12 | 12 | 13 |
 | hi sent first (control) | — | — | 3 | — | 3 | — |
 
-The longest race ends 55 ms after the first shred, inside the ≈ 130 ms in-window slot. Randomisation, seeds, locks
+Each window carries a Δt cell at most once (the races are dealt over the windows), so the window stays the unit of
+analysis, as in Study 1; for the same reason an E window carries one equal-key pair. The longest race ends 55 ms
+after the first shred, inside the ≈ 130 ms in-window slot. Randomisation, seeds, locks
 and payer assignment work exactly as in Study 1 (`design.rs`): the design is generated from a committed seed and
 frozen before the Memo.
 

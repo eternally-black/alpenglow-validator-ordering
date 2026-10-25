@@ -139,18 +139,20 @@ pub const H_OFFSETS_MS: [f64; 3] = [-500.0, -3_000.0, -7_000.0];
 pub const S_OFFSETS_MS: [f64; 2] = [-150.0, -1_000.0];
 
 /// Study 2 race allocation per R target: (Δt ms, races with `lo` sent first, races with `hi` sent first). At Δt = 0
-/// both go out together and "first" is only the stream order, so that cell is balanced. 105 races = 35 windows × 3.
+/// both go out together and "first" is only the stream order, so that cell is balanced. 105 races = 35 windows × 3,
+/// and no cell holds more races than there are windows (each window carries a cell at most once).
 pub const STUDY2_RACE_CELLS: [(f64, u32, u32); 6] = [
     (0.0, 6, 6),
-    (2.0, 36, 0),
+    (2.0, 35, 0),
     (5.0, 15, 3),
     (10.0, 12, 0),
     (25.0, 12, 3),
-    (50.0, 12, 0),
+    (50.0, 13, 0),
 ];
 pub const STUDY2_RACES_PER_WINDOW: usize = 3;
 pub const STUDY2_EQUAL_KEY_DT_MS: f64 = 10.0;
-pub const STUDY2_EQUAL_KEY_PER_E_WINDOW: usize = 2;
+/// One pair per window, so every equal-key pair is its own window (the unit).
+pub const STUDY2_EQUAL_KEY_PER_E_WINDOW: usize = 1;
 
 fn is_direct(ingress: IngressKind) -> bool {
     matches!(ingress, IngressKind::Direct)
@@ -473,9 +475,10 @@ fn equal_key_pair(pair_id: String, dt: f64, lock_base: u32, direct: bool) -> Pai
     p
 }
 
-/// Study 2 (docs/STUDY2-PLAN.md): stage 1 repeats the K kit without the uncontended pair; stage 2 interleaves R windows
-/// (the race allocation of `STUDY2_RACE_CELLS`, shuffled across the target's windows) and E windows at random.
-/// Deterministic in (`seed`, `targets`) and independent of the Study 1 generator's draws.
+/// Study 2 (docs/PREREGISTRATION-2.md): stage 1 repeats the K kit without the uncontended pair; stage 2 interleaves R
+/// and E windows at random. The window is the unit, so a window holds at most one race per Δt cell: the races, grouped
+/// by cell (each cell shuffled), are dealt round-robin over the R windows, then the windows' race sets and the order
+/// inside each set are shuffled. Deterministic in (`seed`, `targets`), independent of the Study 1 generator's draws.
 pub fn generate_study2(seed: u64, targets: &[TargetSpec]) -> anyhow::Result<Vec<WindowPlan>> {
     let mut out = vec![];
     for t in targets {
@@ -488,22 +491,40 @@ pub fn generate_study2(seed: u64, targets: &[TargetSpec]) -> anyhow::Result<Vec<
         let direct = is_direct(t.ingress);
         out.extend(k_windows(t, &mut rng, false));
 
-        let mut races: Vec<(f64, bool)> = vec![];
-        if t.r_windows > 0 {
+        let n_r = t.r_windows as usize;
+        let mut race_sets: Vec<Vec<(f64, bool)>> = vec![vec![]; n_r];
+        if n_r > 0 {
+            let mut races: Vec<(f64, bool)> = vec![];
             for (dt, lo_first, hi_first) in STUDY2_RACE_CELLS {
-                races.extend(std::iter::repeat_n((dt, false), lo_first as usize));
-                races.extend(std::iter::repeat_n((dt, true), hi_first as usize));
+                let mut cell: Vec<(f64, bool)> =
+                    std::iter::repeat_n((dt, false), lo_first as usize)
+                        .chain(std::iter::repeat_n((dt, true), hi_first as usize))
+                        .collect();
+                if cell.len() > n_r {
+                    anyhow::bail!(
+                        "{}: Δt {dt} ms holds {} races > {n_r} R windows",
+                        t.identity,
+                        cell.len()
+                    );
+                }
+                cell.shuffle(&mut rng);
+                races.extend(cell);
             }
-            if races.len() != t.r_windows as usize * STUDY2_RACES_PER_WINDOW {
+            if races.len() != n_r * STUDY2_RACES_PER_WINDOW {
                 anyhow::bail!(
-                    "{}: {} R windows hold {} races, the allocation has {}",
+                    "{}: {n_r} R windows hold {} races, the allocation has {}",
                     t.identity,
-                    t.r_windows,
-                    t.r_windows as usize * STUDY2_RACES_PER_WINDOW,
+                    n_r * STUDY2_RACES_PER_WINDOW,
                     races.len()
                 );
             }
-            races.shuffle(&mut rng);
+            for (i, r) in races.into_iter().enumerate() {
+                race_sets[i % n_r].push(r);
+            }
+            race_sets.shuffle(&mut rng);
+            for set in &mut race_sets {
+                set.shuffle(&mut rng);
+            }
         }
         let mut stage2: Vec<Kit> = std::iter::repeat_n(Kit::R, t.r_windows as usize)
             .chain(std::iter::repeat_n(Kit::E, t.e_windows as usize))
@@ -514,8 +535,8 @@ pub fn generate_study2(seed: u64, targets: &[TargetSpec]) -> anyhow::Result<Vec<
             let id = |p: &str| format!("{}/{seq:03}/{p}", &t.identity[..8]);
             let mut pairs = vec![];
             if kit == Kit::R {
-                for r in 0..STUDY2_RACES_PER_WINDOW {
-                    let (dt, hi_first) = races.pop().expect("allocation checked above");
+                let set = race_sets.pop().expect("one race set per R window");
+                for (r, (dt, hi_first)) in set.into_iter().enumerate() {
                     let mut p = pair(
                         id(&format!("race{r}")),
                         PairKind::Race,
@@ -593,6 +614,18 @@ pub fn validate(plans: &[WindowPlan]) -> anyhow::Result<()> {
     use std::collections::HashSet;
     let mut keys = HashSet::new();
     let mut pair_ids = HashSet::new();
+    // Pair (and so probe) ids start with the target's first 8 characters: two targets sharing them would collide.
+    let mut prefixes: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    for p in plans {
+        let id = p.target_identity.as_str();
+        if let Some(other) = prefixes.insert(id.get(..8).unwrap_or(id), id)
+            && other != id
+        {
+            anyhow::bail!(
+                "targets {other} and {id} share the 8-character id prefix of their pair ids"
+            );
+        }
+    }
     for p in plans {
         if !keys.insert((p.target_identity.clone(), p.stage, p.seq)) {
             anyhow::bail!("duplicate plan {}/{}/{}", p.target_identity, p.stage, p.seq);
@@ -778,6 +811,19 @@ mod tests {
                 );
             }
             for p in mine.iter().filter(|p| p.kit == Kit::R) {
+                let mut dts: Vec<u64> = p
+                    .pairs
+                    .iter()
+                    .filter(|q| q.kind == PairKind::Race)
+                    .map(|q| q.race_dt_ms.unwrap().to_bits())
+                    .collect();
+                dts.sort_unstable();
+                dts.dedup();
+                assert_eq!(
+                    dts.len(),
+                    STUDY2_RACES_PER_WINDOW,
+                    "a window carries each Δt cell at most once"
+                );
                 let eq = p
                     .pairs
                     .iter()
@@ -805,6 +851,13 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn targets_sharing_an_id_prefix_are_refused() {
+        let mut t = study2_targets();
+        t[1].identity = format!("{}B", &t[0].identity[..43]);
+        assert!(validate(&generate_study2(7, &t).unwrap()).is_err());
     }
 
     #[test]

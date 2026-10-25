@@ -77,6 +77,10 @@ class Params:
     #: targets that follow `control_scenario` whatever the scenario (the positive controls: known reward/cost)
     controls: tuple = ()
     control_scenario: str = "reward_cost_greedy"
+    #: equal-key tie-break of the greedy scheduler: random, fifo (earlier arrival first) or lifo (later first)
+    tie: str = "random"
+    #: per-target overrides of any field above, e.g. {identity: {"scenario": "fifo"}} (Study 2 mixes clients)
+    target_scenarios: dict = field(default_factory=dict)
     extra: dict = field(default_factory=dict)
 
 
@@ -108,7 +112,8 @@ def _greedy(items, p, rng, key="reward_cost"):
             nxt = max(pending[0].arrival, 0.0)
             t = max(t + p.pass_ms, phase + math.ceil((nxt - phase) / p.pass_ms) * p.pass_ms)
             continue
-        avail.sort(key=lambda i: (-i.key[key], rng.random()))
+        tie = {"fifo": lambda i: i.arrival, "lifo": lambda i: -i.arrival}.get(p.tie, lambda i: rng.random())
+        avail.sort(key=lambda i: (-i.key[key], tie(i)))
         for i in avail:
             i.sched = t
             i.rank = order + (rng.random() * len(avail) if counts[i.lock] == 1 else 0.0)
@@ -369,6 +374,7 @@ def simulate(design_path, targets_path, out_dir, params, stage=1, windows_per_ta
             pl = dict(pl, window_first_slot=slot)
             target = targets[tid]
             tp = replace(params, scenario=params.control_scenario) if tid in params.controls else params
+            tp = replace(tp, **params.target_scenarios.get(tid, {}))
             probes, window, outcomes, sends, transition = simulate_window(pl, target, tp, rng, run_id, t_ns)
             state = {"client_id": target["client_id"], "version": "sim", "tpu_quic": target.get("tpu_quic", "sim:1"),
                      "ingress": target["ingress"], "identity": tid}

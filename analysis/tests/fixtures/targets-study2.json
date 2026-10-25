@@ -1,0 +1,5 @@
+[
+  {"identity": "AGAVExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1", "client_id": "Agave",      "ingress": "direct", "tier": "core",     "k_windows": 4, "t_windows": 0, "hs_windows": 0, "r_windows": 35, "e_windows": 0, "equal_key_in_r": true},
+  {"identity": "FIREDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1", "client_id": "Firedancer", "ingress": "direct", "tier": "core",     "k_windows": 4, "t_windows": 0, "hs_windows": 0, "r_windows": 35, "e_windows": 0, "equal_key_in_r": true},
+  {"identity": "FIRE2xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx2", "client_id": "Firedancer", "ingress": "direct", "tier": "extended", "k_windows": 0, "t_windows": 0, "hs_windows": 0, "r_windows": 0,  "e_windows": 24, "equal_key_in_r": false}
+]

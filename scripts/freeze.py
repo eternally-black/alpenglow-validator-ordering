@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Freeze the campaign (PREREGISTRATION, "On freezing"): write design/campaign.json and print the Memo text.
+"""Freeze a study (PREREGISTRATION, "On freezing"): write its manifest and print the Memo text.
 
 The manifest fixes what the report treats as confirmatory: the design and genesis hashes a run must carry, the six
 core targets (the 36-effect family), the positive controls and the stopping date. The Memo commits the hashes of
-the pre-registration, the design and this manifest on mainnet before the first campaign window:
+the pre-registration, the design and this manifest on mainnet before the study's first window:
 
     python scripts/freeze.py --targets design/targets.json --design design/design.jsonl
+    PYTHONPATH=analysis python scripts/freeze.py --study 2 --targets design/targets-study2.json \\
+        --design design/design-study2.jsonl
     itb setup memo --live --max-spend-sol 0.05 --text "<printed text>"
 
-A manifest is written once; an existing file is never overwritten (a change after freezing is a Deviation).
+Study 2 adds its hypotheses (from `itb_analysis.study2.SPEC`), the spend carried over from Study 1, and the git tree
+of `analysis/` at the freeze commit, so the Memo also fixes the code that decides the hypotheses (`analysis/` must be
+committed and clean). A manifest is written once; an existing file is never overwritten (a change after freezing is a
+Deviation).
 """
 
 from __future__ import annotations
@@ -16,12 +21,21 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 MAINNET_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
 #: Clients whose scheduler is public: if the method cannot recover their rule, closed-source conclusions are withdrawn.
 POSITIVE_CONTROL_CLIENTS = ("Agave", "Firedancer")
+#: Study 1's measured total cost (docs/CAMPAIGN-LOG.md): 0.1 SOL + 13,023 deposits − 75,295,523 returned.
+STUDY1_COST_LAMPORTS = 24_717_500
+STUDIES = {
+    1: {"prereg": "docs/PREREGISTRATION.md", "out": "design/campaign.json", "budget": "campaign",
+        "not_after": "2026-10-29T23:59:00Z"},
+    2: {"prereg": "docs/PREREGISTRATION-2.md", "out": "design/campaign-study2.json", "budget": "study2",
+        "not_after": "2026-10-30T23:59:00Z"},
+}
 
 
 def sha256(path: Path) -> str:
@@ -31,6 +45,14 @@ def sha256(path: Path) -> str:
     if b"\r" in data:
         raise SystemExit(f"{path} contains CR line endings; normalise it to LF before freezing")
     return hashlib.sha256(data).hexdigest()
+
+
+def analysis_tree() -> str:
+    """Git tree id of `analysis/` at HEAD, after checking that the working tree adds nothing to it."""
+    dirty = subprocess.run(["git", "status", "--porcelain", "--", "analysis"], capture_output=True, text=True, check=True)
+    if dirty.stdout.strip():
+        raise SystemExit("analysis/ has uncommitted changes; commit them before freezing")
+    return subprocess.run(["git", "rev-parse", "HEAD:analysis"], capture_output=True, text=True, check=True).stdout.strip()
 
 
 def manifest(targets: list[dict], design: Path, prereg: Path, not_after: str, budget: str = "campaign") -> dict:
@@ -59,19 +81,32 @@ def manifest(targets: list[dict], design: Path, prereg: Path, not_after: str, bu
     }
 
 
+def study2_fields(targets: list[dict]) -> dict:
+    from itb_analysis import study2  # PYTHONPATH=analysis
+
+    return {"study": 2, "hypotheses": study2.hypotheses(targets), "carry_over_lamports": STUDY1_COST_LAMPORTS,
+            "analysis_tree": analysis_tree()}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--study", type=int, choices=sorted(STUDIES), default=1)
     ap.add_argument("--targets", type=Path, required=True)
     ap.add_argument("--design", type=Path, required=True)
-    ap.add_argument("--prereg", type=Path, default=Path("docs/PREREGISTRATION.md"))
-    ap.add_argument("--not-after", default="2026-10-29T23:59:00Z")
-    ap.add_argument("--out", type=Path, default=Path("design/campaign.json"))
+    ap.add_argument("--prereg", type=Path, default=None)
+    ap.add_argument("--not-after", default=None)
+    ap.add_argument("--out", type=Path, default=None)
     a = ap.parse_args()
-    if a.out.exists():
-        raise SystemExit(f"{a.out} exists; a frozen manifest is never overwritten")
-    m = manifest(json.loads(a.targets.read_text()), a.design, a.prereg, a.not_after)
-    a.out.write_bytes((json.dumps(m, indent=1) + "\n").encode())  # LF on every platform
-    print(f"itb-prereg v1 prereg={m['preregistration_sha256']} design={m['design_sha256']} manifest={sha256(a.out)}")
+    s = STUDIES[a.study]
+    prereg, out = a.prereg or Path(s["prereg"]), a.out or Path(s["out"])
+    if out.exists():
+        raise SystemExit(f"{out} exists; a frozen manifest is never overwritten")
+    targets = json.loads(a.targets.read_text())
+    m = manifest(targets, a.design, prereg, a.not_after or s["not_after"], s["budget"])
+    if a.study == 2:
+        m |= study2_fields(targets)
+    out.write_bytes((json.dumps(m, indent=1) + "\n").encode())  # LF on every platform
+    print(f"itb-prereg v{a.study} prereg={m['preregistration_sha256']} design={m['design_sha256']} manifest={sha256(out)}")
 
 
 if __name__ == "__main__":
