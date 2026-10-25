@@ -5,6 +5,7 @@ verify     re-check claims against the chain (sample) or the archived blocks
 report     recompute and overwrite data/derived (after new data)
 oc         operating characteristics on simulated scenarios
 figures    redraw figures/ (light and dark SVG) from data/derived/results.json and data/raw
+study2     Study 2 (docs/PREREGISTRATION-2.md): `report` writes data/derived/study2/, `reproduce` re-checks it
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import figures, oc, report, verify
+from . import figures, oc, report, report2, study2, verify
 from .load import load_designs, run_dirs
 
 
@@ -54,6 +55,12 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--manifest", type=Path, default=Path("design/campaign.json"))
     f.add_argument("--design", type=Path, default=Path("design/design.jsonl"))
     f.add_argument("--out", type=Path, default=Path("figures"))
+    s2 = sub.add_parser("study2")
+    s2.add_argument("action", choices=["report", "reproduce"])
+    s2.add_argument("--raw", type=Path, default=Path("data/raw"))
+    s2.add_argument("--manifest", type=Path, default=Path("design/campaign-study2.json"))
+    s2.add_argument("--derived", type=Path, default=Path("data/derived/study2"))
+    s2.add_argument("--study1-results", type=Path, default=Path("data/derived/results.json"))
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -88,6 +95,24 @@ def main(argv: list[str] | None = None) -> int:
         if a.json:
             a.json.write_text(json.dumps(rep, indent=1))
         return 0 if rep["passed"] else 1
+    if a.cmd == "study2":
+        fresh = report._clean(study2.compute(a.raw, a.manifest, _designs(None), a.study1_results))
+        print(report2.markdown_summary(fresh))
+        path = a.derived / "results.json"
+        if a.action == "report":
+            report.write(fresh, a.derived)
+            (a.derived / "summary.md").write_bytes(report2.markdown_summary(fresh).encode())
+            print(f"wrote {path}")
+            return 0
+        if not path.exists():
+            print(f"no committed {path}; nothing to compare (run `study2 report` first)")
+            return 1
+        diffs = report.compare(json.loads(json.dumps(fresh)), json.loads(path.read_text()), tol=1e-9)
+        if diffs:
+            print(f"STUDY 2 REPRODUCTION FAILED: {len(diffs)} differences, e.g.:\n  " + "\n  ".join(diffs[:20]))
+            return 1
+        print(f"REPRODUCED: every Study 2 number in {path} recomputed from {a.raw}.")
+        return 0
     if a.cmd == "figures":
         for path in figures.build(a.results, a.raw, a.manifest, a.design, a.out):
             print(f"wrote {path}")
