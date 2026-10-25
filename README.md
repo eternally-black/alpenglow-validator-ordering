@@ -12,6 +12,7 @@
 | **Re-check claims on chain** | `docker compose --profile verify up` |
 | **Pre-registration** | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md), the normative analysis plan, frozen on 2026-10-24 before the campaign. Its SHA-256 and those of [the design](design/design.jsonl) and [the manifest](design/campaign.json) are in mainnet Memo [`5vRM47a8…QcyG`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg) (slot 460,779,153, signed by the measurement wallet). Check: `sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json` |
 | **Does the method work?** | [docs/POWER.md](docs/POWER.md): the analysis is run on simulated schedulers with known rules, including look-alikes built to fool it |
+| **Study 2 (in progress)** | A pre-registered replication on a second day plus head-start races on a fine grid ([plan](docs/STUDY2-PLAN.md), [pre-registration 2](docs/PREREGISTRATION-2.md), [operating characteristics](docs/POWER-2.md)). Hashes in mainnet Memo [`2T6ha9FD…D5ww`](https://explorer.solana.com/tx/2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww) (slot 461,151,605). Both studies together stay under the 0.05 SOL cap, enforced by one ledger |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/identification-dark.svg">

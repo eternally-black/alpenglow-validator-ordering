@@ -202,3 +202,22 @@ or scoped in the text before freezing, each fix with a test that fails on the re
 - 60,000,000 lamports (0.06 SOL) from `3cB1N3xVpPjfjnZmYEsijL5znEKudNGMCMQmse9BoD5Y` (the wallet owner) to the Study 2
   master: transaction [`4KSDo1hb…2Ubx`](https://explorer.solana.com/tx/4KSDo1hbbdLofuHYryWijwgiPeR9E3aySDVzEc6f9qoJwSTTECCp4hgmu4SgYezJfiMYnzrKuiySLwwrkuTx2Ubx),
   slot 461,120,139. The first live command records this balance as the Study 2 opening.
+
+## 2026-10-25 04:27–06:15 UTC — freeze, Memo, payer funding
+
+- **Freeze** (04:27): `scripts/freeze.py --study 2` wrote `design/campaign-study2.json` at commit `bb4f5f4`
+  (manifest committed in `a556cbf`):
+
+  | Frozen file | SHA-256 |
+  |---|---|
+  | `docs/PREREGISTRATION-2.md` | `d970ef987aa29460e8aa1520e11e1eb88aec16510454f41b973795a770a028eb` |
+  | `design/design-study2.jsonl` (`itb design --study 2 --seed 20261025`, 570 windows, worst case 0.0228 SOL) | `3df240b1a989249723c3282f41c1c5fe07fd06e72ca6ad63c239b34d3f9d0fdd` |
+  | `design/campaign-study2.json` (hypotheses with planned n, budget `study2`, cutoff 2026-10-30T23:59Z, carry-over, `analysis_tree` `cd83bbc90773b2ee53a958eb17f92ad5eaff2a14`) | `36a6416bd8a7e80eee68346f437091872c1cd6f034265a59afe89fc47a9d4519` |
+
+- **Binary:** the `itb:local` image rebuilt from the freeze commit before any live action.
+- **Memo** (06:14:18): transaction [`2T6ha9FD…D5ww`](https://explorer.solana.com/tx/2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww),
+  slot 461,151,605, signed by the Study 2 master, fee 5,000. Its text, re-read from the chain, equals
+  `itb-prereg v2 prereg=<sha> design=<sha> manifest=<sha>` for the three files above. It was the first live command
+  on the Study 2 ledger, so it also recorded the opening: master 60,000,000 lamports, 24 empty payers.
+- **Payer funding** (06:14:47, 06:14:50): `itb setup fund --lamports-per-payer 2000000`, two transfers (16 and 8
+  payers), fees 10,000. Study 2 spend so far: 15,000 lamports.
