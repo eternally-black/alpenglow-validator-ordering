@@ -1,0 +1,148 @@
+{
+ "frozen_at": "2026-10-25T04:27:04Z",
+ "genesis_hash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+ "design_sha256": "3df240b1a989249723c3282f41c1c5fe07fd06e72ca6ad63c239b34d3f9d0fdd",
+ "preregistration_sha256": "d970ef987aa29460e8aa1520e11e1eb88aec16510454f41b973795a770a028eb",
+ "core_targets": [
+  {
+   "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+   "client_id": "Agave",
+   "ingress": "direct"
+  },
+  {
+   "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+   "client_id": "JitoLabs",
+   "ingress": "direct"
+  },
+  {
+   "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+   "client_id": "Firedancer",
+   "ingress": "direct"
+  },
+  {
+   "identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+   "client_id": "AgaveBam",
+   "ingress": "bam_node"
+  },
+  {
+   "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+   "client_id": "HarmonicAgave",
+   "ingress": "harmonic_remote_tpu"
+  },
+  {
+   "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+   "client_id": "HarmonicFiredancer",
+   "ingress": "harmonic_remote_tpu"
+  }
+ ],
+ "extended_targets": [
+  "9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY"
+ ],
+ "positive_controls": [
+  "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+  "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4"
+ ],
+ "budget": "study2",
+ "not_after": "2026-10-30T23:59:00Z",
+ "excluded_run_ids": [],
+ "study": 2,
+ "hypotheses": [
+  {
+   "id": "H1-agave",
+   "statement": "Agave: hi overtakes a 2 ms send-side head start of lo in fewer than half of the races",
+   "pair_kind": "race",
+   "dt_ms": 2.0,
+   "side": "less",
+   "groups": [
+    {
+     "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+     "client_id": "Agave",
+     "ingress": "direct"
+    }
+   ],
+   "planned_n": 35
+  },
+  {
+   "id": "H1-jito",
+   "statement": "Jito-Solana: hi overtakes a 2 ms send-side head start of lo in fewer than half of the races",
+   "pair_kind": "race",
+   "dt_ms": 2.0,
+   "side": "less",
+   "groups": [
+    {
+     "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+     "client_id": "JitoLabs",
+     "ingress": "direct"
+    }
+   ],
+   "planned_n": 35
+  },
+  {
+   "id": "H2-firedancer",
+   "statement": "Firedancer: hi overtakes a 2 ms send-side head start of lo in more than half of the races",
+   "pair_kind": "race",
+   "dt_ms": 2.0,
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+     "client_id": "Firedancer",
+     "ingress": "direct"
+    }
+   ],
+   "planned_n": 35
+  },
+  {
+   "id": "H2-firedancer-harmonic",
+   "statement": "Firedancer + Harmonic: hi overtakes a 2 ms send-side head start of lo in more than half of the races",
+   "pair_kind": "race",
+   "dt_ms": 2.0,
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+     "client_id": "HarmonicFiredancer",
+     "ingress": "harmonic_remote_tpu"
+    }
+   ],
+   "planned_n": 35
+  },
+  {
+   "id": "H2-agave-harmonic",
+   "statement": "Agave + Harmonic: hi overtakes a 2 ms send-side head start of lo in more than half of the races",
+   "pair_kind": "race",
+   "dt_ms": 2.0,
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+     "client_id": "HarmonicAgave",
+     "ingress": "harmonic_remote_tpu"
+    }
+   ],
+   "planned_n": 35
+  },
+  {
+   "id": "H3-firedancer-ties",
+   "statement": "Firedancer: of two identical buffered probes sent 10 ms apart, the later-sent one lands first in more than half of the pairs",
+   "pair_kind": "equal_key",
+   "dt_ms": 10.0,
+   "side": "less",
+   "groups": [
+    {
+     "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+     "client_id": "Firedancer",
+     "ingress": "direct"
+    },
+    {
+     "identity": "9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY",
+     "client_id": "Firedancer",
+     "ingress": "direct"
+    }
+   ],
+   "planned_n": 59
+  }
+ ],
+ "carry_over_lamports": 24717500,
+ "analysis_tree": "cd83bbc90773b2ee53a958eb17f92ad5eaff2a14"
+}
