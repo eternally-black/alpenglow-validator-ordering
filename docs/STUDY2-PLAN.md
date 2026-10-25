@@ -23,9 +23,9 @@ only how far a client reorders against arrival.
 | ID | Hypothesis | Basis in Study 1 | Test |
 |---|---|---|---|
 | **R** | The Study 1 confirmatory result replicates: same 6 core targets, same K kit, same analysis code, same 36-effect family | all 6 claims reward/cost | Identical to Study 1 (PREREGISTRATION §1–§9) |
-| **H1** | Agave family does not reorder against a 2 ms head start: O(2) < 0.5 for Agave `7QQGNm3p` and Jito-Solana `HEL1USMZ` | 0/10 overtakes at 5 ms; streaming windows look arrival-driven | one-sided exact binomial |
-| **H2** | Firedancer and the Harmonic builders do: O(2) > 0.5 for Firedancer `EvnRmnMr`, Firedancer + Harmonic `JUPiTERr`, Agave + Harmonic `Fd7btgyS` | 5/7, 5/7, 5/6 overtakes at 5 ms | one-sided exact binomial |
-| **H3** | Firedancer breaks equal-priority ties later-arrival-first: P(first-sent lands first) < 0.5 at Δt = 10 ms, pooled over `EvnRmnMr` and `9eGrDohd` | 4/20 at 10 ms | one-sided exact binomial |
+| **H1** | In the Agave family, `hi` overtakes a 2 ms send-side head start in fewer than half of the races: O(2) < 0.5 for Agave `7QQGNm3p` and Jito-Solana `HEL1USMZ` | 0/10 overtakes at 5 ms; streaming windows look arrival-driven | one-sided exact binomial |
+| **H2** | In Firedancer and the Harmonic builders, it does so in more than half: O(2) > 0.5 for Firedancer `EvnRmnMr`, Firedancer + Harmonic `JUPiTERr`, Agave + Harmonic `Fd7btgyS` | 5/7, 5/7, 5/6 overtakes at 5 ms | one-sided exact binomial |
+| **H3** | Of two identical buffered probes sent 10 ms apart, Firedancer lands the later-sent one first in more than half of the pairs: P(first-sent lands first) < 0.5, pooled over `EvnRmnMr` and `9eGrDohd` (a later-*arrival* tie-break, if the network keeps the send order) | 4/20 at 10 ms | one-sided exact binomial |
 
 H1–H3 are six tests, Holm-adjusted at family α = 0.05. R keeps its own Bonferroni family exactly as in Study 1.
 Planned power (exact, at the Bonferroni worst case α = 0.05/6): H1 ≥ 0.84 if the true O(2) ≤ 0.15; H2 ≥ 0.90 if
@@ -53,7 +53,7 @@ Race allocation per R target (105 races, balanced and shuffled across its 35 win
 
 Each window carries a Δt cell at most once (the races are dealt over the windows), so the window stays the unit of
 analysis, as in Study 1; for the same reason an E window carries one equal-key pair. The longest race ends 55 ms
-after the first shred, inside the ≈ 130 ms in-window slot. Randomisation, seeds, locks
+after the first shred, nominally inside the ≈ 130 ms in-window slot (same-slot pairs are a sensitivity analysis). Randomisation, seeds, locks
 and payer assignment work exactly as in Study 1 (`design.rs`): the design is generated from a committed seed and
 frozen before the Memo.
 

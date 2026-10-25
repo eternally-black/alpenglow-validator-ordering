@@ -182,6 +182,23 @@ Plan: [STUDY2-PLAN.md](STUDY2-PLAN.md), approved by the wallet owner on 2026-10-
 
 ## 2026-10-25 — operating characteristics of the Study 2 hypotheses
 
-The frozen design, simulated under known schedulers at 90 % landing with Study 1's observation failures, 40
-campaigns per scenario ([POWER-2.md](POWER-2.md), `scripts/oc_study2.py`). If Study 1's exploratory picture holds,
-each hypothesis is supported in 97–100 % of campaigns. If every hypothesis is false, none is ever supported.
+The frozen design, simulated under known schedulers at 90 % landing with Study 1's observation failures, 100
+campaigns per scenario, published claims after the gates ([POWER-2.md](POWER-2.md), `scripts/oc_study2.py`; rerun
+after the pre-freeze reviews). If Study 1's exploratory picture holds, each hypothesis is supported in 98–100 % of
+campaigns. With every hypothesis false, false support appears in 0 of 100 campaigns (wide margin) and 4 of 100 at the
+exact null boundary.
+
+## 2026-10-25 — independent pre-freeze reviews
+
+GPT (gpt-6.1-sol, `codex exec`) and DeepSeek (deepseek-v4-flash, thinking) reviewed the pre-registration, analysis,
+generator, simulation and freeze script at `518d7fb`. GPT found 2 blockers and 5 should-fix items; DeepSeek found 3
+blockers, 5 should-fix items and 3 nits, partly overlapping. Every one was checked against the code. All were fixed
+or scoped in the text before freezing, each fix with a test that fails on the reviewed version:
+[docs/review/STUDY2-prefreeze-dispositions.md](review/STUDY2-prefreeze-dispositions.md). The design was regenerated
+(same seed) and the operating characteristics rerun.
+
+## 2026-10-25 04:22 UTC — funding
+
+- 60,000,000 lamports (0.06 SOL) from `3cB1N3xVpPjfjnZmYEsijL5znEKudNGMCMQmse9BoD5Y` (the wallet owner) to the Study 2
+  master: transaction [`4KSDo1hb…2Ubx`](https://explorer.solana.com/tx/4KSDo1hbbdLofuHYryWijwgiPeR9E3aySDVzEc6f9qoJwSTTECCp4hgmu4SgYezJfiMYnzrKuiySLwwrkuTx2Ubx),
+  slot 461,120,139. The first live command records this balance as the Study 2 opening.

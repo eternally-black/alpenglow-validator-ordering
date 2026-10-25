@@ -122,8 +122,52 @@ def test_analyse_end_to_end(tmp_path):
     out = simulate(DESIGN, TARGETS, tmp_path / "e2e", params, stage=2)
     res = study2.analyse([out], {"hypotheses": HYPOTHESES}, load_designs([DESIGN]))
     assert [h["published_claim"] for h in res["hypotheses"]] == ["supported"] * 3
-    assert set(res["sensitivity"]) == {"censored", "including_transition_ambiguous", "achieved_gap_within_0.5ms"}
-    assert all(v["verdict"] == "supported" for s in res["sensitivity"].values() for v in s.values())
+    assert set(res["sensitivity"]) == {"censored", "including_transition_ambiguous", "achieved_gap_within_0.5ms",
+                                       "same_slot", "equal_key_both_sent_before_first_shred"}
+    # The simulator writes no first-shred events, so the buffering evidence is unknown there and that set is empty.
+    assert all(v["verdict"] == "supported" for k, s in res["sensitivity"].items()
+               if k != "equal_key_both_sent_before_first_shred" for v in s.values())
     fd = res["curves"][f"{FD[0]}|Firedancer|direct"]
     assert fd["median_achieved_gap_ms"]["2"] == 2.0 and fd["horizon_ms"][0] is not None
     assert res["funnel"]["windows"] == res["funnel"]["evaluable"] == 35 * 2 + 24
+
+
+def test_a_missed_gap_or_a_failed_control_withdraws():
+    rows = [{"success": 0.0}] * 30 + [{"success": 1.0, "first_label": "hi"}] * 6
+    h = HYPOTHESES[0]
+    decided = study2.evaluate(_pairs(rows), [h])[0]
+    assert decided["by_target"] == {AGAVE[0]: [0, 30]}
+    off = study2.gates(_pairs(rows).assign(achieved_gap_ms=3.2), h)
+    assert off["withdrawn"] and study2.published(decided, off).startswith("withdrawn: achieved gap 3.20 ms")
+    ok = study2.gates(_pairs(rows), h)
+    assert study2.published(decided, ok) == "supported"
+    assert study2.published(decided, ok, method_ok=False).startswith("withdrawn: a positive control failed")
+
+
+def test_replication_compares_published_claims_per_core_target():
+    core = [group(AGAVE), group(FD)]
+    key = lambda g: f"{g['identity']}|{g['client_id']}|{g['ingress']}"  # noqa: E731
+    s1 = {"validators": {key(g): {"published_claim": "reward_cost"} for g in core}}
+    s2 = {"validators": {key(core[0]): {"published_claim": "reward_cost"}, key(core[1]): {"published_claim": "partial:reward_cost"}}}
+    rows = study2.replication_summary({"core_targets": core}, s1, s2)
+    assert [r["replicated"] for r in rows] == [True, False]
+    assert study2.replication_summary({"core_targets": core}, s1, {})[0]["replicated"] is False, "no Study 2 claim: not replicated"
+
+
+def test_simultaneous_races_are_not_controls_and_count_both_orders_at_zero():
+    # GPT pre-freeze finding 1: three lost hi-first races at Δt = 0 must not withdraw a 2 ms result.
+    rows = [{"success": 0.0}] * 30 + [{"success": 1.0, "first_label": "hi", "dt_ms": 5.0}] * 6         + [{"success": 0.0, "first_label": "hi", "dt_ms": 0.0}] * 3 + [{"success": 1.0, "first_label": "lo", "dt_ms": 0.0}] * 3
+    pairs = _pairs(rows).assign(same_slot=True)
+    g = study2.gates(pairs, HYPOTHESES[0])
+    assert (g["control_losses"], g["controls"], g["withdrawn"]) == (0, 6, False)
+    curve = study2.curves(pairs)[f"{AGAVE[0]}|Agave|direct"]
+    assert curve["overtake_lo_first"]["0"] == [3, 6], "O(0) over both stream orders, hi landing first"
+    assert curve["hi_first_wins"] == {"5": [6, 6]}
+
+
+def test_equal_key_gap_is_gated_too():
+    rows = [{"success": 0.0, "kind": "equal_key", "dt_ms": 10.0, "first_label": "A"}] * 40
+    pairs = _pairs(rows).assign(achieved_gap_ms=0.1, client_id="Firedancer", target_identity=FD[0])
+    g = study2.gates(pairs, HYPOTHESES[2])
+    assert g["gap_flag"] and g["withdrawn"] and g["controls"] is None
+    assert study2.published(study2.evaluate(pairs, [HYPOTHESES[2]])[0], g).startswith("withdrawn: achieved gap 0.10 ms")

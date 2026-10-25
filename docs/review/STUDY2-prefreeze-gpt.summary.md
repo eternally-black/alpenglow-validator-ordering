@@ -1,0 +1,1 @@
+Created [review/STUDY2-prefreeze-gpt.md](</C:/Users/valera/Desktop/AlpenGlow Validator Bounty/review/STUDY2-prefreeze-gpt.md>): 2 blockers and 5 should-fix findings, scoped to commit `518d7fb`.

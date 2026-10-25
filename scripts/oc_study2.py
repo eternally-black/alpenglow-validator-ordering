@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Operating characteristics of the Study 2 hypotheses (docs/POWER-2.md): the frozen Study 2 design, simulated with
-schedulers whose horizon and tie-break are known, analysed by `itb_analysis.study2` exactly as the live data will be.
+schedulers whose horizon and tie-break are known, analysed by `itb_analysis.study2` exactly as the live data will be,
+gates included: "supported" counts published claims that start with it, "selection-robust" those without the
+"(assumes selection)" qualifier.
 
     PYTHONPATH=analysis python scripts/oc_study2.py [--reps 40] [--out data/derived/oc-study2.json]
 
@@ -18,6 +20,7 @@ from pathlib import Path
 from itb_analysis import outcomes, study2
 from itb_analysis.load import load_designs, load_run
 from itb_analysis.sim import Params, simulate
+from itb_analysis.stats import clopper_pearson
 
 AGAVE, JITO, FD, DRPB, FD7B, JUPI, FD2 = (
     "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE", "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
@@ -52,7 +55,13 @@ SCENARIOS = {
                  "(every hypothesis false)",
                  {AGAVE: greedy(15, "random"), JITO: greedy(15, "random"), FD: fifo(), FD2: greedy(15, "random"),
                   JUPI: fifo(), FD7B: fifo(), DRPB: fifo()}),
+    "boundary_null": ("every group at the null boundary: priority passes / auctions every 4 ms (O(2) = 0.5), "
+                      "Firedancer ties random (E = 0.5); every hypothesis false",
+                      {AGAVE: greedy(4, "random"), JITO: greedy(4, "random"), FD: greedy(4, "random"),
+                       FD2: greedy(4, "random"), JUPI: batch(4), FD7B: batch(4), DRPB: batch(4)}),
 }
+#: scenarios in which every hypothesis is false: any support there is a family-wise error
+NULLS = ("opposite", "boundary_null")
 
 
 def run(design: Path, targets: Path, reps: int) -> dict:
@@ -62,16 +71,23 @@ def run(design: Path, targets: Path, reps: int) -> dict:
     for name, (truth, per_target) in SCENARIOS.items():
         tally = defaultdict(lambda: defaultdict(int))
         n_pairs = defaultdict(list)
+        any_support = 0
         for seed in range(reps):
             with tempfile.TemporaryDirectory() as tmp:
                 r = load_run(simulate(design, targets, Path(tmp) / "r", Params("fifo", seed=seed, landing=0.9,
                                                                                target_scenarios=per_target), stage=2))
-                pairs = study2.pair_table(outcomes.probe_table(r), outcomes.window_table(r, designs))
-            for h in study2.evaluate(pairs, hyps):
-                tally[h["id"]][h["verdict"]] += 1
-                tally[h["id"]]["robust"] += h["selection_robust"]
+                pairs = study2.pair_table(outcomes.probe_table(r), outcomes.window_table(r, designs), r.sends)
+            supported = 0
+            for h, spec in zip(study2.evaluate(pairs, hyps), hyps):
+                claim = study2.published(h, study2.gates(pairs, spec))  # after the §8 gates, as REPORT will print
+                tally[h["id"]]["supported"] += claim.startswith("supported")
+                tally[h["id"]]["robust"] += claim == "supported"
                 n_pairs[h["id"]].append(h["n"])
-        out[name] = {"truth": truth, "reps": reps,
+                supported += claim.startswith("supported")
+            any_support += supported > 0
+        lo, hi = clopper_pearson(any_support, reps, 0.05)
+        out[name] = {"truth": truth, "reps": reps, "campaigns_with_any_support": any_support,
+                     "any_support_ci95": [lo, hi],
                      "rates": {i: {"supported": t["supported"] / reps, "selection_robust": t["robust"] / reps,
                                    "median_n": sorted(n_pairs[i])[len(n_pairs[i]) // 2]} for i, t in tally.items()}}
     return out
@@ -79,10 +95,12 @@ def run(design: Path, targets: Path, reps: int) -> dict:
 
 def markdown(res: dict) -> str:
     ids = [h[0] for h in study2.SPEC]
-    lines = ["| Scenario | " + " | ".join(ids) + " |", "|---|" + "---|" * len(ids)]
+    lines = ["| Scenario | " + " | ".join(ids) + " | campaigns with any false support |", "|---|" + "---|" * (len(ids) + 1)]
     for name, r in res.items():
         cells = [f"{r['rates'][i]['supported']:.2f} (n≈{r['rates'][i]['median_n']})" for i in ids]
-        lines.append(f"| `{name}` | " + " | ".join(cells) + " |")
+        fw = (f"{r['campaigns_with_any_support']}/{r['reps']} (95 % CI up to {r['any_support_ci95'][1]:.2f})"
+              if name in NULLS else "—")
+        lines.append(f"| `{name}` | " + " | ".join(cells) + f" | {fw} |")
     return "\n".join(lines) + "\n"
 
 

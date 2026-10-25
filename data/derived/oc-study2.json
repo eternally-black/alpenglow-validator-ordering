@@ -1,32 +1,37 @@
 {
  "study1_picture": {
   "truth": "Agave family FIFO; Firedancer priority passes every 15 ms with later-arrival-first ties; Harmonic auctions every 25 / 60 ms; BAM every 50 ms",
-  "reps": 40,
+  "reps": 100,
+  "campaigns_with_any_support": 100,
+  "any_support_ci95": [
+   0.9637833073548235,
+   1.0
+  ],
   "rates": {
    "H1-agave": {
     "supported": 1.0,
-    "selection_robust": 0.8,
+    "selection_robust": 0.88,
     "median_n": 27
    },
    "H1-jito": {
     "supported": 1.0,
-    "selection_robust": 0.925,
+    "selection_robust": 0.92,
     "median_n": 27
    },
    "H2-firedancer": {
-    "supported": 0.975,
-    "selection_robust": 0.275,
+    "supported": 0.98,
+    "selection_robust": 0.32,
     "median_n": 26
    },
    "H2-firedancer-harmonic": {
-    "supported": 0.975,
-    "selection_robust": 0.6,
+    "supported": 1.0,
+    "selection_robust": 0.64,
     "median_n": 26
    },
    "H2-agave-harmonic": {
     "supported": 1.0,
-    "selection_robust": 0.775,
-    "median_n": 27
+    "selection_robust": 0.73,
+    "median_n": 26
    },
    "H3-firedancer-ties": {
     "supported": 1.0,
@@ -37,53 +42,63 @@
  },
  "weak_effects": {
   "truth": "Agave family arrival order with 2 ms of extra jitter; Firedancer passes every 6 ms; Harmonic auctions every 8 ms (true O(2) \u2248 0.24 and \u2248 0.67\u20130.75)",
-  "reps": 40,
+  "reps": 100,
+  "campaigns_with_any_support": 100,
+  "any_support_ci95": [
+   0.9637833073548235,
+   1.0
+  ],
   "rates": {
    "H1-agave": {
-    "supported": 0.775,
-    "selection_robust": 0.15,
-    "median_n": 26
-   },
-   "H1-jito": {
-    "supported": 0.725,
-    "selection_robust": 0.125,
-    "median_n": 26
-   },
-   "H2-firedancer": {
-    "supported": 0.325,
-    "selection_robust": 0.0,
+    "supported": 0.76,
+    "selection_robust": 0.13,
     "median_n": 27
    },
+   "H1-jito": {
+    "supported": 0.72,
+    "selection_robust": 0.1,
+    "median_n": 27
+   },
+   "H2-firedancer": {
+    "supported": 0.37,
+    "selection_robust": 0.01,
+    "median_n": 26
+   },
    "H2-firedancer-harmonic": {
-    "supported": 0.675,
-    "selection_robust": 0.075,
+    "supported": 0.62,
+    "selection_robust": 0.04,
     "median_n": 26
    },
    "H2-agave-harmonic": {
-    "supported": 0.625,
-    "selection_robust": 0.1,
+    "supported": 0.63,
+    "selection_robust": 0.06,
     "median_n": 27
    },
    "H3-firedancer-ties": {
     "supported": 1.0,
-    "selection_robust": 1.0,
-    "median_n": 45
+    "selection_robust": 0.99,
+    "median_n": 44
    }
   }
  },
  "opposite": {
   "truth": "Agave family priority passes every 15 ms; Firedancer and Harmonic FIFO; Firedancer ties random (every hypothesis false)",
-  "reps": 40,
+  "reps": 100,
+  "campaigns_with_any_support": 0,
+  "any_support_ci95": [
+   0.0,
+   0.03621669264517641
+  ],
   "rates": {
    "H1-agave": {
     "supported": 0.0,
     "selection_robust": 0.0,
-    "median_n": 27
+    "median_n": 26
    },
    "H1-jito": {
     "supported": 0.0,
     "selection_robust": 0.0,
-    "median_n": 27
+    "median_n": 26
    },
    "H2-firedancer": {
     "supported": 0.0,
@@ -98,12 +113,53 @@
    "H2-agave-harmonic": {
     "supported": 0.0,
     "selection_robust": 0.0,
-    "median_n": 26
+    "median_n": 27
    },
    "H3-firedancer-ties": {
     "supported": 0.0,
     "selection_robust": 0.0,
-    "median_n": 44
+    "median_n": 45
+   }
+  }
+ },
+ "boundary_null": {
+  "truth": "every group at the null boundary: priority passes / auctions every 4 ms (O(2) = 0.5), Firedancer ties random (E = 0.5); every hypothesis false",
+  "reps": 100,
+  "campaigns_with_any_support": 4,
+  "any_support_ci95": [
+   0.011004493986188198,
+   0.09925715671265992
+  ],
+  "rates": {
+   "H1-agave": {
+    "supported": 0.03,
+    "selection_robust": 0.01,
+    "median_n": 26
+   },
+   "H1-jito": {
+    "supported": 0.01,
+    "selection_robust": 0.0,
+    "median_n": 26
+   },
+   "H2-firedancer": {
+    "supported": 0.0,
+    "selection_robust": 0.0,
+    "median_n": 27
+   },
+   "H2-firedancer-harmonic": {
+    "supported": 0.0,
+    "selection_robust": 0.0,
+    "median_n": 27
+   },
+   "H2-agave-harmonic": {
+    "supported": 0.0,
+    "selection_robust": 0.0,
+    "median_n": 27
+   },
+   "H3-firedancer-ties": {
+    "supported": 0.0,
+    "selection_robust": 0.0,
+    "median_n": 45
    }
   }
  }

@@ -153,6 +153,9 @@ pub const STUDY2_RACES_PER_WINDOW: usize = 3;
 pub const STUDY2_EQUAL_KEY_DT_MS: f64 = 10.0;
 /// One pair per window, so every equal-key pair is its own window (the unit).
 pub const STUDY2_EQUAL_KEY_PER_E_WINDOW: usize = 1;
+/// Random race swaps between R windows after the deal (each keeping both windows' cells distinct): enough to forget
+/// which cells the deal put together.
+pub const STUDY2_MIX_SWAPS: usize = 20_000;
 
 fn is_direct(ingress: IngressKind) -> bool {
     matches!(ingress, IngressKind::Direct)
@@ -477,8 +480,10 @@ fn equal_key_pair(pair_id: String, dt: f64, lock_base: u32, direct: bool) -> Pai
 
 /// Study 2 (docs/PREREGISTRATION-2.md): stage 1 repeats the K kit without the uncontended pair; stage 2 interleaves R
 /// and E windows at random. The window is the unit, so a window holds at most one race per Δt cell: the races, grouped
-/// by cell (each cell shuffled), are dealt round-robin over the R windows, then the windows' race sets and the order
-/// inside each set are shuffled. Deterministic in (`seed`, `targets`), independent of the Study 1 generator's draws.
+/// by cell (each cell shuffled), are dealt round-robin over the R windows, which gives a valid but patterned
+/// assignment; `STUDY2_MIX_SWAPS` random swaps that keep every window valid then randomise which cells share a window,
+/// and the order inside each window is shuffled. Equal-key pairs need both members pending at slot start, so only
+/// direct-ingress targets may carry them. Deterministic in (`seed`, `targets`), independent of the Study 1 draws.
 pub fn generate_study2(seed: u64, targets: &[TargetSpec]) -> anyhow::Result<Vec<WindowPlan>> {
     let mut out = vec![];
     for t in targets {
@@ -489,6 +494,12 @@ pub fn generate_study2(seed: u64, targets: &[TargetSpec]) -> anyhow::Result<Vec<
         );
         let mut rng = ChaCha20Rng::seed_from_u64(tseed);
         let direct = is_direct(t.ingress);
+        if !direct && (t.equal_key_in_r || t.e_windows > 0) {
+            anyhow::bail!(
+                "{}: equal-key pairs need direct ingress (both members pending at slot start)",
+                t.identity
+            );
+        }
         out.extend(k_windows(t, &mut rng, false));
 
         let n_r = t.r_windows as usize;
@@ -520,6 +531,21 @@ pub fn generate_study2(seed: u64, targets: &[TargetSpec]) -> anyhow::Result<Vec<
             }
             for (i, r) in races.into_iter().enumerate() {
                 race_sets[i % n_r].push(r);
+            }
+            let clash = |set: &[(f64, bool)], skip: usize, dt: f64| {
+                set.iter().enumerate().any(|(k, r)| k != skip && r.0 == dt)
+            };
+            for _ in 0..STUDY2_MIX_SWAPS {
+                let (a, b) = (rng.gen_range(0..n_r), rng.gen_range(0..n_r));
+                let (i, j) = (
+                    rng.gen_range(0..STUDY2_RACES_PER_WINDOW),
+                    rng.gen_range(0..STUDY2_RACES_PER_WINDOW),
+                );
+                let (x, y) = (race_sets[a][i], race_sets[b][j]);
+                if a != b && !clash(&race_sets[a], i, y.0) && !clash(&race_sets[b], j, x.0) {
+                    race_sets[a][i] = y;
+                    race_sets[b][j] = x;
+                }
             }
             race_sets.shuffle(&mut rng);
             for set in &mut race_sets {
@@ -693,6 +719,35 @@ pub fn validate(plans: &[WindowPlan]) -> anyhow::Result<()> {
                 }
             }
         }
+        // Study 2: the window is the unit (PREREGISTRATION-2 §2).
+        if p.kit == Kit::R {
+            let mut dts: Vec<u64> = p
+                .pairs
+                .iter()
+                .filter(|q| q.kind == PairKind::Race)
+                .map(|q| q.race_dt_ms.unwrap_or(f64::NAN).to_bits())
+                .collect();
+            let n = dts.len();
+            dts.sort_unstable();
+            dts.dedup();
+            if dts.len() != n {
+                anyhow::bail!(
+                    "plan {}/{}: an R window carries a Δt cell twice",
+                    p.target_identity,
+                    p.seq
+                );
+            }
+        }
+        if p.kit == Kit::E
+            && (p.pairs.len() != STUDY2_EQUAL_KEY_PER_E_WINDOW
+                || p.pairs.iter().any(|q| q.kind != PairKind::EqualKey))
+        {
+            anyhow::bail!(
+                "plan {}/{}: an E window carries exactly {STUDY2_EQUAL_KEY_PER_E_WINDOW} equal-key pair",
+                p.target_identity,
+                p.seq
+            );
+        }
         if probe_count(p) > crate::quic::MAX_STREAMS_PER_100MS {
             anyhow::bail!(
                 "plan {}/{} has {} probes > {} per burst",
@@ -851,6 +906,39 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn study2_invariants_are_enforced() {
+        let mut t = study2_targets();
+        t[1].equal_key_in_r = true; // shared ingress
+        assert!(generate_study2(7, &t).is_err());
+        let mut plans = generate_study2(7, &study2_targets()).unwrap();
+        let r = plans.iter_mut().find(|p| p.kit == Kit::R).unwrap();
+        let dt = r.pairs[0].race_dt_ms;
+        r.pairs[1].race_dt_ms = dt;
+        assert!(
+            validate(&plans).is_err(),
+            "a duplicated Δt cell in one window is refused"
+        );
+    }
+
+    #[test]
+    fn study2_mixes_which_cells_share_a_window() {
+        let plans = generate_study2(7, &study2_targets()).unwrap();
+        let mut combos = std::collections::HashSet::new();
+        for p in plans.iter().filter(|p| p.kit == Kit::R) {
+            let mut dts: Vec<u64> = p
+                .pairs
+                .iter()
+                .filter(|q| q.kind == PairKind::Race)
+                .map(|q| q.race_dt_ms.unwrap().to_bits())
+                .collect();
+            dts.sort_unstable();
+            combos.insert(dts);
+        }
+        // The bare deal yields 5 of the 10 possible cell sets for this allocation (2 ms is in every window).
+        assert!(combos.len() >= 8, "{} distinct cell sets", combos.len());
     }
 
     #[test]

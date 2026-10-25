@@ -11,11 +11,14 @@ hashed in the second Memo), so this module only states how any such hypothesis i
   is *not evaluable* (p = 1).
 - **Selection bound:** every pair of the same evaluable windows with fewer than two landed members is counted against
   the hypothesis; the claim is *selection-robust* if that worst case still passes at the Bonferroni level α/m.
-- **Gates:** a race hypothesis is withdrawn when `hi`, sent first, lost to `lo` more than once in its groups (the
-  pair did not compete on priority as designed); it is flagged when the median achieved send gap of its cell misses
-  the nominal Δt by more than 1 ms.
+- **Gates (§8):** every hypothesis is withdrawn when a positive control fails in the replication, and when the
+  median achieved send gap of its cell misses the nominal Δt by more than 1 ms (the planned gap was not the one sent).
+  A race hypothesis is also withdrawn when `hi`, sent first with a positive head start, lost to `lo` more than once
+  in its groups (the pair did not compete on priority as designed); with no such control informative, its claim says
+  so.
 
-The replication (hypothesis R) is the Study 1 procedure itself: `report.compute` with the Study 2 manifest.
+The replication (hypothesis R) is the Study 1 procedure itself, `report.compute` with the Study 2 manifest; a core
+target replicates when its Study 2 published claim equals its frozen Study 1 claim.
 """
 
 from __future__ import annotations
@@ -41,17 +44,18 @@ GAP_WINDOW_MS = 0.5
 #: docs/PREREGISTRATION-2.md §3: (id, statement, pair kind, Δt ms, side, target identities). `scripts/freeze.py --study 2`
 #: writes them into the manifest with each target's frozen (client, ingress) group; the analysis reads them from there.
 SPEC = (
-    ("H1-agave", "Agave does not reorder against a 2 ms head start", "race", 2.0, "less",
-     ("7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",)),
-    ("H1-jito", "Jito-Solana does not reorder against a 2 ms head start", "race", 2.0, "less",
-     ("HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",)),
-    ("H2-firedancer", "Firedancer reorders against a 2 ms head start", "race", 2.0, "greater",
-     ("EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",)),
-    ("H2-firedancer-harmonic", "Firedancer + Harmonic reorders against a 2 ms head start", "race", 2.0, "greater",
-     ("JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",)),
-    ("H2-agave-harmonic", "Agave + Harmonic reorders against a 2 ms head start", "race", 2.0, "greater",
-     ("Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",)),
-    ("H3-firedancer-ties", "Firedancer breaks equal-priority ties later-arrival-first", "equal_key", 10.0, "less",
+    ("H1-agave", "Agave: hi overtakes a 2 ms send-side head start of lo in fewer than half of the races", "race", 2.0,
+     "less", ("7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",)),
+    ("H1-jito", "Jito-Solana: hi overtakes a 2 ms send-side head start of lo in fewer than half of the races", "race",
+     2.0, "less", ("HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",)),
+    ("H2-firedancer", "Firedancer: hi overtakes a 2 ms send-side head start of lo in more than half of the races",
+     "race", 2.0, "greater", ("EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",)),
+    ("H2-firedancer-harmonic", "Firedancer + Harmonic: hi overtakes a 2 ms send-side head start of lo in more than "
+     "half of the races", "race", 2.0, "greater", ("JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",)),
+    ("H2-agave-harmonic", "Agave + Harmonic: hi overtakes a 2 ms send-side head start of lo in more than half of the "
+     "races", "race", 2.0, "greater", ("Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",)),
+    ("H3-firedancer-ties", "Firedancer: of two identical buffered probes sent 10 ms apart, the later-sent one lands "
+     "first in more than half of the pairs", "equal_key", 10.0, "less",
      ("EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4", "9eGrDohdNTAo61DRHyfMuqKWXqYnA3i254Wiszxe8FoY")),
 )
 
@@ -72,8 +76,8 @@ def pair_table(probes: pd.DataFrame, windows: pd.DataFrame, sends: pd.DataFrame 
     between the two streams' finish times, which label went first, which members landed, and the outcome:
     `success` when both landed (race: `hi` first; equal key: the first-sent member first) and `success_censored`
     when at least one did (a member that did not land is placed after one that did)."""
-    cols = ["run_id", "pair_id", "target_identity", "client_id", "ingress", "kind", "dt_ms", "achieved_gap_ms",
-            "first_label", "evaluable", "exclusion", "first_landed", "second_landed", "n_landed", "success",
+    cols = ["run_id", "pair_id", "target_identity", "seq", "client_id", "ingress", "kind", "dt_ms", "achieved_gap_ms",
+            "first_label", "evaluable", "exclusion", "first_landed", "second_landed", "n_landed", "same_slot", "success",
             "success_censored"]
     if probes.empty or windows.empty:
         return pd.DataFrame(columns=cols)
@@ -100,14 +104,16 @@ def pair_table(probes: pd.DataFrame, windows: pd.DataFrame, sends: pd.DataFrame 
         success = float(_rank(a) < _rank(b)) if landed_a and landed_b else np.nan
         censored = np.nan if not (landed_a or landed_b) else float(landed_a and (not landed_b or _rank(a) < _rank(b)))
         rows.append({
-            "run_id": run_id, "pair_id": pair_id, "target_identity": first["target_identity"],
+            "run_id": run_id, "pair_id": pair_id, "target_identity": first["target_identity"], "seq": int(first["seq"]),
             "client_id": None if win is None else win.get("client_id"), "ingress": None if win is None else win.get("ingress"),
             "kind": first["pair_kind"], "dt_ms": float(first["race_dt_ms"]),
             "achieved_gap_ms": (f2 - f1) / 1e6 if f1 is not None and f2 is not None else np.nan,
             "first_label": first["label"], "evaluable": bool(win is not None and win.get("evaluable")),
             "exclusion": "design_unavailable" if win is None else win.get("exclusion", ""),
             "first_landed": bool(first["landed"]), "second_landed": bool(second["landed"]),
-            "n_landed": int(landed_a) + int(landed_b), "success": success, "success_censored": censored,
+            "n_landed": int(landed_a) + int(landed_b),
+            "same_slot": bool(landed_a and landed_b and int(a["slot"]) == int(b["slot"])),
+            "success": success, "success_censored": censored,
         })
     return pd.DataFrame(rows, columns=cols)
 
@@ -143,12 +149,13 @@ def evaluate(pairs: pd.DataFrame, hypotheses: list[dict], alpha: float = ALPHA, 
         else:
             scored, col = sel[sel["n_landed"] == 2], "success"
         k, n, incomplete = int(scored[col].sum()), int(len(scored)), int(len(sel) - len(scored))
+        by_target = {t: [int(g[col].sum()), int(len(g))] for t, g in scored.groupby("target_identity")}
         k_worst = k + incomplete if h["side"] == "less" else k
         lo, hi = stats.clopper_pearson(k, n, 0.05) if n else (float("nan"), float("nan"))
         out.append({
             "id": h["id"], "statement": h["statement"], "pair_kind": h["pair_kind"], "dt_ms": h["dt_ms"], "side": h["side"],
             "groups": h["groups"], "k": k, "n": n, "estimate": k / n if n else float("nan"), "ci95": [lo, hi],
-            "p": _p_one_sided(k, n, h["side"]), "incomplete_pairs": incomplete,
+            "by_target": by_target, "p": _p_one_sided(k, n, h["side"]), "incomplete_pairs": incomplete,
             "p_worst": _p_one_sided(k_worst, n + incomplete, h["side"]),
         })
     holm = stats.holm({r["id"]: r["p"] for r in out})
@@ -161,26 +168,32 @@ def evaluate(pairs: pd.DataFrame, hypotheses: list[dict], alpha: float = ALPHA, 
 
 
 def gates(pairs: pd.DataFrame, h: dict) -> dict:
-    """§8 for one hypothesis: the hi-first control races of its groups, and the achieved gap of its cell."""
-    if h["pair_kind"] != "race":
-        return {"control_losses": None, "controls": None, "median_achieved_gap_ms": None, "withdrawn": False, "gap_flag": False}
-    mine = pairs[_in_groups(pairs, h["groups"]) & pairs["evaluable"].to_numpy(dtype=bool) & (pairs["kind"] == "race").to_numpy()
-                 & (pairs["n_landed"] == 2).to_numpy()]
-    controls = mine[mine["first_label"] == "hi"]
-    losses = int((controls["success"] == 0).sum())
+    """§8 for one hypothesis: the achieved gap of its cell (over every pair sent there, landed or not) and, for a race
+    hypothesis, the hi-first controls of its groups: races with a positive head start for `hi` (Δt > 0; at Δt = 0
+    the stream order is not a head start)."""
     cell = _selected(pairs, h)["achieved_gap_ms"].dropna()
     gap = float(cell.median()) if len(cell) else None
-    return {"control_losses": losses, "controls": int(len(controls)), "median_achieved_gap_ms": gap,
-            "withdrawn": losses > CONTROL_LOSSES_ALLOWED,
-            "gap_flag": gap is not None and abs(gap - float(h["dt_ms"])) > GAP_TOLERANCE_MS}
+    gap_flag = gap is not None and abs(gap - float(h["dt_ms"])) > GAP_TOLERANCE_MS
+    losses = n_controls = None
+    if h["pair_kind"] == "race":
+        mine = pairs[_in_groups(pairs, h["groups"]) & pairs["evaluable"].to_numpy(dtype=bool)
+                     & (pairs["kind"] == "race").to_numpy() & (pairs["n_landed"] == 2).to_numpy()]
+        controls = mine[(mine["first_label"] == "hi") & (mine["dt_ms"] > 0)]
+        losses, n_controls = int((controls["success"] == 0).sum()), int(len(controls))
+    return {"control_losses": losses, "controls": n_controls, "median_achieved_gap_ms": gap, "gap_flag": gap_flag,
+            "withdrawn": gap_flag or (losses is not None and losses > CONTROL_LOSSES_ALLOWED)}
 
 
-def published(h: dict, g: dict) -> str:
-    """The claim REPORT prints for a hypothesis, after its gates and the selection qualifier."""
-    if g["withdrawn"]:
+def published(h: dict, g: dict, method_ok: bool = True) -> str:
+    """The claim REPORT prints for a hypothesis, after the gates (§8) and the selection qualifier."""
+    if not method_ok:
+        return "withdrawn: a positive control failed in the replication (method check)"
+    if g["control_losses"] is not None and g["control_losses"] > CONTROL_LOSSES_ALLOWED:
         return "withdrawn: hi sent first lost to lo more than once (the pair did not compete on priority)"
+    if g["gap_flag"]:
+        return f"withdrawn: achieved gap {g['median_achieved_gap_ms']:.2f} ms, not the planned {h['dt_ms']:g} ms"
     claim = h["verdict"] + (" (assumes selection)" if h["verdict"] == "supported" and not h["selection_robust"] else "")
-    return claim + (f"; achieved gap {g['median_achieved_gap_ms']:.2f} ms" if g["gap_flag"] else "")
+    return claim + ("; no informative hi-first control" if g["controls"] == 0 else "")
 
 
 def horizon(points: list[tuple[float, int, int]]) -> tuple[float | None, float | None]:
@@ -204,12 +217,13 @@ def curves(pairs: pd.DataFrame) -> dict:
         def cells(df: pd.DataFrame) -> dict[str, list[int]]:
             return {f"{dt:g}": [int(x["success"].sum()), int(len(x))] for dt, x in df.groupby("dt_ms")}
 
-        lo_first = races[races["first_label"] == "lo"]
+        # Head starts are lo-first races; at Δt = 0 there is no head start, so both stream orders count.
+        lo_first = races[(races["first_label"] == "lo") | (races["dt_ms"] == 0)]
         overtake = cells(lo_first)
         pts = [(float(dt), k, n) for dt, (k, n) in sorted(overtake.items(), key=lambda kv: float(kv[0]))]
         out[f"{t}|{c}|{i}"] = {
             "target_identity": t, "client_id": c, "ingress": i,
-            "overtake_lo_first": overtake, "hi_first_wins": cells(races[races["first_label"] == "hi"]),
+            "overtake_lo_first": overtake, "hi_first_wins": cells(races[(races["first_label"] == "hi") & (races["dt_ms"] > 0)]),
             "horizon_ms": list(horizon(pts)) if pts else None, "equal_key_first_sent_first": cells(eq),
             "median_achieved_gap_ms": {f"{dt:g}": float(x["achieved_gap_ms"].median()) for dt, x in lo_first.groupby("dt_ms")
                                        if x["achieved_gap_ms"].notna().any()},
@@ -221,14 +235,21 @@ def analyse(dirs: list[Path], manifest: dict, designs: dict | None) -> dict:
     run = load_runs(dirs)
     windows = outcomes.window_table(run, designs)
     pairs = pair_table(outcomes.probe_table(run), windows, run.sends)
+    # Buffering evidence (§6.5): an equal-key pair is the earliest send of its window, so the window's achieved offset
+    # is its first member's, and the second member left `achieved_gap_ms` later.
+    off = report.achieved_offsets(run).set_index(["run_id", "target_identity", "seq"])["achieved_offset_ms"]
+    first_off = np.array([off.get((r, t, q), np.nan) for r, t, q in zip(pairs["run_id"], pairs["target_identity"], pairs["seq"])],
+                         dtype=float)
+    pairs["second_sent_before_first_shred"] = (first_off + pairs["achieved_gap_ms"].to_numpy(dtype=float)) < 0
     hyps = manifest["hypotheses"]
     decided = evaluate(pairs, hyps)
     for h, spec in zip(decided, hyps):
         h["gates"] = gates(pairs, spec)
         h["published_claim"] = published(h, h["gates"])
     relaxed = pairs.assign(evaluable=pairs["exclusion"].isin(["", "mode:transition_ambiguous"]))
-    near = pairs[(pairs["kind"] != "race") | (pairs["dt_ms"] == 0)
-                 | ((pairs["achieved_gap_ms"] - pairs["dt_ms"]).abs() <= GAP_WINDOW_MS)]
+    near = pairs[(pairs["dt_ms"] == 0) | ((pairs["achieved_gap_ms"] - pairs["dt_ms"]).abs() <= GAP_WINDOW_MS)]
+    same_slot = pairs[(pairs["n_landed"] < 2) | pairs["same_slot"]]
+    buffered = pairs[(pairs["kind"] != "equal_key") | pairs["second_sent_before_first_shred"]]
     stage2 = windows[windows["kit"].isin(["r", "e"])] if "kit" in windows else windows.iloc[0:0]
 
     def brief(rs: list[dict]) -> dict:
@@ -240,19 +261,38 @@ def analyse(dirs: list[Path], manifest: dict, designs: dict | None) -> dict:
         "hypotheses": decided,
         "sensitivity": {"censored": brief(evaluate(pairs, hyps, coding="censored")),
                         "including_transition_ambiguous": brief(evaluate(relaxed, hyps)),
-                        "achieved_gap_within_0.5ms": brief(evaluate(near, hyps))},
+                        "achieved_gap_within_0.5ms": brief(evaluate(near, hyps)),
+                        "same_slot": brief(evaluate(same_slot, hyps)),
+                        "equal_key_both_sent_before_first_shred": brief(evaluate(buffered, hyps))},
         "curves": curves(pairs),
         "funnel": {"windows": int(len(stage2)), "evaluable": int(stage2["evaluable"].sum()) if len(stage2) else 0,
                    "exclusions": stage2[~stage2["evaluable"]]["exclusion"].value_counts().to_dict() if len(stage2) else {}},
     }
 
 
-def compute(raw: Path, manifest_path: Path, designs: dict) -> dict:
-    """Study 2 in full: the replication (Study 1 procedure, Study 2 manifest) and the hypotheses with the curves."""
+def replication_summary(manifest: dict, study1: dict, study2: dict) -> list[dict]:
+    """§1: per core target, its frozen Study 1 published claim against its Study 2 one."""
+    out = []
+    for c in manifest["core_targets"]:
+        key = f"{c['identity']}|{c['client_id']}|{c['ingress']}"
+        s1 = study1.get("validators", {}).get(key, {}).get("published_claim")
+        s2 = study2.get("validators", {}).get(key, {}).get("published_claim")
+        out.append({"identity": c["identity"], "client_id": c["client_id"], "ingress": c["ingress"],
+                    "study1_claim": s1, "study2_claim": s2, "replicated": s2 is not None and s2 == s1})
+    return out
+
+
+def compute(raw: Path, manifest_path: Path, designs: dict, study1_results: Path = Path("data/derived/results.json")) -> dict:
+    """Study 2 in full: the replication (Study 1 procedure, Study 2 manifest) against the frozen Study 1 claims,
+    and the hypotheses with their gates, sensitivity analyses and curves."""
     manifest = report.load_manifest(manifest_path)
     dirs, rejected = report.select_runs(raw, manifest)
-    result = {"manifest": str(manifest_path), "rejected_runs": rejected,
-              "replication": report.compute(raw, manifest_path, designs=designs)}
+    replication = report.compute(raw, manifest_path, designs=designs)
+    result = {"manifest": str(manifest_path), "rejected_runs": rejected, "replication": replication,
+              "replicated": replication_summary(manifest, json.loads(Path(study1_results).read_text()), replication)}
     if dirs:
         result |= analyse(dirs, manifest, designs)
+        method_ok = not replication.get("closed_source_conclusions_withdrawn", False)
+        for h in result["hypotheses"]:
+            h["published_claim"] = published(h, h["gates"], method_ok)
     return json.loads(json.dumps(result, default=float))

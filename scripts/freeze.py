@@ -81,11 +81,27 @@ def manifest(targets: list[dict], design: Path, prereg: Path, not_after: str, bu
     }
 
 
-def study2_fields(targets: list[dict]) -> dict:
+def planned_n(design: Path, h: dict) -> int:
+    """Pairs the design plans for a hypothesis: its kind and Δt on its targets (races: `lo` sent first)."""
+    ids = {g["identity"] for g in h["groups"]}
+    n = 0
+    for line in design.read_text().splitlines():
+        plan = json.loads(line)
+        if plan["target_identity"] in ids:
+            n += sum(1 for q in plan["pairs"] if q["kind"] == h["pair_kind"] and q["race_dt_ms"] == h["dt_ms"]
+                     and (h["pair_kind"] != "race" or q["first_sent_label"] == "lo"))
+    return n
+
+
+def study2_fields(targets: list[dict], design: Path) -> dict:
     from itb_analysis import study2  # PYTHONPATH=analysis
 
-    return {"study": 2, "hypotheses": study2.hypotheses(targets), "carry_over_lamports": STUDY1_COST_LAMPORTS,
-            "analysis_tree": analysis_tree()}
+    hyps = study2.hypotheses(targets)
+    for h in hyps:
+        h["planned_n"] = planned_n(design, h)
+        if h["planned_n"] == 0:
+            raise SystemExit(f"{h['id']}: the design plans no pair for it")
+    return {"study": 2, "hypotheses": hyps, "carry_over_lamports": STUDY1_COST_LAMPORTS, "analysis_tree": analysis_tree()}
 
 
 def main() -> None:
@@ -104,7 +120,7 @@ def main() -> None:
     targets = json.loads(a.targets.read_text())
     m = manifest(targets, a.design, prereg, a.not_after or s["not_after"], s["budget"])
     if a.study == 2:
-        m |= study2_fields(targets)
+        m |= study2_fields(targets, a.design)
     out.write_bytes((json.dumps(m, indent=1) + "\n").encode())  # LF on every platform
     print(f"itb-prereg v{a.study} prereg={m['preregistration_sha256']} design={m['design_sha256']} manifest={sha256(out)}")
 
