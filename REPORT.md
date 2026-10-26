@@ -412,9 +412,8 @@ eligibility, landing slot and index, each linked to Solana Explorer (`python scr
 
 ## 11. Cost
 
-**Both studies together: 42,921,000 lamports (0.0429 SOL) on chain**, under the 0.05 SOL cap. The final return
-transfer of Study 2 adds 5,000. The cap is compiled into the binary and enforced over both studies by the Study 2
-ledger, which carries Study 1's cost.
+**Both studies together: 42,926,000 lamports (0.0429 SOL) on chain**, everything included, under the 0.05 SOL cap. The
+cap is compiled into the binary and enforced over both studies by the Study 2 ledger, which carries Study 1's cost.
 
 **Study 1.** All amounts in lamports, from the spend ledger (`state/ledger.sqlite`). The owned accounts' on-chain balances agree
 to the lamport, once the two recorded spam deposits are counted.
@@ -443,5 +442,6 @@ lamports as a carry-over. The owned accounts' on-chain balances agree to the lam
 | Stage 2, races and equal keys (234 windows) | 8,682,000 | 0 | 244 |
 | **Total** | **18,203,500 (0.0182 SOL)** | **539,500** | |
 
-The wallet received 0.06 SOL and holds 41,796,500 lamports after the sweep, exactly 60,000,000 − 18,203,500. The rest
-goes back to the funder.
+The wallet received 0.06 SOL and held 41,796,500 lamports after the sweep, exactly 60,000,000 − 18,203,500. It returned
+41,791,500 to its funder ([`3eZAJYz5…SHjHK`](https://explorer.solana.com/tx/3eZAJYz5rNbucd1Yu246uENE2gpseEDzbteA4jVswvuWt7nxXrS7nCsgSHnvTMLb1EDKYNEQhXqHdxWdS2rSHjHK), fee 5,000). The difference,
+18,208,500 lamports (0.0182 SOL), is the whole cost of Study 2.

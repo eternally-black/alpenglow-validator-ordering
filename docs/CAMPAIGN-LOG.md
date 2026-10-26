@@ -281,3 +281,13 @@ or scoped in the text before freezing, each fix with a test that fails on the re
   the 2,200 archived window blocks without a matching claim. Chain check: a random sample of 60 verified against
   public mainnet RPC.
 - `docker compose up` reproduces Study 1, every figure (Study 2's included) and Study 2.
+
+## 2026-10-26 07:45 UTC — closing the Study 2 wallet
+
+- **Return to the funder** (07:45:10): 41,791,500 lamports sent to `3cB1N3xVpPjfjnZmYEsijL5znEKudNGMCMQmse9BoD5Y`,
+  transaction [`3eZAJYz5…SHjHK`](https://explorer.solana.com/tx/3eZAJYz5rNbucd1Yu246uENE2gpseEDzbteA4jVswvuWt7nxXrS7nCsgSHnvTMLb1EDKYNEQhXqHdxWdS2rSHjHK), slot 461,584,040,
+  fee 5,000. The wallet owner ran it, not the tool. The master and all 24 payers now hold 0 lamports.
+- **Total cost of Study 2:** 60,000,000 − 41,791,500 = 18,208,500 lamports (0.0182 SOL), the return transfer included.
+- **Total cost of both studies:** 24,717,500 + 18,208,500 = **42,926,000 lamports (0.0429 SOL)**, under the 0.05 SOL cap.
+- The Study 2 keypairs (`keys-study2/`, never in git) are deleted by the wallet owner after this entry, as are
+  Study 1's (`keys/`).
