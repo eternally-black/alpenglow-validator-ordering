@@ -639,8 +639,8 @@ with eligibility, landing slot and index, each linked to Solana Explorer (`pytho
 
 ## 11. Cost
 
-**All three studies together: 47,990,000 lamports (0.0480 SOL) on chain** before Study 3's return transfer,
-everything else included, under the 0.05 SOL cap. Every transaction of the three ledgers, with its signature,
+**All three studies together: 47,995,000 lamports (0.0480 SOL) on chain**, everything included, under the 0.05 SOL
+cap. Every transaction of the three ledgers, with its signature,
 purpose, status and fee: [`data/derived/ledgers/`](data/derived/ledgers/) (`scripts/export_ledgers.py`). The cap is
 compiled into the binary. Each later ledger carries the cost of the studies before it, so the cap holds over all
 three.
@@ -684,6 +684,9 @@ The wallet received 0.06 SOL and held 41,796,500 lamports after the sweep, exact
 |---|---|---|---|
 | Setup: Memo, payer funding (2), sweep (24) | 135,000 | 0 | — |
 | Study 3 (192 windows, 636 landed probes) | 4,929,000 | 93,000 | 120 |
-| **Total before the return transfer** | **5,064,000 (0.0051 SOL)** | **93,000** | |
+| Closing: return of the remainder to the funder | 5,000 | 0 | — |
+| **Total** | **5,069,000 (0.0051 SOL)** | **93,000** | |
 
-The wallet received 0.04 SOL and held 34,936,000 lamports after the sweep, exactly 40,000,000 − 5,064,000.
+The wallet received 0.04 SOL and held 34,936,000 lamports after the sweep, exactly 40,000,000 − 5,064,000. It returned
+34,931,000 to its funder ([`5im6rj2m…3BK8M`](https://explorer.solana.com/tx/5im6rj2mwHhmHUh8QWVLUuBUDw9eWTTGNzk9reEdmyWNWySQTCyTLQDt7brUBVrRHqTTjW7N6Ao63Tj58bn3BK8M), fee 5,000). The difference,
+5,069,000 lamports (0.0051 SOL), is the whole cost of Study 3.

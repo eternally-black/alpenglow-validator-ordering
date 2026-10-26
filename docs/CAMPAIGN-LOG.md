@@ -380,3 +380,13 @@ or scoped in the text before freezing, each fix with a test that fails on the re
 - **Reporting additions** (no effect on any decision): the Study 3 figure, the explorer's Study 3 tab, the Study 3
   ledger export, and POSIX paths in the ledger summary.
 - `docker compose up` reproduces all three studies and every figure.
+
+## 2026-10-26 13:05 UTC — closing the Study 3 wallet
+
+- **Return to the funder** (13:05:00): 34,931,000 lamports sent to `3cB1N3xVpPjfjnZmYEsijL5znEKudNGMCMQmse9BoD5Y`,
+  transaction [`5im6rj2m…3BK8M`](https://explorer.solana.com/tx/5im6rj2mwHhmHUh8QWVLUuBUDw9eWTTGNzk9reEdmyWNWySQTCyTLQDt7brUBVrRHqTTjW7N6Ao63Tj58bn3BK8M), slot 461,674,355,
+  fee 5,000. The wallet owner ran it, not the tool. The master and all 24 payers now hold 0 lamports.
+- **Total cost of Study 3:** 40,000,000 − 34,931,000 = 5,069,000 lamports (0.0051 SOL), the return transfer included.
+- **Total cost of the three studies:** 24,717,500 + 18,208,500 + 5,069,000 = **47,995,000 lamports (0.0480 SOL)**,
+  under the 0.05 SOL cap.
+- The Study 3 keypairs (`keys-study3/`, never in git) are deleted by the wallet owner after this entry.
