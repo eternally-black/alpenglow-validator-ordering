@@ -14,6 +14,9 @@ export MSYS_NO_PATHCONV=1 # Git Bash on Windows would otherwise rewrite containe
 E2E=data/scratch/e2e
 KEYS=$E2E/keys
 rm -rf "$E2E" && mkdir -p "$KEYS" "$E2E/raw"
+# The containers run as uid 10001. On a Linux host (CI) the mounted scratch tree belongs to another user, so let them
+# write there; the keys are throwaway localnet keys.
+chmod -R a+rwX "$E2E"
 export ITB_KEYS_DIR=./$KEYS
 host_path() { if command -v cygpath >/dev/null; then cygpath -wa "$1"; else realpath "$1"; fi; }
 rpc() { curl -s http://127.0.0.1:8899 -H 'Content-Type: application/json' -d "$1"; }
