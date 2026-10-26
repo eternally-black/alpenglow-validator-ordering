@@ -52,3 +52,7 @@ four gaps. DeepSeek independently re-derived every number in PREREGISTRATION-3 Â
 | R2 | SHOULD-FIX | The "neither supported" verdict dropped the qualifier of a conditional gate | **Fixed.** `test_a_conditional_gate_qualifies_every_verdict_row` checks the qualifier on every row, descriptive notes included. |
 | R3 | SHOULD-FIX | The rendered report omitted the exclusion reasons and each diagnostic group's pair total | **Fixed.** The report has a "Windows per target" table (attempted, evaluable, excluded by reason), and the diagnostics show total pairs beside evaluable pairs. |
 | R4 | NIT | Both Harmonic landing rates round to 0.93, but the text said 0.93 and 0.94 | **Fixed** in POWER-3, the OC script and the scenario description in `oc-study3.json`; the simulation inputs are the exact fractions and did not change. |
+
+Second re-check (GPT, commit `e8421cb`; [STUDY3-prefreeze-recheck2-gpt.md](STUDY3-prefreeze-recheck2-gpt.md)): R1â€“R4
+resolved. GPT reproduced its failing case independently, and the Study 1 and Study 2 window tables are identical to
+the parent commit, dtypes included. Verdict: **FREEZE OK**.
