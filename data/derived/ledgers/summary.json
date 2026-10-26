@@ -1,0 +1,146 @@
+{
+ "study1": {
+  "ledger": "state\\ledger.sqlite",
+  "cap_lamports": 50000000,
+  "carry_over_lamports": 0,
+  "carry_over_reason": null,
+  "opening_total_lamports": 100000000,
+  "external_deposits_lamports": 13023,
+  "owned_accounts": [
+   "3SXcVVweK3tSSavEDyh91LvqD9eX2b48U2NXR9cLALt7",
+   "7dXoiEPrxAdN9MadtMsVwrNboY6mqfk9mz4xrUaPe111",
+   "Tx8b91VQ2c2Q6NTayAWZGFPAauNa6vSBgaTmeH68Aip",
+   "81C5Dj4Br5NY9FNiGmKmZ3Vh3JXSDbchKucttX1GuKsD",
+   "6nctcuHeSab8pyQnCjSxvrx4d8BRTLyPEy6cuJaqoZqV",
+   "2muYzN3X6KncSQhtBERzWRqHemQjWrmpRti9rmdprkWS",
+   "2VoL3edgqiQKYQXkPkDytiGTAo7g7eM99dSk5vsphUKt",
+   "48TjM5zPDrXnS6YemK3aGPGUz3dUfsJWGSPrD8wFfS5k",
+   "7W8ZrBhWF4Uvogjt5gTNB261gECVHjSgumRLbdKX42t8",
+   "GWnq3Pgv7csg5z4FnJ9vzNuQ3zbe4Gp3cn9QtPgqfnZo",
+   "AJJV1bAvAdduPt3cac3nHXdkvS5s71rHQyyw3PdaiDQb",
+   "sxY5qWeVspo7pZsWEJt1s9Zyfqe5CFv4nGnXK8DwSDJ",
+   "8LaJ8vAQgBHoQnJaPsyG4egu15q5ZrUzCvCuaLcFpmL",
+   "G3NWBVreJsMtSwaFDKGHEWTvRt4p9irAdu8W3sJET8u2",
+   "2kywv57Kdqc9aFrD9cC4d9bfdF8o2pn1jkMdX7J8edbF",
+   "DKUvwWJEcnFkkFKY8FDK7oEAXvmyE3ryRwMUyj2xjoPL",
+   "J895u7ZgvUC6GqN7RNSS2R3q9Uu6mByLgHEpdSHrazhJ",
+   "3nhYuwmxxKXFENcb5EYhctjHKLfJgZQUGAuZqDv1FDk5",
+   "CtkaziuRrc6Ah2His6bPDf9XemTiBKFJzjrrWxo8rJaA",
+   "AzzKTtsy4FsKNkQFjjv8FqZLoCFo8ss5C2E5s7Fbv5W4",
+   "23SXdkF6i6rMbpawbEfgLPAiuGSRuoif6gb7x3HGQzxy",
+   "9QKQL8hw3yMiRfULiBaeRdqwHHpGoK3gdtzmUe25rwDy",
+   "DwGc5yN7i6PfcL4WgutefmCe8c47jHiCB2iLDYsy6Xkm",
+   "8KXQpsNsS3DonYoi7xvL4XiMtWdyju9D7zc3VyYZxyb5",
+   "Dd6M3SgQGXXg8yZnHGqEsufDYKDHTWVBeErRNTn5ek3r"
+  ],
+  "adjustments": [],
+  "landed_fees_lamports": 24712500,
+  "charged_lamports": 25599000,
+  "by_budget_and_status": {
+   "smoke": {
+    "cancelled_unsent": {
+     "count": 9,
+     "fee": 0
+    },
+    "landed": {
+     "count": 27,
+     "fee": 162000
+    }
+   },
+   "setup": {
+    "landed": {
+     "count": 27,
+     "fee": 135000
+    }
+   },
+   "pilot": {
+    "landed": {
+     "count": 522,
+     "fee": 3256500
+    },
+    "cancelled_unsent": {
+     "count": 97,
+     "fee": 0
+    },
+    "expired_charged": {
+     "count": 16,
+     "fee": 98000
+    }
+   },
+   "campaign": {
+    "landed": {
+     "count": 3360,
+     "fee": 21159000
+    },
+    "cancelled_unsent": {
+     "count": 835,
+     "fee": 0
+    },
+    "expired_charged": {
+     "count": 127,
+     "fee": 788500
+    }
+   }
+  }
+ },
+ "study2": {
+  "ledger": "state\\ledger-study2.sqlite",
+  "cap_lamports": 50000000,
+  "carry_over_lamports": 24717500,
+  "carry_over_reason": "Study 1 total cost 2026-10-24: 100,000,000 funded + 13,023 deposits - 75,295,523 returned (docs/CAMPAIGN-LOG.md)",
+  "opening_total_lamports": 60000000,
+  "external_deposits_lamports": 0,
+  "owned_accounts": [
+   "6hoQGYN4Di3aseUv32YLoJQiTMeAZRAJPeWCx8tHdp4q",
+   "8B3U8wnjM1RDwjM66XiHHwmnP1NKQsSA8RBg2KP9b2Pi",
+   "7zXVcVxbFdaNLkajMFcSJ7LnpngysRuVRpeUcU1mKGuQ",
+   "AR1gxxqeiW5v1ABw5uvL8Rz1uwQWr5Rd7wDi1Q4rjVeP",
+   "VSEM69nfG4WWqj2zSyGHfWDJhHoUGnsKzgQzThRTVLg",
+   "5WYXaHDmY8JBcCT8M6JP6EAqnXXXaUv8CTuoCR4H9aWc",
+   "FerrzCZESyn7CADZQC5LCRXbv8Pck4qYnAZ2i8oUxksA",
+   "6oUptnPDXMdbjs5g84VvLsoryqLu7QeY1TFzgS9NsK5p",
+   "BoCGipzZ6MXtjJNyM7wxiN1SUKgiKgAbEzBPN2FLDHPF",
+   "FGR1938vQsDMwVQ6tUct8r1gSeTYxg1E4c8uTV1JCEpw",
+   "EcMY5MAK65QSKpAURY41JWf8a8pKsbkJVLmF6RBvbpXk",
+   "7KDFiYpfJLVkFyeGaPXsx3vcqLPP9Q4sNzgLKBx7fykF",
+   "BaGDGBjm7ofuDjEugwwM4jqHLJgVwe1Je3qRgnVjA5C9",
+   "AJGG9ReHWMDMzawPjc8GSSS3CsroBfDYjFddS5UZ88Bj",
+   "3sYsC4ewPVKJkGLK5GAWbbFRYgV18zZyQ68E9tJiiFwW",
+   "ZgFcd5vYtmgwPGdHtbJW5rQcNyH9FL9KayZ1UfKbcZ2",
+   "5gya64ynj3CzRz2Jp5kM5847ErH6P3q7axsqxKMs7FcJ",
+   "EbcaaYZTNXLin9v2SBNZieYy2mc1S7Qwev2PHBUTm67E",
+   "317mDmJEp7eQnoNqfHvc6RDRp3yXfT6QNaHuK2H9KV2k",
+   "5aLws4ANCQrmQpSMQUt62FCCmBSPH1k9AegPYDXwJmgu",
+   "CjV9qWQYMdGNAPyVbr1zCiUQp9QmV4FrEiZ1QbgejbqR",
+   "FFEKGc2m76RJRL5yPbPod3umGjBW9DQBfgavJbdtgLdt",
+   "EMVpAZiocqdFx7kWMicoWE6YsZV1PTr4QrpKuTXfBWwV",
+   "3JcngGRwgxSttxzMe2chKdj3iXCcnLNHvu4ahjYgDNeX",
+   "E8ubnvMxbFLy9RhQkFw4CPsKUrsoFpLFVVLe64Ju7cX1"
+  ],
+  "adjustments": [],
+  "landed_fees_lamports": 18203500,
+  "charged_lamports": 18743000,
+  "by_budget_and_status": {
+   "setup": {
+    "landed": {
+     "count": 29,
+     "fee": 145000
+    }
+   },
+   "study2": {
+    "cancelled_unsent": {
+     "count": 532,
+     "fee": 0
+    },
+    "landed": {
+     "count": 2795,
+     "fee": 18058500
+    },
+    "expired_charged": {
+     "count": 87,
+     "fee": 539500
+    }
+   }
+  }
+ }
+}

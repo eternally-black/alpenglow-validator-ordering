@@ -4,13 +4,16 @@
 hold, and is there a rule at all?
 
 **Answer (post-Alpenglow mainnet, our own probe transactions; two pre-registered studies, 2026-10-24 and
-2026-10-25).** Every validator group we measured orders our probes by **Agave's priority, reward ÷ (cost + 1)**.
-That covers 6 core and 4 extended targets and 8 client types, including BAM nodes and Harmonic block builders.
-- Eight groups follow it outright.
-- One extended group carries "(assumes selection)" (`5Cchr1XG`) and one is `partial` (Rakurai, §2). Neither
-CU price nor lamport fee explains the order, and neither does arrival order. **On the second day, a separate
-pre-registered study replicated the result for all six core targets.**
+2026-10-25).**
 
+- **The rule.** All six core targets order our probes exactly as **Agave's priority, reward ÷ (cost + 1)**,
+  predicts. This is the confirmatory result. A second pre-registered study replicated it the next day for all six.
+  The four extended targets are exploratory and agree: two outright, one with "(assumes selection)" (`5Cchr1XG`) and
+  one as `partial` (Rakurai). That makes 10 groups and 8 gossip client types, including BAM nodes and Harmonic block
+  builders.
+- **What it rules out, and what it does not.** CU price, lamport fee, arrival order (FIFO) and "no rule" are all
+  rejected. One alternative we did not register fits just as well: ordering by requested cost alone, cheapest first.
+  It predicts the same winner in every contrast we ran, so our data do not establish the reward numerator (§9).
 - **Cost counts.** The *requested* compute and loaded-data limits enter the cost. A probe that pays the higher CU
   price but requests a 64 MiB data limit is placed after a cheaper one.
 - **How strictly the rule holds depends on the client and on when the transactions arrive.**
@@ -25,7 +28,8 @@ pre-registered study replicated the result for all six core targets.**
 - **Ties.** Of two identical buffered probes, Firedancer lands the later-sent one first, in 50 of 54 pairs
   (pre-registered, supported).
 
-Everything here is recomputed from raw data by `docker compose up`, and every landing is checkable on chain (§10).
+`docker compose up` recomputes both studies' results files and every figure from the raw data, and every landing is
+checkable on chain (§10).
 Both studies were pre-registered before their first probe. The hashes are in mainnet Memos
 [`5vRM47a8…QcyG`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg) (Study 1, slot 460,779,153) and
 [`2T6ha9FD…D5ww`](https://explorer.solana.com/tx/2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww) (Study 2, slot 461,151,605).
@@ -90,19 +94,27 @@ Windows are the unit, so n is the number of evaluable windows where both members
 | `5Cchr1XG` | Agave + BAM | BAM node | 1.00 [0.70, 1.00] n=20 | 0.00 [0.00, 0.30] n=20 | 1.00 [0.70, 1.00] n=20 | exploratory: reward_cost (assumes selection) | 0.86 | no |
 | `ana2y2Yv` | Rakurai | direct | 0.90 [0.54, 1.00] n=20 | 0.10 [0.00, 0.46] n=20 | 0.95 [0.61, 1.00] n=20 | exploratory: partial:reward_cost | 0.66 | yes |
 
-- **Prediction pattern.** The pattern (x, y, x) on C1–C3 is the one only reward/cost predicts. CU price predicts
-  (x, x, tie) and lamport fee (y, y, tie). Both are rejected for every group. So are FIFO and "no rule", because the
-  label effects are far from 0.5 while the send-order effects are not.
+- **Prediction pattern.** Among the pre-registered keys, only reward/cost predicts the pattern (x, y, x) on C1–C3.
+  CU price predicts (x, x, tie) and lamport fee (y, y, tie), and both are rejected for every group. So are FIFO and
+  "no rule", because the label effects are far from 0.5. Ordering by requested cost alone, which we did not register,
+  predicts the same pattern (§9).
 - **Send order.** P(first-sent member lands first) lies between 0.40 and 0.63 for every core contrast, and every
-  interval contains 0.5. Randomisation p-values over the fixed family of 36 effects, Holm-adjusted: every label effect
+  interval contains 0.5. This rejects arrival order as an explanation of the label effects. It does not prove arrival
+  plays no part: the intervals are too wide for the pre-registered equivalence test, so every send-order prediction
+  of reward/cost is "undetermined", not confirmed. Randomisation p-values over the fixed family of 36 effects,
+  Holm-adjusted: every label effect
   p = 0.00036, which is the floor of 1/100,001 for 100,000 draws after Holm's factor of 36. Every send-order effect
   has p = 1.0.
 - **Gates (§9).** Both positive controls, Agave `7QQGNm3p` and Firedancer `EvnRmnMr`, recovered their known rule. No
   buffer or streaming gate fired, and the selection-balance check passed for every contrast (all p ≥ 0.15).
-- **Inclusion (co-primary, PREREGISTRATION §1.3).** Within every group and contrast, the two members landed at the
-  same rate: per-label landing rates 0.80–1.00, exact McNemar p = 1.0 in all 30 group × contrast cells
-  (`inclusion` in `results.json`). Whether a probe landed did not depend on its label, which also supports the
-  selection assumption behind the complete-case estimates.
+- **Inclusion (co-primary, PREREGISTRATION §1.3).** No group showed a label asymmetry in landing.
+  - Per-label landing rates are 0.80–1.00, and the exact McNemar test gives p = 1.0 in all 30 group × contrast cells
+    (`inclusion` in `results.json`).
+  - The largest differences are single probes: Firedancer `EvnRmnMr` C3 at 40/41 vs 41/41, and `JUPiTERr` C2 at
+    42/43 vs 41/43.
+  - This does not establish label-blind selection (PREREGISTRATION §1 gives a counterexample); the worst-case bounds
+    address that. Those bounds cover incomplete pairs inside evaluable windows, not windows excluded for sending
+    failures.
 - **Mixture diagnostic.** In every group the key-dependent component is reward/cost's, and only reward/cost's
   (`mixture` in `results.json`).
 - **Stopping (§5).** Five core targets reached ≥ 40 informative pairs per contrast. `DRpbCBMx` used all 80 of its
@@ -125,7 +137,7 @@ lower bound). The send regime explains the gap between the two groups (sensitivi
 | Agave `7QQGNm3p` | L = 1.00 / 0.00 / 1.00 (n=31) | L = 0.56 / 0.56 / 0.44 (n=9) |
 | Jito-Solana `HEL1USMZ` | 1.00 / 0.00 / 1.00 (n=29) | 0.55 / 0.09 / 0.73 (n=11) |
 | Rakurai `ana2y2Yv` | 1.00 / 0.00 / 1.00 (n=15) | 0.60 / 0.40 / 0.80 (n=5) |
-| Firedancer `EvnRmnMr` | 1.00 / 0.00 / 1.00 (n=32) | 1.00 / 0.00 / 1.00 (n=9) |
+| Firedancer `EvnRmnMr` | 1.00 / 0.00 / 1.00 (n = 32 / 32 / 31) | 1.00 / 0.00 / 1.00 (n=9) |
 | Firedancer `9eGrDohd` | 1.00 / 0.00 / 1.00 (n=15) | 1.00 / 0.00 / 1.00 (n=5) |
 | BAM and Harmonic builders (shared ingress: every window streaming) | — | 1.00 / 0.00–0.03 / 1.00 (n=20–43 per group) |
 
@@ -137,12 +149,16 @@ lower bound). The send regime explains the gap between the two groups (sensitivi
   descriptive.
 - **Firedancer (pack).** It keeps priority order even for transactions arriving during the slot.
 - **Builders.** BAM nodes and Harmonic remote TPUs order by the same reward/cost key, even though they receive
-  everything during the window. That fits a builder that collects and sorts before forwarding.
+  everything during the window. That is consistent with a builder that collects and sorts before forwarding. We
+  see the final order, not the builder's queue.
 
 ## 4. Sensitivity analyses (PREREGISTRATION §6)
 
-1. **Censored coding.** It gives the same estimates as the primary analysis. No evaluable window had a pair with
-   exactly one member landed, so the coding of a non-landed member never comes into play.
+1. **Censored coding.** Two estimates change, because a few evaluable pairs had exactly one member landed:
+   - Firedancer `EvnRmnMr` C3 goes from 40/40 to 40/41;
+   - `JUPiTERr` C2 goes from 0/40 to 2/43.
+
+   Every other estimate is identical, and every conclusion stands.
 2. **Worst-case selection bounds.** Every core claim survives them, so it is selection-robust. `5Cchr1XG` does not:
    4 evaluable windows lost both members, so its claim carries "(assumes selection)".
 3. **Session bootstrap.** Not informative: Stage 1 was a single run (one session).
@@ -222,8 +238,9 @@ scheduler may run in parallel, so the probes need not land in priority order.
 - Probes sent 1 s and 150 ms before the target's window to a BAM node (`DRpbCBMx`) or a Harmonic remote TPU
   (`Fd7btgyS`, `JUPiTERr`): 28 of the 29 sent landed in the target window and 1 expired. None landed with the
   previous leader.
-- The builders hold a transaction for the leader it was addressed to, rather than passing it to whoever leads at the
-  moment.
+- This is consistent with the builders holding a transaction for the leader it was addressed to, rather than passing
+  it to whoever leads at the moment. We see where each probe landed, not where it waited. This contradicts the
+  spill-over that motivated the streaming regime for shared ingress (README §2).
 
 ## 6. Study 2: a second day, and how far each client reorders (pre-registered)
 
@@ -270,7 +287,9 @@ A target replicates when its published claim is the same as in Study 1.
   - Agave and Jito-Solana follow the rule in every buffered window, but not in streaming ones:
     - Agave: 1.00 / 0.00 / 1.00 with n = 30, against 0.50 / 0.30 / 0.70 with n = 10;
     - Jito-Solana: 1.00 / 0.00 / 1.00, against 0.70 / 0.20 / 0.80.
-  - Firedancer stays at 1.00 / 0.00 / 1.00 in streaming windows (n = 14).
+  - Firedancer stays at 1.00 / 0.00 / 1.00 in streaming windows (n = 14 / 10 / 12).
+- **Censored coding** changes estimates for three groups. The largest change is Firedancer C2, from 0/38 to 7/51.
+  Every estimate stays on the same side of one half.
 - **Stopping:** `DRpbCBMx` (39) and Firedancer's C2 (38) used all 56 plans. That is the pre-registered stop on
   exhausted plans.
 
@@ -318,6 +337,10 @@ The confirmatory test is in the 2 ms cell:
 
 Cells: races in which `hi` landed first / races, both landed, evaluable windows. At 0 ms both probes go out together,
 counted in either stream order.
+- Exact 95 % intervals per cell are drawn in the figure above and listed in
+  [`summary.md`](data/derived/study2/summary.md).
+- The horizon bracket is a descriptive grid crossing: the last Δt whose observed share is at least one half, and the
+  next Δt with data. It is not an interval for a true horizon.
 
 | Group | 0 ms | 2 ms | 5 ms | 10 ms | 25 ms | 50 ms | Horizon bracket | Equal key, first-sent first (10 ms) |
 |---|---|---|---|---|---|---|---|---|
@@ -393,6 +416,8 @@ counted in either stream order.
     simultaneous races counted as controls, where noise could withdraw a valid result.
   - Each was fixed, with a test, before the Memo
     ([dispositions](docs/review/STUDY2-prefreeze-dispositions.md)).
+- **Study 2 ran on a Sunday.** The plan scheduled it for Monday 2026-10-26, a weekday. It ran on Sunday 2026-10-25,
+  as soon as it was frozen and funded. The replication covers a second day, not weekday load.
 - **Study 2: a platform-dependent string.** The Study 2 results first recorded the manifest path with a Windows
   backslash, so the Linux reproduction differed in that one field. The calling code now passes the path in POSIX
   form; the frozen decision code was not touched.
@@ -431,6 +456,13 @@ counted in either stream order.
 
 ## 9. What this design does not separate
 
+- **Reward ÷ cost vs cost alone.** Our probes' requested costs are A 2,335, B 4,335 and A′ 18,711 (hi 2,335, lo
+  18,711), and their rewards rise with cost in C1 and C2. So ordering by requested cost alone, cheapest first,
+  predicts the same winner as reward ÷ (cost + 1) in every contrast and race we ran.
+  - The data establish the cost term: C3 is the decisive pair, where price and fee tie.
+  - They do not establish the reward numerator. The clients' public code (Agave, Firedancer) uses reward ÷ cost.
+  - A pair with equal cost and different rewards, or with the cheaper probe paying less per cost unit, would separate
+    the two. Neither study had one.
 - **Priority fee vs total fee.** With one signature they rank our probes identically.
 - **A builder's own sort vs the validator's scheduler behind it.** BAM and Harmonic groups are reported as the
   ingress path we measured.
@@ -448,12 +480,21 @@ counted in either stream order.
 ## 10. Verify and reproduce
 
 ```bash
-docker compose up --build                       # both studies: recompute every number, redraw every figure, diff all
+docker compose up --build                       # both studies: recompute both results files, redraw every figure, diff all
 docker compose --profile verify up              # re-check a sample of landings against mainnet blocks
 sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json   # = the hashes in the Study 1 Memo
 sha256sum docs/PREREGISTRATION-2.md design/design-study2.jsonl design/campaign-study2.json   # = the Study 2 Memo
 python scripts/verify_frozen_study2.py          # re-decide Study 2 with the analysis tree pinned in its manifest
 ```
+
+**What the reproduction covers.** `docker compose up` recomputes `data/derived/results.json` and
+`data/derived/study2/results.json` from `data/raw` and redraws every figure. It compares all of them with the
+committed files, so every table in this report that comes from them is checked too. It does not rerun:
+- the simulation studies (`itb-analysis oc`, `scripts/oc_study2.py`);
+- the cost accounting.
+
+The cost accounting comes from the two spend ledgers, exported with every transaction signature and fee to
+[`data/derived/ledgers/`](data/derived/ledgers/). Each landed fee there can be checked on chain.
 
 **Probe explorer:** [docs/explorer](docs/explorer/index.html). Every window and every probe of both studies, with
 eligibility, landing slot and index, each linked to Solana Explorer (`python scripts/build_explorer.py`).
@@ -471,7 +512,9 @@ eligibility, landing slot and index, each linked to Solana Explorer (`python scr
 
 ## 11. Cost
 
-**Both studies together: 42,926,000 lamports (0.0429 SOL) on chain**, everything included, under the 0.05 SOL cap. The
+**Both studies together: 42,926,000 lamports (0.0429 SOL) on chain**, everything included, under the 0.05 SOL cap.
+Every transaction of both ledgers, with its signature, purpose, status and fee:
+[`data/derived/ledgers/`](data/derived/ledgers/) (`scripts/export_ledgers.py`). The
 cap is compiled into the binary and enforced over both studies by the Study 2 ledger, which carries Study 1's cost.
 
 **Study 1.** All amounts in lamports, from the spend ledger (`state/ledger.sqlite`). The owned accounts' on-chain balances agree

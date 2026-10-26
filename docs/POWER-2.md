@@ -61,8 +61,10 @@ pair is counted against it), under `study1_picture`:
 - **The selection bound is strict at 90 % landing.** With 10 % of members lost, a supported Firedancer race claim
   survives the worst case in 32 % of campaigns. When it does not, it carries "(assumes selection)", exactly as in
   Study 1.
-- **In Study 1 the real landing rate was higher.** Probes that left the process landed in the target window at
-  100 % for 8 of 10 validators (CAMPAIGN-LOG). Live n is expected nearer the planned 35 and 59.
+- **The real landing rate was higher for most targets.** In Study 1 Stage 1, every sent probe landed for 5 of 10
+  targets, and 80–99 % for the others (the "8 of 10" in CAMPAIGN-LOG refers to the pilot). Live n is expected
+  between the simulated and the planned figures. Measured afterwards, in Study 2 Stage 2 every sent probe landed
+  (REPORT §6).
 - **No gate fired in any simulated campaign.** The simulator sends exactly on time and its schedulers respect
   priority. The gates guard against what the models leave out: a scheduler unlike every model here, or a sender that
   misses its gap.

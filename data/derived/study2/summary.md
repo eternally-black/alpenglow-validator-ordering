@@ -15,10 +15,10 @@
 |---|---|---|---|---|---|---|
 | `H1-agave` | O(2 ms) < 0.5 | 7/35 | 0.20 [0.08, 0.37] | 0.00051 | **supported** | `7QQGNm3p` 7/35 |
 | `H1-jito` | O(2 ms) < 0.5 | 6/29 | 0.21 [0.08, 0.40] | 0.0012 | **supported** | `HEL1USMZ` 6/29 |
-| `H2-firedancer` | O(2 ms) > 0.5 | 31/31 | 1.00 [0.89, 1.00] | 0 | **supported** | `EvnRmnMr` 31/31 |
-| `H2-firedancer-harmonic` | O(2 ms) > 0.5 | 32/33 | 0.97 [0.84, 1.00] | 0 | **supported** | `JUPiTERr` 32/33 |
-| `H2-agave-harmonic` | O(2 ms) > 0.5 | 30/31 | 0.97 [0.83, 1.00] | 0 | **supported** | `Fd7btgyS` 30/31 |
-| `H3-firedancer-ties` | E(10 ms) < 0.5 | 4/54 | 0.07 [0.02, 0.18] | 0 | **supported** | `9eGrDohd` 3/23, `EvnRmnMr` 1/31 |
+| `H2-firedancer` | O(2 ms) > 0.5 | 31/31 | 1.00 [0.89, 1.00] | < 10⁻⁶ | **supported** | `EvnRmnMr` 31/31 |
+| `H2-firedancer-harmonic` | O(2 ms) > 0.5 | 32/33 | 0.97 [0.84, 1.00] | < 10⁻⁶ | **supported** | `JUPiTERr` 32/33 |
+| `H2-agave-harmonic` | O(2 ms) > 0.5 | 30/31 | 0.97 [0.83, 1.00] | < 10⁻⁶ | **supported** | `Fd7btgyS` 30/31 |
+| `H3-firedancer-ties` | E(10 ms) < 0.5 | 4/54 | 0.07 [0.02, 0.18] | < 10⁻⁶ | **supported** | `9eGrDohd` 3/23, `EvnRmnMr` 1/31 |
 
 ## Sensitivity analyses
 
@@ -30,14 +30,14 @@
 | same slot | 7/35 supported | 6/28 supported | 31/31 supported | 32/33 supported | 30/31 supported | 4/54 supported |
 | equal key both sent before first shred | 7/35 supported | 6/29 supported | 31/31 supported | 32/33 supported | 30/31 supported | 4/54 supported |
 
-## Overtakes against a head start (exploratory; cells: hi landed first / races)
+## Overtakes against a head start (exploratory; cells: hi landed first / races, exact 95 % interval)
 
-| Group | Δt 0 ms | Δt 2 ms | Δt 5 ms | Δt 10 ms | Δt 25 ms | Δt 50 ms | Horizon bracket | Equal key (first-sent first) |
+| Group | Δt 0 ms | Δt 2 ms | Δt 5 ms | Δt 10 ms | Δt 25 ms | Δt 50 ms | Horizon bracket (descriptive) | Equal key (first-sent first) |
 |---|---|---|---|---|---|---|---|---|
-| Agave `7QQGNm3p` | 10/12 | 7/35 | 0/15 | 0/12 | 0/12 | 0/13 | 0–2 ms | 10 ms: 23/35 |
-| Agave + BAM `DRpbCBMx` | 3/3 | 14/14 | 4/6 | 5/5 | 3/6 | 0/5 | 25–50 ms | – |
+| Agave `7QQGNm3p` | 10/12 (0.52–0.98) | 7/35 (0.08–0.37) | 0/15 (0.00–0.22) | 0/12 (0.00–0.26) | 0/12 (0.00–0.26) | 0/13 (0.00–0.25) | 0–2 ms | 10 ms: 23/35 |
+| Agave + BAM `DRpbCBMx` | 3/3 (0.29–1.00) | 14/14 (0.77–1.00) | 4/6 (0.22–0.96) | 5/5 (0.48–1.00) | 3/6 (0.12–0.88) | 0/5 (0.00–0.52) | 25–50 ms (non-monotone) | – |
 | Firedancer `9eGrDohd` | – | – | – | – | – | – | – | 10 ms: 3/23 |
-| Firedancer `EvnRmnMr` | 10/10 | 31/31 | 13/13 | 10/10 | 10/10 | 12/13 | > 50 ms | 10 ms: 1/31 |
-| Agave + Harmonic `Fd7btgyS` | 10/10 | 30/31 | 11/13 | 7/12 | 1/10 | 0/11 | 10–25 ms | – |
-| Firedancer + Harmonic `JUPiTERr` | 12/12 | 32/33 | 7/13 | 4/12 | 1/12 | 0/11 | 5–10 ms | – |
-| Jito-Solana `HEL1USMZ` | 7/10 | 6/29 | 0/13 | 0/9 | 0/10 | 0/11 | 0–2 ms | 10 ms: 10/29 |
+| Firedancer `EvnRmnMr` | 10/10 (0.69–1.00) | 31/31 (0.89–1.00) | 13/13 (0.75–1.00) | 10/10 (0.69–1.00) | 10/10 (0.69–1.00) | 12/13 (0.64–1.00) | > 50 ms | 10 ms: 1/31 |
+| Agave + Harmonic `Fd7btgyS` | 10/10 (0.69–1.00) | 30/31 (0.83–1.00) | 11/13 (0.55–0.98) | 7/12 (0.28–0.85) | 1/10 (0.00–0.45) | 0/11 (0.00–0.28) | 10–25 ms | – |
+| Firedancer + Harmonic `JUPiTERr` | 12/12 (0.74–1.00) | 32/33 (0.84–1.00) | 7/13 (0.25–0.81) | 4/12 (0.10–0.65) | 1/12 (0.00–0.38) | 0/11 (0.00–0.28) | 5–10 ms | – |
+| Jito-Solana `HEL1USMZ` | 7/10 (0.35–0.93) | 6/29 (0.08–0.40) | 0/13 (0.00–0.25) | 0/9 (0.00–0.34) | 0/10 (0.00–0.31) | 0/11 (0.00–0.28) | 0–2 ms | 10 ms: 10/29 |
