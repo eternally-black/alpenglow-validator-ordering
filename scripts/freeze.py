@@ -30,11 +30,15 @@ MAINNET_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
 POSITIVE_CONTROL_CLIENTS = ("Agave", "Firedancer")
 #: Study 1's measured total cost (docs/CAMPAIGN-LOG.md): 0.1 SOL + 13,023 deposits − 75,295,523 returned.
 STUDY1_COST_LAMPORTS = 24_717_500
+#: Studies 1 and 2 together, everything included (REPORT §11): 24,717,500 + 18,208,500.
+STUDIES_1_2_COST_LAMPORTS = 42_926_000
 STUDIES = {
     1: {"prereg": "docs/PREREGISTRATION.md", "out": "design/campaign.json", "budget": "campaign",
         "not_after": "2026-10-29T23:59:00Z"},
     2: {"prereg": "docs/PREREGISTRATION-2.md", "out": "design/campaign-study2.json", "budget": "study2",
         "not_after": "2026-10-30T23:59:00Z"},
+    3: {"prereg": "docs/PREREGISTRATION-3.md", "out": "design/campaign-study3.json", "budget": "study3",
+        "not_after": "2026-11-03T23:59:00Z"},
 }
 
 
@@ -104,6 +108,18 @@ def study2_fields(targets: list[dict], design: Path) -> dict:
     return {"study": 2, "hypotheses": hyps, "carry_over_lamports": STUDY1_COST_LAMPORTS, "analysis_tree": analysis_tree()}
 
 
+def study3_fields(targets: list[dict], design: Path) -> dict:
+    from itb_analysis import study3  # PYTHONPATH=analysis
+
+    hyps = study3.hypotheses(targets)
+    for h in hyps:
+        h["planned_n"] = planned_n(design, h | {"dt_ms": None})
+        if h["planned_n"] == 0:
+            raise SystemExit(f"{h['id']}: the design plans no pair for it")
+    return {"study": 3, "hypotheses": hyps, "carry_over_lamports": STUDIES_1_2_COST_LAMPORTS,
+            "analysis_tree": analysis_tree()}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--study", type=int, choices=sorted(STUDIES), default=1)
@@ -121,6 +137,8 @@ def main() -> None:
     m = manifest(targets, a.design, prereg, a.not_after or s["not_after"], s["budget"])
     if a.study == 2:
         m |= study2_fields(targets, a.design)
+    elif a.study == 3:
+        m |= study3_fields(targets, a.design)
     out.write_bytes((json.dumps(m, indent=1) + "\n").encode())  # LF on every platform
     print(f"itb-prereg v{a.study} prereg={m['preregistration_sha256']} design={m['design_sha256']} manifest={sha256(out)}")
 

@@ -206,8 +206,8 @@ enum Cmd {
         seed: u64,
         #[arg(long)]
         out: PathBuf,
-        /// 1: the Study 1 generator (frozen design/design.jsonl); 2: Study 2 (docs/STUDY2-PLAN.md).
-        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=2))]
+        /// 1: the Study 1 generator (frozen design/design.jsonl); 2: Study 2; 3: Study 3 (docs/STUDY3-PLAN.md).
+        #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=3))]
         study: u8,
     },
     /// Show spend-ledger totals and open reservations.
@@ -335,6 +335,8 @@ async fn main() -> Result<()> {
                 ("C1", ("A", A), ("B", B)),
                 ("C2", ("A'", A_PRIME), ("B", B)),
                 ("C3", ("A", A), ("A'", A_PRIME)),
+                ("C4", ("Y", Y), ("A", A)),
+                ("C5", ("hi", HI), ("A", A)),
             ] {
                 let preds: Vec<String> = probe::Rule::ALL
                     .iter()
@@ -562,10 +564,10 @@ async fn main() -> Result<()> {
         } => {
             let specs: Vec<design::TargetSpec> =
                 serde_json::from_str(&std::fs::read_to_string(&targets)?)?;
-            let plans = if study == 2 {
-                design::generate_study2(seed, &specs)?
-            } else {
-                design::generate(seed, &specs)
+            let plans = match study {
+                2 => design::generate_study2(seed, &specs)?,
+                3 => design::generate_study3(seed, &specs)?,
+                _ => design::generate(seed, &specs),
             };
             design::validate(&plans)?;
             let mut text = String::new();

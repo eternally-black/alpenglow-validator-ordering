@@ -32,12 +32,15 @@ PROBES = {
     "A'": (1000, 1_000_000, M64),
     "hi": (1000, 3_000_000, K32),
     "lo": (1000, 1_000_000, M64),
+    "Y": (3000, 2_000_000, K32),  # Study 3
 }
-CONTRASTS = {"C1": ("A", "B"), "C2": ("A'", "B"), "C3": ("A", "A'"), "dominance": ("hi", "lo")}
+CONTRASTS = {"C1": ("A", "B"), "C2": ("A'", "B"), "C3": ("A", "A'"), "dominance": ("hi", "lo"),
+             "C4": ("Y", "A"), "C5": ("hi", "A")}
 RULES = {
     "cu_price": lambda t: t[1],
     "lamport_fee": lambda t: priority_fee(t[0], t[1]),
     "reward_cost": lambda t: priority(*t),
+    "cost_only": lambda t: -cost(t[0], t[2]),  # cheapest first: matches reward_cost on C1-C3, not on C4 / C5
 }
 
 

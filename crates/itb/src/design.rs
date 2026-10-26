@@ -29,6 +29,8 @@ pub enum Kit {
     R,
     /// Study 2, stage 2: equal-key pairs only.
     E,
+    /// Study 3: the reward numerator, C4 (Y vs A) and C5 (hi vs A).
+    N,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +54,10 @@ pub enum PairKind {
     Race,
     EqualKey,
     Single,
+    /// Study 3: Y vs A, where cost alone and reward ÷ cost disagree.
+    C4,
+    /// Study 3: hi vs A, equal cost, different reward.
+    C5,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -111,6 +117,9 @@ pub struct TargetSpec {
     /// Study 2: one equal-key pair in every R window.
     #[serde(default)]
     pub equal_key_in_r: bool,
+    /// Study 3: N windows.
+    #[serde(default)]
+    pub n_windows: u32,
 }
 
 fn default_tier() -> String {
@@ -156,6 +165,9 @@ pub const STUDY2_EQUAL_KEY_PER_E_WINDOW: usize = 1;
 /// Random race swaps between R windows after the deal (each keeping both windows' cells distinct): enough to forget
 /// which cells the deal put together.
 pub const STUDY2_MIX_SWAPS: usize = 20_000;
+/// Study 3: the in-window slot cadence every campaign run measured (median `cadence_at_prep`, ≈ 198 ms), which the
+/// shared-ingress burst offsets keep clear of. Studies 1 and 2 used the early dry-run estimate, 130 ms.
+pub const MEASURED_INSIDE_SLOT_MS: f64 = 198.0;
 
 fn is_direct(ingress: IngressKind) -> bool {
     matches!(ingress, IngressKind::Direct)
@@ -443,7 +455,7 @@ pub fn generate(seed: u64, targets: &[TargetSpec]) -> Vec<WindowPlan> {
                         pairs,
                     }
                 }
-                Kit::K | Kit::R | Kit::E => {
+                Kit::K | Kit::R | Kit::E | Kit::N => {
                     unreachable!("Study 1 stage 2 has only T, H and S windows")
                 }
             };
@@ -612,6 +624,81 @@ pub fn generate_study2(seed: u64, targets: &[TargetSpec]) -> anyhow::Result<Vec<
     Ok(out)
 }
 
+/// Study 3 (docs/PREREGISTRATION-3.md): one stage of N windows per target, each with C4 (Y vs A) and C5 (hi vs A) on
+/// their own locks. Direct ingress sends buffered (−150 ms), shared ingress inside the window at a uniform offset clear
+/// of the measured slot boundaries. Send order is balanced per contrast and the pair order shuffled, as in the K kit.
+/// Deterministic in (`seed`, `targets`), independent of the Study 1 and 2 draws.
+pub fn generate_study3(seed: u64, targets: &[TargetSpec]) -> anyhow::Result<Vec<WindowPlan>> {
+    let mut out = vec![];
+    for t in targets {
+        let tseed = u64::from_le_bytes(
+            Sha256::digest(format!("study3/{seed}/{}", t.identity).as_bytes())[..8]
+                .try_into()
+                .expect("8 bytes"),
+        );
+        let mut rng = ChaCha20Rng::seed_from_u64(tseed);
+        let direct = is_direct(t.ingress);
+        let n = t.n_windows as usize;
+        let mut order_c4 = balanced_flags(n, &mut rng);
+        let mut order_c5 = balanced_flags(n, &mut rng);
+        for seq in 0..n {
+            let burst_offset_ms = if direct {
+                BUFFERED_OFFSET_MS
+            } else {
+                loop {
+                    let x: f64 = rng.gen_range(40.0..500.0);
+                    if [1.0, 2.0]
+                        .iter()
+                        .all(|k| (x - k * MEASURED_INSIDE_SLOT_MS).abs() > 15.0)
+                    {
+                        break x.round();
+                    }
+                }
+            };
+            let id = |p: &str| format!("{}/{seq:03}/{p}", &t.identity[..8]);
+            let mut pairs = vec![
+                pair(
+                    id("c4"),
+                    PairKind::C4,
+                    ("Y", library::Y),
+                    ("A", library::A),
+                    order_c4.pop().expect("balanced"),
+                    0.0,
+                    true,
+                    0,
+                ),
+                pair(
+                    id("c5"),
+                    PairKind::C5,
+                    ("hi", library::HI),
+                    ("A", library::A),
+                    order_c5.pop().expect("balanced"),
+                    0.0,
+                    true,
+                    2,
+                ),
+            ];
+            pairs.shuffle(&mut rng);
+            out.push(WindowPlan {
+                target_identity: t.identity.clone(),
+                tier: t.tier.clone(),
+                seq: seq as u32,
+                stage: 1,
+                kit: Kit::N,
+                regime: if direct {
+                    Regime::Buffered
+                } else {
+                    Regime::Streaming
+                },
+                burst_offset_ms,
+                blockhash_age_slots: AGED_BLOCKHASH_SLOTS,
+                pairs,
+            });
+        }
+    }
+    Ok(out)
+}
+
 /// The labels a pair kind must contain (as a sorted multiset); each label names one library template.
 fn expected_labels(kind: PairKind) -> &'static [&'static str] {
     match kind {
@@ -621,6 +708,8 @@ fn expected_labels(kind: PairKind) -> &'static [&'static str] {
         PairKind::Race => &["hi", "lo"],
         PairKind::EqualKey => &["A", "A#2"],
         PairKind::Single => &["A"],
+        PairKind::C4 => &["A", "Y"],
+        PairKind::C5 => &["A", "hi"],
     }
 }
 
@@ -790,6 +879,7 @@ mod tests {
             r_windows: 0,
             e_windows: 0,
             equal_key_in_r: false,
+            n_windows: 0,
         }
     }
 
@@ -939,6 +1029,68 @@ mod tests {
         }
         // The bare deal yields 5 of the 10 possible cell sets for this allocation (2 ms is in every window).
         assert!(combos.len() >= 8, "{} distinct cell sets", combos.len());
+    }
+
+    #[test]
+    fn study3_windows_carry_c4_and_c5_balanced_and_validate() {
+        let targets = vec![
+            TargetSpec {
+                n_windows: 32,
+                ..spec(&"A".repeat(44), "Agave", IngressKind::Direct)
+            },
+            TargetSpec {
+                n_windows: 32,
+                ..spec(
+                    &"H".repeat(44),
+                    "HarmonicAgave",
+                    IngressKind::HarmonicRemoteTpu,
+                )
+            },
+        ];
+        let plans = generate_study3(3, &targets).unwrap();
+        validate(&plans).unwrap();
+        assert_eq!(
+            plans,
+            generate_study3(3, &targets).unwrap(),
+            "deterministic"
+        );
+        assert_eq!(plans.len(), 64);
+        for t in &targets {
+            let mine: Vec<&WindowPlan> = plans
+                .iter()
+                .filter(|p| p.target_identity == t.identity)
+                .collect();
+            assert!(
+                mine.iter()
+                    .all(|p| p.kit == Kit::N && p.stage == 1 && p.pairs.len() == 2)
+            );
+            for kind in [PairKind::C4, PairKind::C5] {
+                let x_first = mine
+                    .iter()
+                    .flat_map(|p| &p.pairs)
+                    .filter(|q| {
+                        q.kind == kind && (q.first_sent_label == "Y" || q.first_sent_label == "hi")
+                    })
+                    .count();
+                assert_eq!(x_first, 16, "{kind:?}: send order balanced");
+            }
+            let direct = is_direct(t.ingress);
+            assert!(
+                mine.iter()
+                    .all(|p| (p.regime == Regime::Buffered) == direct)
+            );
+            assert!(mine.iter().all(|p| {
+                direct
+                    || [1.0, 2.0]
+                        .iter()
+                        .all(|k| (p.burst_offset_ms - k * MEASURED_INSIDE_SLOT_MS).abs() > 15.0)
+            }));
+        }
+        assert_eq!(
+            max_fee(&plans[0]),
+            31_000,
+            "Y 11,000 + A 6,000 + hi 8,000 + A 6,000"
+        );
     }
 
     #[test]

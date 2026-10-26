@@ -50,6 +50,7 @@ KEYS = {
     "cu_price": lambda t: t["cu_price_micro_lamports"],
     "lamport_fee": priority_fee,
     "reward_cost": agave_priority,
+    "cost_only": lambda t: -cost(t),  # cheapest requested cost first (Study 3's alternative)
 }
 
 
@@ -176,6 +177,8 @@ def _pairs(items):
 def apply_rule(name, items, p, rng, shared):
     if name == "reward_cost_greedy":
         _greedy(items, p, rng)
+    elif name == "cost_only_greedy":
+        _greedy(items, p, rng, key="cost_only")
     elif name == "streaming_pacing":
         _paced(items, p, rng)
     elif name == "cu_price_fifo_tie":
@@ -229,7 +232,7 @@ def apply_rule(name, items, p, rng, shared):
         raise ValueError(f"unknown scenario {name}")
 
 
-X_LABEL = {"c1": "A", "c2": "A'", "c3": "A", "c2_uncontended": "A'", "race": "hi", "equal_key": "A"}
+X_LABEL = {"c1": "A", "c2": "A'", "c3": "A", "c2_uncontended": "A'", "race": "hi", "equal_key": "A", "c4": "Y", "c5": "hi"}
 
 
 # ---------------------------------------------------------------- one window

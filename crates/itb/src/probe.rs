@@ -120,9 +120,18 @@ pub mod library {
     pub const A_PRIME: Template = Template::new(1_000, 1_000_000, MIB_64);
     pub const HI: Template = Template::new(1_000, 3_000_000, KIB_32);
     pub const LO: Template = Template::new(1_000, 1_000_000, MIB_64);
+    /// Study 3: B's limits at four times its price. It costs more than A but pays more per cost unit, so ordering by
+    /// cost alone and reward ÷ cost disagree on Y vs A.
+    pub const Y: Template = Template::new(3_000, 2_000_000, KIB_32);
 
-    pub const ALL: [(&str, Template); 5] =
-        [("A", A), ("B", B), ("A'", A_PRIME), ("hi", HI), ("lo", LO)];
+    pub const ALL: [(&str, Template); 6] = [
+        ("A", A),
+        ("B", B),
+        ("A'", A_PRIME),
+        ("hi", HI),
+        ("lo", LO),
+        ("Y", Y),
+    ];
 }
 
 /// Candidate ordering keys; higher value = expected earlier.
@@ -132,16 +141,24 @@ pub enum Rule {
     CuPrice,
     LamportFee,
     RewardCost,
+    /// Cheapest requested cost first, ignoring the fee (Study 3's alternative to reward ÷ cost).
+    CostOnly,
 }
 
 impl Rule {
-    pub const ALL: [Rule; 3] = [Rule::CuPrice, Rule::LamportFee, Rule::RewardCost];
+    pub const ALL: [Rule; 4] = [
+        Rule::CuPrice,
+        Rule::LamportFee,
+        Rule::RewardCost,
+        Rule::CostOnly,
+    ];
 
     pub fn key(self, t: &Template) -> u128 {
         match self {
             Rule::CuPrice => t.cu_price_micro_lamports as u128,
             Rule::LamportFee => t.priority_fee() as u128,
             Rule::RewardCost => t.agave_priority() as u128,
+            Rule::CostOnly => u128::from(u64::MAX - t.cost()),
         }
     }
 }
@@ -176,6 +193,7 @@ mod tests {
             (B, 1_500, 6_500, 4_335, 922_509),
             (A_PRIME, 1_000, 6_000, 18_711, 187_045),
             (HI, 3_000, 8_000, 2_335, 2_354_452),
+            (Y, 6_000, 11_000, 4_335, 1_960_332),
         ];
         for (t, prio, total, cost, priority) in golden {
             assert_eq!(t.priority_fee(), prio, "{t:?}");
@@ -196,6 +214,25 @@ mod tests {
         assert_eq!(pattern(Rule::RewardCost), [First, Second, First]);
         for r in Rule::ALL {
             assert_eq!(predict(r, &HI, &LO), First, "dominance must hold for {r:?}");
+        }
+        // The gap Studies 1 and 2 leave: on C1-C3, cost alone predicts exactly what reward ÷ cost does.
+        assert_eq!(pattern(Rule::CostOnly), pattern(Rule::RewardCost));
+    }
+
+    #[test]
+    fn study3_contrasts_separate_cost_only_from_reward_cost() {
+        use Prediction::*;
+        // C4 = Y vs A, C5 = hi vs A (x first).
+        let c4 = |r: Rule| predict(r, &Y, &A);
+        let c5 = |r: Rule| predict(r, &HI, &A);
+        assert_eq!((c4(Rule::RewardCost), c5(Rule::RewardCost)), (First, First));
+        assert_eq!((c4(Rule::CostOnly), c5(Rule::CostOnly)), (Second, Tie));
+        for r in [Rule::CuPrice, Rule::LamportFee] {
+            assert_eq!(
+                (c4(r), c5(r)),
+                (First, First),
+                "{r:?} was rejected by C2 / C3 in Studies 1-2"
+            );
         }
     }
 

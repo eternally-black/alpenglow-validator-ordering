@@ -6,6 +6,7 @@ report     recompute and overwrite data/derived (after new data)
 oc         operating characteristics on simulated scenarios
 figures    redraw figures/ (light and dark SVG) from data/derived/results.json and data/raw
 study2     Study 2 (docs/PREREGISTRATION-2.md): `report` writes data/derived/study2/, `reproduce` re-checks it
+study3     Study 3 (docs/PREREGISTRATION-3.md): `report` writes data/derived/study3/, `reproduce` re-checks it
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import figures, oc, report, report2, study2, verify
+from . import figures, oc, report, report2, study2, study3, verify
 from .load import load_designs, run_dirs
 
 
@@ -61,6 +62,11 @@ def main(argv: list[str] | None = None) -> int:
     s2.add_argument("--manifest", type=Path, default=Path("design/campaign-study2.json"))
     s2.add_argument("--derived", type=Path, default=Path("data/derived/study2"))
     s2.add_argument("--study1-results", type=Path, default=Path("data/derived/results.json"))
+    s3 = sub.add_parser("study3")
+    s3.add_argument("action", choices=["report", "reproduce"])
+    s3.add_argument("--raw", type=Path, default=Path("data/raw"))
+    s3.add_argument("--manifest", type=Path, default=Path("design/campaign-study3.json"))
+    s3.add_argument("--derived", type=Path, default=Path("data/derived/study3"))
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -99,6 +105,15 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"STUDY 2 REPRODUCTION FAILED: {len(diffs2)} differences, e.g.:\n  " + "\n  ".join(diffs2[:20]))
                 return 1
             print(f"REPRODUCED: every Study 2 number in {committed2} recomputed from {a.raw}.")
+        manifest3, committed3 = Path("design/campaign-study3.json"), a.derived / "study3" / "results.json"
+        if a.manifest is not None and manifest3.exists() and committed3.exists():
+            fresh3 = report._clean(study3.compute(a.raw, manifest3.as_posix(), _designs(a.design)))
+            diffs3 = report.compare(json.loads(json.dumps(fresh3)), json.loads(committed3.read_text()), tol=1e-9)
+            print("\n" + report2.study3_summary(fresh3))
+            if diffs3:
+                print(f"STUDY 3 REPRODUCTION FAILED: {len(diffs3)} differences, e.g. {diffs3[:5]}")
+                return 1
+            print(f"REPRODUCED: every Study 3 number in {committed3} recomputed from {a.raw}.")
         return 0
     if a.cmd == "verify":
         rep = verify.verify(run_dirs(a.raw), a.source, a.rpc_url, None if a.sample == 0 else a.sample)
@@ -123,6 +138,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"STUDY 2 REPRODUCTION FAILED: {len(diffs)} differences, e.g.:\n  " + "\n  ".join(diffs[:20]))
             return 1
         print(f"REPRODUCED: every Study 2 number in {path} recomputed from {a.raw}.")
+        return 0
+    if a.cmd == "study3":
+        fresh = report._clean(study3.compute(a.raw, a.manifest.as_posix(), _designs(None)))
+        print(report2.study3_summary(fresh))
+        path = a.derived / "results.json"
+        if a.action == "report":
+            report.write(fresh, a.derived)
+            (a.derived / "summary.md").write_bytes(report2.study3_summary(fresh).encode())
+            print(f"wrote {path}")
+            return 0
+        if not path.exists():
+            print(f"no committed {path}; nothing to compare (run `study3 report` first)")
+            return 1
+        diffs = report.compare(json.loads(json.dumps(fresh)), json.loads(path.read_text()), tol=1e-9)
+        if diffs:
+            print(f"STUDY 3 REPRODUCTION FAILED: {len(diffs)} differences")
+            return 1
+        print(f"REPRODUCED: every Study 3 number in {path} recomputed from {a.raw}.")
         return 0
     if a.cmd == "figures":
         for path in figures.build(a.results, a.raw, a.manifest, a.design, a.out):

@@ -92,3 +92,24 @@ def markdown_summary(res: dict) -> str:
                   "## Overtakes against a head start (exploratory; cells: hi landed first / races, exact 95 % interval)",
                   curves_table(res)]
     return "\n\n".join(parts) + "\n"
+
+
+def study3_summary(res: dict) -> str:
+    """Study 3 tables: the identification verdict per core target, then H4/H5 and their sensitivity analyses."""
+    ident = ["| Target | Client | Ingress | Study 1 | Study 2 | C4: Y before A | C5: hi before A | Verdict (PREREGISTRATION-3 §5) |",
+             "|---|---|---|---|---|---|---|---|"]
+    for r in res.get("identification", []):
+        verdict = f"**{r['verdict']}**" if r["reward_cost_identified"] else r["verdict"]
+        ident.append(f"| `{r['identity'][:8]}` | {NAMES.get(r['client_id'], r['client_id'])} | {r['ingress']} | {r['study1_claim']} | "
+                     f"{r['study2_claim']} | {r['c4']} | {r['c5']} | {verdict} |")
+    hyp = ["| ID | Estimand | k/n | Estimate [95 % CI] | Holm p | Published claim |", "|---|---|---|---|---|---|"]
+    for h in res.get("hypotheses", []):
+        est = "–" if not h["n"] else f"{h['estimate']:.2f} [{h['ci95'][0]:.2f}, {h['ci95'][1]:.2f}]"
+        sym = "P(Y before A)" if h["pair_kind"] == "c4" else "P(hi before A)"
+        hyp.append(f"| `{h['id']}` | {sym} > 0.5 | {h['k']}/{h['n']} | {est} | {_p(h['p_holm'])} | **{h['published_claim']}** |")
+    order = ", ".join(f"{k.upper()}: first-sent first {v['first_sent_first']}/{v['n']}" for k, v in res.get("send_order", {}).items())
+    parts = ["## Identification (Study 3 with Studies 1 and 2)", "\n".join(ident), "## Hypotheses H4 and H5", "\n".join(hyp),
+             "## Sensitivity analyses", sensitivity_table(res)]
+    if order:
+        parts += ["## Send order (descriptive)", order]
+    return "\n\n".join(parts) + "\n"

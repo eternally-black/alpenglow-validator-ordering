@@ -35,6 +35,9 @@ CONTRASTS: dict[str, tuple[str, str]] = {
     "c2_uncontended": ("A'", "B"),
     "race": ("hi", "lo"),
     "equal_key": ("A", "A#2"),
+    # Study 3: cost alone and reward ÷ cost disagree on C4; cost alone ties on C5
+    "c4": ("Y", "A"),
+    "c5": ("hi", "A"),
 }
 
 LANDED = "landed_target"

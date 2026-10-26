@@ -1,0 +1,318 @@
+{
+ "reward_cost": {
+  "truth": "every target orders by reward \u00f7 (cost + 1): the truth Studies 1-2 point to",
+  "reps": 100,
+  "campaigns_with_any_support": 100,
+  "any_support_ci95": [
+   0.9637833073548235,
+   1.0
+  ],
+  "identified": {
+   "7QQGNm3p": 1.0,
+   "HEL1USMZ": 1.0,
+   "EvnRmnMr": 1.0,
+   "DRpbCBMx": 1.0,
+   "Fd7btgyS": 1.0,
+   "JUPiTERr": 1.0
+  },
+  "rates": {
+   "H4-7QQGNm3p": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H5-7QQGNm3p": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H4-HEL1USMZ": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H5-HEL1USMZ": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H4-EvnRmnMr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H5-EvnRmnMr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H4-DRpbCBMx": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 23
+   },
+   "H5-DRpbCBMx": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 22
+   },
+   "H4-Fd7btgyS": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 23
+   },
+   "H5-Fd7btgyS": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H4-JUPiTERr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H5-JUPiTERr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 24
+   }
+  }
+ },
+ "weak": {
+  "truth": "half of each target's windows order by reward \u00f7 cost, the other half FIFO (L \u2248 0.75)",
+  "reps": 100,
+  "campaigns_with_any_support": 73,
+  "any_support_ci95": [
+   0.6319837270910251,
+   0.8139335777092593
+  ],
+  "identified": {
+   "7QQGNm3p": 0.24,
+   "HEL1USMZ": 0.05,
+   "EvnRmnMr": 0.17,
+   "DRpbCBMx": 0.04,
+   "Fd7btgyS": 0.03,
+   "JUPiTERr": 0.06
+  },
+  "rates": {
+   "H4-7QQGNm3p": {
+    "supported": 0.42,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H5-7QQGNm3p": {
+    "supported": 0.43,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H4-HEL1USMZ": {
+    "supported": 0.08,
+    "withdrawn": 0.9,
+    "median_n": 24
+   },
+   "H5-HEL1USMZ": {
+    "supported": 0.06,
+    "withdrawn": 0.9,
+    "median_n": 24
+   },
+   "H4-EvnRmnMr": {
+    "supported": 0.35,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H5-EvnRmnMr": {
+    "supported": 0.31,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H4-DRpbCBMx": {
+    "supported": 0.05,
+    "withdrawn": 0.9,
+    "median_n": 23
+   },
+   "H5-DRpbCBMx": {
+    "supported": 0.06,
+    "withdrawn": 0.9,
+    "median_n": 23
+   },
+   "H4-Fd7btgyS": {
+    "supported": 0.05,
+    "withdrawn": 0.9,
+    "median_n": 24
+   },
+   "H5-Fd7btgyS": {
+    "supported": 0.05,
+    "withdrawn": 0.9,
+    "median_n": 23
+   },
+   "H4-JUPiTERr": {
+    "supported": 0.08,
+    "withdrawn": 0.9,
+    "median_n": 24
+   },
+   "H5-JUPiTERr": {
+    "supported": 0.06,
+    "withdrawn": 0.9,
+    "median_n": 24
+   }
+  }
+ },
+ "cost_only": {
+  "truth": "every target orders by requested cost alone, ties random: every hypothesis false (C5 exactly at its null)",
+  "reps": 100,
+  "campaigns_with_any_support": 1,
+  "any_support_ci95": [
+   0.0002531460329774206,
+   0.054459385392080645
+  ],
+  "identified": {
+   "7QQGNm3p": 0.0,
+   "HEL1USMZ": 0.0,
+   "EvnRmnMr": 0.0,
+   "DRpbCBMx": 0.0,
+   "Fd7btgyS": 0.0,
+   "JUPiTERr": 0.0
+  },
+  "rates": {
+   "H4-7QQGNm3p": {
+    "supported": 0.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H5-7QQGNm3p": {
+    "supported": 0.01,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H4-HEL1USMZ": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 24
+   },
+   "H5-HEL1USMZ": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 24
+   },
+   "H4-EvnRmnMr": {
+    "supported": 0.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H5-EvnRmnMr": {
+    "supported": 0.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H4-DRpbCBMx": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 23
+   },
+   "H5-DRpbCBMx": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 22
+   },
+   "H4-Fd7btgyS": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 23
+   },
+   "H5-Fd7btgyS": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 24
+   },
+   "H4-JUPiTERr": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 24
+   },
+   "H5-JUPiTERr": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 24
+   }
+  }
+ },
+ "control_fails": {
+  "truth": "Agave orders by cost alone, the rest by reward \u00f7 cost: the positive-control gate must withdraw the non-control targets",
+  "reps": 100,
+  "campaigns_with_any_support": 100,
+  "any_support_ci95": [
+   0.9637833073548235,
+   1.0
+  ],
+  "identified": {
+   "7QQGNm3p": 0.0,
+   "HEL1USMZ": 0.0,
+   "EvnRmnMr": 1.0,
+   "DRpbCBMx": 0.0,
+   "Fd7btgyS": 0.0,
+   "JUPiTERr": 0.0
+  },
+  "rates": {
+   "H4-7QQGNm3p": {
+    "supported": 0.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H5-7QQGNm3p": {
+    "supported": 0.01,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H4-HEL1USMZ": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 24
+   },
+   "H5-HEL1USMZ": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 24
+   },
+   "H4-EvnRmnMr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H5-EvnRmnMr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H4-DRpbCBMx": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 23
+   },
+   "H5-DRpbCBMx": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 22
+   },
+   "H4-Fd7btgyS": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 23
+   },
+   "H5-Fd7btgyS": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 24
+   },
+   "H4-JUPiTERr": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 24
+   },
+   "H5-JUPiTERr": {
+    "supported": 0.0,
+    "withdrawn": 1.0,
+    "median_n": 24
+   }
+  }
+ }
+}
