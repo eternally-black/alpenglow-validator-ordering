@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Export the two spend ledgers to data/derived/ledgers/ (REPORT §11).
+"""Export the three spend ledgers to data/derived/ledgers/ (REPORT §11).
 
     python scripts/export_ledgers.py
 
-The ledgers (`state/ledger.sqlite`, Study 1; `state/ledger-study2.sqlite`, Study 2) are local working state. This
+The ledgers (`state/ledger.sqlite`, Study 1; `state/ledger-study2.sqlite`, Study 2; `state/ledger-study3.sqlite`,
+Study 3) are local working state. This
 writes every reservation they hold (signature, purpose, status, worst-case and actual fee, payer, run and probe) as
 CSV, plus each ledger's cap, carry-over, opening balance, deposits, adjustments and totals, so the cost tables can be
 recomputed without the database and each landed fee can be checked on chain by its signature. Nothing secret is in a
@@ -17,7 +18,8 @@ import json
 import sqlite3
 from pathlib import Path
 
-LEDGERS = {"study1": Path("state/ledger.sqlite"), "study2": Path("state/ledger-study2.sqlite")}
+LEDGERS = {"study1": Path("state/ledger.sqlite"), "study2": Path("state/ledger-study2.sqlite"),
+           "study3": Path("state/ledger-study3.sqlite")}
 COLUMNS = ["signature", "kind", "label", "budget", "status", "max_fee", "actual_fee", "charged_fee", "payer", "run_id",
            "probe_id", "target_identity", "window_first_slot", "created_at", "resolved_at"]
 
@@ -40,7 +42,7 @@ def export(name: str, path: Path, out: Path) -> dict:
         t["count"] += 1
         t["fee"] += r["actual_fee"] if r["status"] == "landed" else (r["max_fee"] if r["status"] != "cancelled_unsent" else 0)
     return {
-        "ledger": str(path), "cap_lamports": int(meta["cap_lamports"]),
+        "ledger": path.as_posix(), "cap_lamports": int(meta["cap_lamports"]),
         "carry_over_lamports": int(meta.get("carry_over_lamports", 0)), "carry_over_reason": meta.get("carry_over_reason"),
         "opening_total_lamports": int(meta["opening_total"]), "external_deposits_lamports": int(meta.get("external_deposits", 0)),
         "owned_accounts": json.loads(meta["owned_accounts"]),

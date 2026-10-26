@@ -3,17 +3,25 @@
 **Question.** By what rule does each validator order the transactions in its block, how strictly does the rule
 hold, and is there a rule at all?
 
-**Answer (post-Alpenglow mainnet, our own probe transactions; two pre-registered studies, 2026-10-24 and
-2026-10-25).**
+**Answer (post-Alpenglow mainnet, our own probe transactions; three pre-registered studies, 2026-10-24, 2026-10-25
+and 2026-10-26).**
 
 - **The rule.** All six core targets order our probes exactly as **Agave's priority, reward ÷ (cost + 1)**,
   predicts. This is the confirmatory result. A second pre-registered study replicated it the next day for all six.
   The four extended targets are exploratory and agree: two outright, one with "(assumes selection)" (`5Cchr1XG`) and
   one as `partial` (Rakurai). That makes 10 groups and 8 gossip client types, including BAM nodes and Harmonic block
   builders.
-- **What it rules out, and what it does not.** CU price, lamport fee, arrival order (FIFO) and "no rule" are all
-  rejected. One alternative we did not register fits just as well: ordering by requested cost alone, cheapest first.
-  It predicts the same winner in every contrast we ran, so our data do not establish the reward numerator (§9).
+- **The reward counts, not just the cost.** Studies 1 and 2 could not tell reward ÷ cost from ordering by requested
+  cost alone. A third pre-registered study added two contrasts where the two disagree:
+  - a probe that costs more but pays more per cost unit;
+  - two probes of equal cost with different rewards.
+
+  In all 318 complete pairs, across the six core targets, the higher reward per cost unit landed first. Among the
+  candidates registered across the three studies (CU price, lamport fee, cost alone, FIFO, random), each target's
+  key is identified as reward ÷ (cost + 1), robust to selection (§6.5).
+- **What it rules out, and what it does not.** CU price, lamport fee, cost alone, arrival order (FIFO) and "no rule"
+  are all rejected. A key outside the registered set, such as reward − λ·cost, ranks every pair we ran the same way,
+  so it is not excluded (§9).
 - **Cost counts.** The *requested* compute and loaded-data limits enter the cost. A probe that pays the higher CU
   price but requests a 64 MiB data limit is placed after a cheaper one.
 - **How strictly the rule holds depends on the client and on when the transactions arrive.**
@@ -28,11 +36,12 @@ hold, and is there a rule at all?
 - **Ties.** Of two identical buffered probes, Firedancer lands the later-sent one first, in 50 of 54 pairs
   (pre-registered, supported).
 
-`docker compose up` recomputes both studies' results files and every figure from the raw data, and every landing is
-checkable on chain (§10).
-Both studies were pre-registered before their first probe. The hashes are in mainnet Memos
-[`5vRM47a8…QcyG`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg) (Study 1, slot 460,779,153) and
-[`2T6ha9FD…D5ww`](https://explorer.solana.com/tx/2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww) (Study 2, slot 461,151,605).
+`docker compose up` recomputes the three studies' results files and every figure from the raw data, and every
+landing is checkable on chain (§10).
+Each study was pre-registered before its first probe. The hashes are in mainnet Memos
+[`5vRM47a8…QcyG`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg) (Study 1, slot 460,779,153),
+[`2T6ha9FD…D5ww`](https://explorer.solana.com/tx/2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww) (Study 2, slot 461,151,605) and
+[`2C57e22K…beUz5`](https://explorer.solana.com/tx/2C57e22K29Hj1v5z1J3Wrp3gXS717KQBrzVuMgPQKWhMX7Lv38VZmsWybxHK8A5JErxRW3JHq6dkXRtisRxbeUz5) (Study 3, slot 461,631,524).
 
 ## 1. When each measurement was taken (UTC, slots ≥ 460,725,000, post-Alpenglow)
 
@@ -48,27 +57,31 @@ Both studies were pre-registered before their first probe. The hashes are in mai
 | 10-25 | 04:27 / 06:14 | **Pre-registration 2 frozen** / its Memo on mainnet | `docs/PREREGISTRATION-2.md`, `design/*study2*` | — |
 | 10-25 | 06:15–09:04 | **Study 2, Stage 1**: replication (316 windows) | `data/raw/20261025T061534Z-s1-live-4e60` | **confirmatory** |
 | 10-25 | 09:05–11:16 | **Study 2, Stage 2**: races and equal-key pairs (234 windows) | `data/raw/20261025T090530Z-s2-live-0b4f` | **confirmatory** (H1–H3) |
+| 10-26 | 09:33–09:34 | Mainnet dry run of the final Study 3 design (8 windows, nothing sent) | local only (`data/dryrun/`) | engineering check |
+| 10-26 | 10:32 / 10:33 | **Pre-registration 3 frozen** / its Memo on mainnet | `docs/PREREGISTRATION-3.md`, `design/*study3*` | — |
+| 10-26 | 10:34–12:17 | **Study 3**: C4 and C5 (192 windows) | `data/raw/20261026T103425Z-s1-live-8da8` | **confirmatory** (H4, H5) |
 
 Each step, its cost and its problems are in [docs/CAMPAIGN-LOG.md](docs/CAMPAIGN-LOG.md).
 
 **Targets as identified at measurement time.** Client and version are what each validator advertised in gossip
-(`target_states.jsonl` in every run), identical in every snapshot: 219 in Study 1, 301 in Study 2. The ingress kind
-is the endpoint we actually reached.
+(`target_states.jsonl` in every run), identical in every snapshot: 219 in Study 1, 301 in Study 2, 624 in Study 3.
+The ingress kind is the endpoint we actually reached.
 
-| Validator | Gossip client | Version | Ingress | Study 1 | Study 2 |
-|---|---|---|---|---|---|
-| `7QQGNm3p…` | Agave | 4.3.2 | direct | core | core (K, R) |
-| `HEL1USMZ…` | JitoLabs (Jito-Solana) | 4.3.2 | direct | core | core (K, R) |
-| `EvnRmnMr…` | Firedancer | 26.10.4 | direct | core | core (K, R) |
-| `DRpbCBMx…` | AgaveBam | 4.3.2 | BAM node | core | core (K, R) |
-| `Fd7btgyS…` | HarmonicAgave | 4.3.2 | Harmonic remote TPU | core | core (K, R) |
-| `JUPiTERr…` | HarmonicFiredancer | 26.10.4 | Harmonic remote TPU | core | core (K, R) |
-| `9eGrDohd…` | Firedancer | 26.10.4 | direct | extended | equal-key windows (E) |
-| `9jxgosAf…` | FireBAM | 26.10.4 | BAM node | extended | — |
-| `5Cchr1XG…` | AgaveBam | 4.3.2 | BAM node | extended | — |
-| `ana2y2Yv…` | Rakurai | 4.3.2 | direct | extended | — |
+| Validator | Gossip client | Version | Ingress | Study 1 | Study 2 | Study 3 |
+|---|---|---|---|---|---|---|
+| `7QQGNm3p…` | Agave | 4.3.2 | direct | core | core (K, R) | core (N) |
+| `HEL1USMZ…` | JitoLabs (Jito-Solana) | 4.3.2 | direct | core | core (K, R) | core (N) |
+| `EvnRmnMr…` | Firedancer | 26.10.4 | direct | core | core (K, R) | core (N) |
+| `DRpbCBMx…` | AgaveBam | 4.3.2 | BAM node | core | core (K, R) | core (N) |
+| `Fd7btgyS…` | HarmonicAgave | 4.3.2 | Harmonic remote TPU | core | core (K, R) | core (N) |
+| `JUPiTERr…` | HarmonicFiredancer | 26.10.4 | Harmonic remote TPU | core | core (K, R) | core (N) |
+| `9eGrDohd…` | Firedancer | 26.10.4 | direct | extended | equal-key windows (E) | — |
+| `9jxgosAf…` | FireBAM | 26.10.4 | BAM node | extended | — | — |
+| `5Cchr1XG…` | AgaveBam | 4.3.2 | BAM node | extended | — | — |
+| `ana2y2Yv…` | Rakurai | 4.3.2 | direct | extended | — | — |
 
-Full identities: [`design/targets.json`](design/targets.json), [`design/targets-study2.json`](design/targets-study2.json).
+Full identities: [`design/targets.json`](design/targets.json), [`design/targets-study2.json`](design/targets-study2.json),
+[`design/targets-study3.json`](design/targets-study3.json).
 
 ## 2. Confirmatory result (PREREGISTRATION §1–§5)
 
@@ -96,8 +109,8 @@ Windows are the unit, so n is the number of evaluable windows where both members
 
 - **Prediction pattern.** Among the pre-registered keys, only reward/cost predicts the pattern (x, y, x) on C1–C3.
   CU price predicts (x, x, tie) and lamport fee (y, y, tie), and both are rejected for every group. So are FIFO and
-  "no rule", because the label effects are far from 0.5. Ordering by requested cost alone, which we did not register,
-  predicts the same pattern (§9).
+  "no rule", because the label effects are far from 0.5. Ordering by requested cost alone, which Study 1 did not
+  register, predicts the same pattern. Study 3 rejects it (§6.5).
 - **Send order.** P(first-sent member lands first) lies between 0.40 and 0.63 for every core contrast, and every
   interval contains 0.5. This rejects arrival order as an explanation of the label effects. It does not prove arrival
   plays no part: the intervals are too wide for the pre-registered equivalence test, so every send-order prediction
@@ -242,7 +255,9 @@ scheduler may run in parallel, so the probes need not land in priority order.
   it to whoever leads at the moment. We see where each probe landed, not where it waited. This contradicts the
   spill-over that motivated the streaming regime for shared ingress (README §2).
 
-## 6. Study 2: a second day, and how far each client reorders (pre-registered)
+## 6. Studies 2 and 3: a second day, how far each client reorders, and whether the reward counts (pre-registered)
+
+Study 2 is §6.1–§6.4; Study 3 is §6.5–§6.6.
 
 Study 2 was planned after Study 1 to close what Study 1 left open ([plan](docs/STUDY2-PLAN.md)):
 - one day only;
@@ -380,6 +395,82 @@ counted in either stream order.
 - Firedancer's equal-priority tie-break, unidentified in Study 1, is now confirmed among buffered probes:
   later-sent first.
 
+### 6.5 Study 3: does the reward count? (confirmatory H4, H5)
+
+Studies 1 and 2 left one gap open. Every contrast they ran ranks our probes by requested cost the same way
+reward ÷ (cost + 1) does, so ordering by requested cost alone, cheapest first, would have produced the same data.
+Study 3 was built to separate the two ([plan](docs/STUDY3-PLAN.md)).
+
+Its normative plan, [PREREGISTRATION-3.md](docs/PREREGISTRATION-3.md), was frozen after two independent reviews and
+two re-checks of the fixes ([dispositions](docs/review/STUDY3-prefreeze-dispositions.md)). The hashes of that plan,
+the design and the manifest are in Memo
+[`2C57e22K…beUz5`](https://explorer.solana.com/tx/2C57e22K29Hj1v5z1J3Wrp3gXS717KQBrzVuMgPQKWhMX7Lv38VZmsWybxHK8A5JErxRW3JHq6dkXRtisRxbeUz5).
+The manifest also pins the analysis code's git tree, and it freezes each target's Study 1 and Study 2 claims, which
+the verdict combines with. Operating characteristics: [POWER-3.md](docs/POWER-3.md). Full tables:
+[`data/derived/study3/summary.md`](data/derived/study3/summary.md).
+
+| Probe | CU limit | CU price (µlamports) | Cost | Reward | Agave priority |
+|---|---|---|---|---|---|
+| A | 1,000 | 1,000,000 | 2,335 | 3,500 | 1,498,287 |
+| Y | 1,500 | 4,000,000 | 2,835 | 8,500 | 2,997,179 |
+| hi | 1,000 | 3,000,000 | 2,335 | 5,500 | 2,354,452 |
+
+- **C4, Y vs A.** Y costs more but pays more per cost unit. Reward ÷ cost puts Y first; cost alone puts A first. This
+  holds whatever share of the signature fee a client counts as reward, under any shared cost overhead
+  (PREREGISTRATION-3 §2).
+- **C5, hi vs A.** The two cost the same. Reward ÷ cost puts hi first; cost alone ties.
+
+Each of the 32 windows per core target held one C4 and one C5 pair. Send order was balanced, and payers were drawn
+at random per window. Direct ingress sent buffered; BAM and Harmonic sent inside the window.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="figures/study3-contrasts-dark.svg">
+  <img src="figures/study3-contrasts.svg" width="100%" alt="Two panels, C4 (Y vs A) and C5 (hi vs A), six core targets each. The priority-label estimates sit at 1 for every target in both panels, far from what cost alone predicts (0 on C4, 0.5 on C5). Send-order estimates sit near 0.5.">
+</picture>
+
+| Target | Client | Ingress | C4: Y before A | C5: hi before A | First sent first (C4 · C5) | §5 verdict |
+|---|---|---|---|---|---|---|
+| `7QQGNm3p` | Agave | direct | 31/31, 1.00 [0.89, 1.00] | 31/31, 1.00 [0.89, 1.00] | 15/31 · 16/31 | **identified** |
+| `HEL1USMZ` | Jito-Solana | direct | 29/29, 1.00 [0.88, 1.00] | 29/29, 1.00 [0.88, 1.00] | 15/29 · 14/29 | **identified** |
+| `EvnRmnMr` | Firedancer | direct | 24/24, 1.00 [0.86, 1.00] | 24/24, 1.00 [0.86, 1.00] | 13/24 · 12/24 | **identified** |
+| `DRpbCBMx` | Agave + BAM | BAM node | 21/21, 1.00 [0.84, 1.00] | 21/21, 1.00 [0.84, 1.00] | 11/21 · 11/21 | **identified** |
+| `Fd7btgyS` | Agave + Harmonic | Harmonic remote TPU | 24/24, 1.00 [0.86, 1.00] | 24/24, 1.00 [0.86, 1.00] | 11/24 · 11/24 | **identified** |
+| `JUPiTERr` | Firedancer + Harmonic | Harmonic remote TPU | 30/30, 1.00 [0.88, 1.00] | 30/30, 1.00 [0.88, 1.00] | 14/30 · 14/30 | **identified** |
+
+Cells: k/n over evaluable windows where both probes landed, with exact 95 % intervals. "Identified" is short for
+"reward ÷ (cost + 1) identified among the registered candidates"; the Study 1 and Study 2 claims are `reward_cost`
+for all six.
+
+- **All twelve hypotheses are supported, every one robust to selection.**
+  - Holm-adjusted p is below 10⁻⁶ for ten of them and about 10⁻⁶ for the BAM node's two.
+  - The BAM node's worst-case bound, with its three incomplete pairs counted against it, is p = 1.4 × 10⁻⁴, below
+    0.05/12.
+  - Both positive controls passed without the qualifier, so no verdict carries "(assumes selection)".
+- **Not one pair went the other way:** 318 of 318. The three sensitivity analyses (censored coding,
+  transition-ambiguous windows included, same slot) give the same counts.
+- **Send order does not explain it.** Per target and contrast, the first-sent probe landed first in between 0.46
+  (11 of 24) and 0.54 (13 of 24) of the pairs.
+- **No selection by label.** Five targets landed both probes in every evaluable window. The BAM node lost three whole
+  windows, both probes each time. No evaluable window lost exactly one probe.
+- **Windows:** 162 of 192 were evaluable. Each of the other 30 had a probe that was never sent (`not_all_sent`, no
+  fee): 8 each for Firedancer, Agave + BAM and Agave + Harmonic, 3 for Jito-Solana, 2 for Firedancer + Harmonic and 1
+  for Agave.
+- **Scope of the regimes.** The Agave-family targets on direct ingress were sent buffered, where Studies 1 and 2 saw
+  them follow the rule in every window. Study 3 does not test their streaming arrivals.
+
+### 6.6 What Study 3 changes in the answer
+
+- **The reward numerator is established**, for all six core targets:
+  - at equal cost, the higher reward goes first (C5);
+  - a higher requested cost is outweighed by a higher reward per cost unit (C4).
+
+  Ordering by requested cost alone is rejected.
+- **The key is identified.** Combined with the Study 1 and Study 2 claims frozen in the manifest, every core target's
+  key is reward ÷ (cost + 1) among the registered candidates: CU price, lamport fee, cost alone, FIFO, random.
+- **What is still not separated** (§9):
+  - keys outside the registered set that rank all our pairs the same way, such as reward − λ·cost;
+  - variants of the reward: the priority fee alone, or with half or all of the signature fee.
+
 ## 7. What went wrong
 
 - **Connection eviction.** Busy servers evict unstaked QUIC connections from full tables between our pre-connect and
@@ -398,12 +489,14 @@ counted in either stream order.
   90 % landing (complete case: 99 %) and in 0 % at 50 % landing (complete case: 51 %). On the frozen design the
   figures are 47 % vs 99 % and 0 % vs 48 %.
 - **Slot cadence assumed in the design.** The design took ≈ 130 ms per in-window slot (≈ 560 ms at the hand-over)
-  from an early dry run. Every campaign run then measured ≈ 198 ms per in-window slot and ≈ 268 ms at the hand-over
+  from an early dry run. Every campaign run then measured ≈ 198 ms per in-window slot and 266–272 ms at the hand-over
   (median `cadence_at_prep`). The consequences:
   - The planned offsets only become more conservative. A race ending at +55 ms is further inside a 198 ms slot.
   - The shared-ingress burst offsets avoided ±15 ms around multiples of 130 ms instead of the real slot boundaries.
   - The estimands are window-wide, so a pair that crosses a slot boundary is analysed as planned (Study 2 has a
     same-slot sensitivity). POWER.md simulated 130 ms slots.
+  - Study 3 was designed with the measured value: its shared-ingress offsets avoid ±15 ms around multiples of
+    198 ms, and POWER-3 simulates 198 ms slots.
 - **Line endings.** `design/targets.json` had CRLF endings from a Python text-mode write. It was normalised to LF
   before freezing, with its content unchanged. `scripts/freeze.py` now writes LF and refuses CR bytes in hashed files.
 - **Study 2: the same weak spots, smaller.**
@@ -421,6 +514,16 @@ counted in either stream order.
 - **Study 2: a platform-dependent string.** The Study 2 results first recorded the manifest path with a Windows
   backslash, so the Linux reproduction differed in that one field. The calling code now passes the path in POSIX
   form; the frozen decision code was not touched.
+- **Study 3: problems found before the freeze.**
+  - The first draft of probe Y (L 3,000, 2,000,000 µlamports/CU) would have lost C4 under a total-fee key. One of
+    its verdicts also read a non-significant result as a rejection. Both were fixed before the Memo, along with the
+    other review findings.
+  - GPT's re-check of the fixes then found one more blocker: a selected run whose windows were all skipped would have
+    crashed the analysis. It was fixed and tested before the freeze; a second re-check gave "FREEZE OK"
+    ([dispositions](docs/review/STUDY3-prefreeze-dispositions.md)).
+  - The first Study 3 dry run tested the first draft. A second dry run tested the final design.
+- **Study 3: probes never sent.** 120 of 768 probes, in 30 windows, were never sent (no fee), mostly to Firedancer,
+  the BAM node and Agave + Harmonic (8 windows each).
 - **Earlier problems** found by the code reviews, the pilots and the localnet tests are listed with their fixes in
   [docs/review/CODE-gate1b-dispositions.md](docs/review/CODE-gate1b-dispositions.md) and
   [docs/CAMPAIGN-LOG.md](docs/CAMPAIGN-LOG.md).
@@ -440,8 +543,8 @@ counted in either stream order.
   hold everything these analyses need.
 - **Reporting fix after the freeze, no effect on any estimate:** the funnel labels a window that was skipped before
   any send (3 in Stage 1) only by its skip reason. Before the fix it was also labelled `design_mismatch` and so on.
-- **Study 1 results file after Study 2:** `data/derived/results.json` now lists the two Study 2 runs under
-  `rejected_runs` (other budget and design). Every number is unchanged.
+- **Study 1 results file after Studies 2 and 3:** `data/derived/results.json` now lists the two Study 2 runs and the
+  Study 3 run under `rejected_runs` (other budget and design). Every number is unchanged.
 
 **Study 2 (PREREGISTRATION-2):**
 - **Analysis plan:** none. Hypotheses, tests, Holm, selection bound, gates and sensitivity analyses were applied as
@@ -453,17 +556,34 @@ counted in either stream order.
 - **Analysis code:** the decision code (`study2.py` and the modules it uses) is byte-identical to the tree pinned in
   the manifest (`cd83bbc9`). Reporting code (tables, figures, the reproduce hook) was added after the freeze.
   `scripts/verify_frozen_study2.py` re-decides Study 2 with the pinned tree and reproduces every number.
+- **Results file after Study 3:** `rejected_runs` now also lists the Study 3 run. Every number is unchanged.
+
+**Study 3 (PREREGISTRATION-3):**
+- **Analysis plan:** none. Hypotheses, tests, Holm, the selection bound, the positive-control gate, the
+  identification verdict and the sensitivity analyses were applied as frozen.
+- **Execution:** none. The frozen design (hash checked at run time) and the frozen parameters were used. All 192
+  plans ran, with no data-dependent stopping.
+- **Analysis code:** the Study 3 results were computed with the analysis tree pinned in the manifest (`be2eaf04`).
+  Reporting code (a figure, the explorer, the ledger export) was added afterwards. `scripts/verify_frozen_study3.py`
+  re-decides Study 3 with the pinned tree and reproduces every number.
+- **Prior-claim files:** the manifest records the hashes of the Study 1 and Study 2 results files at the freeze
+  commit (`ba141b8`). Those files have since gained the Study 3 run in `rejected_runs`, so their current hashes
+  differ. The claims the verdict uses are frozen in the manifest itself and did not change.
 
 ## 9. What this design does not separate
 
-- **Reward ÷ cost vs cost alone.** Our probes' requested costs are A 2,335, B 4,335 and A′ 18,711 (hi 2,335, lo
-  18,711), and their rewards rise with cost in C1 and C2. So ordering by requested cost alone, cheapest first,
-  predicts the same winner as reward ÷ (cost + 1) in every contrast and race we ran.
-  - The data establish the cost term: C3 is the decisive pair, where price and fee tie.
-  - They do not establish the reward numerator. The clients' public code (Agave, Firedancer) uses reward ÷ cost.
-  - A pair with equal cost and different rewards, or with the cheaper probe paying less per cost unit, would separate
-    the two. Neither study had one.
-- **Priority fee vs total fee.** With one signature they rank our probes identically.
+- **Reward ÷ cost vs cost alone: separated by Study 3.** In Studies 1 and 2, every contrast and race ranked our
+  probes by requested cost the same way reward ÷ (cost + 1) does (A 2,335 < B 4,335 < A′ 18,711; hi 2,335 < lo
+  18,711). C3 established the cost term there, where price and fee tie; the reward numerator stayed open. Study 3's C4
+  and C5 closed it (§6.5).
+- **Keys outside the registered candidates.** An additive key, reward − λ·cost, ranks every pair of the three studies
+  as reward ÷ cost does. With λ = 1: A 1,165, Y 5,665, hi 3,165, B −335, A′ −15,211. "Identified" therefore means
+  among the registered candidates (CU price, lamport fee, cost alone, FIFO, random). Separating such keys needs pairs
+  where reward ÷ cost and reward − λ·cost disagree, for every plausible λ.
+- **Change over time.** The identification combines three studies run on three days. It assumes each target's key did
+  not change between them.
+- **Priority fee vs total fee.** With one signature they rank our probes identically. Study 3's Y wins C4 under
+  either, and under any share of the signature fee counted as reward (PREREGISTRATION-3 §2).
 - **A builder's own sort vs the validator's scheduler behind it.** BAM and Harmonic groups are reported as the
   ingress path we measured.
 - **The Agave mechanism for streaming arrivals.** We observe that the label stops mattering, not the internal queue.
@@ -480,24 +600,27 @@ counted in either stream order.
 ## 10. Verify and reproduce
 
 ```bash
-docker compose up --build                       # both studies: recompute both results files, redraw every figure, diff all
+docker compose up --build                       # all three studies: recompute every results file, redraw every figure, diff all
 docker compose --profile verify up              # re-check a sample of landings against mainnet blocks
 sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json   # = the hashes in the Study 1 Memo
 sha256sum docs/PREREGISTRATION-2.md design/design-study2.jsonl design/campaign-study2.json   # = the Study 2 Memo
+sha256sum docs/PREREGISTRATION-3.md design/design-study3.jsonl design/campaign-study3.json   # = the Study 3 Memo
 python scripts/verify_frozen_study2.py          # re-decide Study 2 with the analysis tree pinned in its manifest
+python scripts/verify_frozen_study3.py          # the same for Study 3
 ```
 
-**What the reproduction covers.** `docker compose up` recomputes `data/derived/results.json` and
-`data/derived/study2/results.json` from `data/raw` and redraws every figure. It compares all of them with the
-committed files, so every table in this report that comes from them is checked too. It does not rerun:
-- the simulation studies (`itb-analysis oc`, `scripts/oc_study2.py`);
+**What the reproduction covers.** `docker compose up` recomputes `data/derived/results.json`,
+`data/derived/study2/results.json` and `data/derived/study3/results.json` from `data/raw` and redraws every figure.
+It compares all of them with the committed files, so every table in this report that comes from them is checked too.
+It does not rerun:
+- the simulation studies (`itb-analysis oc`, `scripts/oc_study2.py`, `scripts/oc_study3.py`);
 - the cost accounting.
 
-The cost accounting comes from the two spend ledgers, exported with every transaction signature and fee to
+The cost accounting comes from the three spend ledgers, exported with every transaction signature and fee to
 [`data/derived/ledgers/`](data/derived/ledgers/). Each landed fee there can be checked on chain.
 
-**Probe explorer:** [docs/explorer](docs/explorer/index.html). Every window and every probe of both studies, with
-eligibility, landing slot and index, each linked to Solana Explorer (`python scripts/build_explorer.py`).
+**Probe explorer:** [docs/explorer](docs/explorer/index.html). Every window and every probe of the three studies,
+with eligibility, landing slot and index, each linked to Solana Explorer (`python scripts/build_explorer.py`).
 
 - **Archive check:** all 2,553 Stage-1 landing claims verified, with 26 checks each (signed bytes, signature,
   probe atom, block index, on-chain message, fee, leader, window). The completeness check found no probe in any of the
@@ -509,13 +632,18 @@ eligibility, landing slot and index, each linked to Solana Explorer (`python scr
   blocks and found no unclaimed probe. A random sample of 60 was verified against public mainnet RPC:
   [`data/derived/study2/verify-archive.json`](data/derived/study2/verify-archive.json),
   [`verify-chain-sample.json`](data/derived/study2/verify-chain-sample.json).
+- **Study 3:** all 636 landings verified against the archive. The completeness check covered 768 archived window
+  blocks and found no unclaimed probe. A random sample of 60 was verified against public mainnet RPC:
+  [`data/derived/study3/verify-archive.json`](data/derived/study3/verify-archive.json),
+  [`verify-chain-sample.json`](data/derived/study3/verify-chain-sample.json).
 
 ## 11. Cost
 
-**Both studies together: 42,926,000 lamports (0.0429 SOL) on chain**, everything included, under the 0.05 SOL cap.
-Every transaction of both ledgers, with its signature, purpose, status and fee:
-[`data/derived/ledgers/`](data/derived/ledgers/) (`scripts/export_ledgers.py`). The
-cap is compiled into the binary and enforced over both studies by the Study 2 ledger, which carries Study 1's cost.
+**All three studies together: 47,990,000 lamports (0.0480 SOL) on chain** before Study 3's return transfer,
+everything else included, under the 0.05 SOL cap. Every transaction of the three ledgers, with its signature,
+purpose, status and fee: [`data/derived/ledgers/`](data/derived/ledgers/) (`scripts/export_ledgers.py`). The cap is
+compiled into the binary. Each later ledger carries the cost of the studies before it, so the cap holds over all
+three.
 
 **Study 1.** All amounts in lamports, from the spend ledger (`state/ledger.sqlite`). The owned accounts' on-chain balances agree
 to the lamport, once the two recorded spam deposits are counted.
@@ -548,3 +676,14 @@ lamports as a carry-over. The owned accounts' on-chain balances agree to the lam
 The wallet received 0.06 SOL and held 41,796,500 lamports after the sweep, exactly 60,000,000 − 18,203,500. It returned
 41,791,500 to its funder ([`3eZAJYz5…SHjHK`](https://explorer.solana.com/tx/3eZAJYz5rNbucd1Yu246uENE2gpseEDzbteA4jVswvuWt7nxXrS7nCsgSHnvTMLb1EDKYNEQhXqHdxWdS2rSHjHK), fee 5,000). The difference,
 18,208,500 lamports (0.0182 SOL), is the whole cost of Study 2.
+
+**Study 3.** From its ledger (`state/ledger-study3.sqlite`), opened with the compiled cap and Studies 1 and 2's
+42,926,000 lamports as a carry-over. The owned accounts' on-chain balances agree to the lamport.
+
+| Step | Landed fees | Charged for expired probes | Probes never sent (no fee) |
+|---|---|---|---|
+| Setup: Memo, payer funding (2), sweep (24) | 135,000 | 0 | — |
+| Study 3 (192 windows, 636 landed probes) | 4,929,000 | 93,000 | 120 |
+| **Total before the return transfer** | **5,064,000 (0.0051 SOL)** | **93,000** | |
+
+The wallet received 0.04 SOL and held 34,936,000 lamports after the sweep, exactly 40,000,000 − 5,064,000.

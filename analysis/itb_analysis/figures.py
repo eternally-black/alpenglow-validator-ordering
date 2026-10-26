@@ -462,6 +462,58 @@ def fig_replication(res1: dict, res2: dict, t: Theme) -> plt.Figure:
     return c.fig
 
 
+STUDY3_PANELS = {
+    "c4": ("C4 · Y vs A", "P(Y lands before A)", "reward/cost → 1 · cost alone → 0", 0.0),
+    "c5": ("C5 · hi vs A", "P(hi lands before A)", "reward/cost → 1 · cost alone → tie, 0.5", 0.5),
+}
+
+
+def fig_study3(res3: dict, t: Theme) -> plt.Figure:
+    hyps = {(h["groups"][0]["identity"], h["pair_kind"]): h for h in res3.get("hypotheses", [])}
+    diag = {(d["target_identity"], d["pair_kind"]): d for d in res3.get("diagnostics", []) if d["confirmatory_group"]}
+    rows: list[tuple[str, dict | str]] = [("row", {"client_id": r["client_id"], "target_identity": r["identity"]})
+                                          for r in res3.get("identification", [])]
+    rows = [("row", v) for v in _ordered([v for _, v in rows])]
+    slot, top, label_w, gap, right = 0.42, 2.0, 2.75, 0.75, 0.6
+    width = 10.0
+    c = Canvas(t, width, top + slot * max(len(rows), 1) + 0.95)
+    c.header("The reward counts, not just the cost",
+             f"Study 3, pre-registered, {_day(res3.get('runs', []))}, the six core targets. C4: Y requests more compute than A but pays more per cost unit. "
+             "C5: hi and A cost the same,\nhi pays more. Reward ÷ (cost + 1) predicts 1 · 1; ordering by requested cost alone predicts 0 · 0.5.")
+    c.legend(0.25, 1.05, [_dot(t, t.series[0]), _dot(t, t.series[1]), Line2D([], [], color=t.muted, lw=PX, ls=(0, (3, 3)))],
+             ["priority label: P(higher reward per cost lands first)", "send order: P(first-sent probe lands first)",
+              "what cost alone predicts"], ncol=3)
+    pw = (width - label_w - right - gap) / 2
+    first_ax = None
+    for i, (kind, (title, ylab, pred, cost_only)) in enumerate(STUDY3_PANELS.items()):
+        ax = c.axes(label_w + i * (pw + gap), top, pw, slot * max(len(rows), 1))
+        first_ax = first_ax or ax
+        ax.set_xlim(-0.05, 1.05)
+        ax.set_ylim(len(rows) - 0.5, -0.5)
+        for x in (0, 0.5, 1):
+            ax.axvline(x, color=t.grid, lw=PX, zorder=1)
+        ax.axvline(cost_only, color=t.muted, lw=PX, ls=(0, (3, 3)), zorder=2)
+        ax.set_yticks([])
+        ax.set_xticks([0, 0.5, 1], ["0", "0.5", "1"])
+        c.text(label_w + i * (pw + gap), top - 0.50, title, fontsize=10, fontweight="bold", color=t.ink, va="bottom")
+        c.text(label_w + i * (pw + gap), top - 0.30, ylab, fontsize=8, color=t.ink2, va="bottom")
+        c.text(label_w + i * (pw + gap), top - 0.12, pred, fontsize=7.5, color=t.muted, va="bottom")
+        for y, (_, v) in enumerate(rows):
+            h, d = hyps.get((v["target_identity"], kind)), diag.get((v["target_identity"], kind))
+            if h and h["n"]:
+                _interval(ax, *h["ci95"], h["estimate"], y - 0.12, t.series[0], t)
+                ax.text(1.09, y - 0.12, f"{h['k']}/{h['n']}", fontsize=7.5, color=t.ink2, va="center", clip_on=False)
+            if d and d["first_sent_first"][1]:
+                k, n = d["first_sent_first"]
+                lo, hi = stats.clopper_pearson(k, n, 0.05)
+                _interval(ax, lo, hi, k / n, y + 0.12, t.series[1], t)
+    _row_labels(c, first_ax, rows, 0.25, label_w - 0.3)
+    c.footnote("Dots: estimates over evaluable windows where both probes landed (k/n at the right). Lines: exact 95 % Clopper–Pearson intervals; the tests are "
+               "one-sided exact binomial,\nHolm over twelve (PREREGISTRATION-3 §4). A, Y and hi differ only in CU limit and CU price. "
+               "Table: REPORT.md §6.5, data/derived/study3/summary.md.")
+    return c.fig
+
+
 # ------------------------------------------------------------------------------------------------ driver
 def _svg(fig: plt.Figure) -> bytes:
     buf = io.StringIO()  # no newline translation, so the bytes are LF on every platform
@@ -480,6 +532,8 @@ def render(results: Path, raw: Path, manifest: Path, design: Path) -> dict[str, 
     # Study 2 figures join once its results are committed next to Study 1's (data/derived/study2/results.json).
     study2_path = results.parent / "study2" / "results.json"
     res2 = json.loads(study2_path.read_text()) if study2_path.exists() else None
+    study3_path = results.parent / "study3" / "results.json"
+    res3 = json.loads(study3_path.read_text()) if study3_path.exists() else None
     out = {}
     for t in THEMES:
         suffix = "" if t is LIGHT else "-dark"
@@ -489,6 +543,8 @@ def render(results: Path, raw: Path, manifest: Path, design: Path) -> dict[str, 
             if res2 is not None:
                 makers += [("study2-races", lambda: fig_study2_races(res2, t)),
                            ("study2-replication", lambda: fig_replication(res, res2, t))]
+            if res3 is not None:
+                makers += [("study3-contrasts", lambda: fig_study3(res3, t))]
             for name, make in makers:
                 out[f"{name}{suffix}.svg"] = _svg(make())
     return out

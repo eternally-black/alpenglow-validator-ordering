@@ -324,3 +324,59 @@ or scoped in the text before freezing, each fix with a test that fails on the re
   - 8 windows: Agave ×2, Firedancer ×2, Agave + Harmonic ×2, Jito-Solana, Firedancer + Harmonic;
   - 32 probes (A 16, Y 8, hi 8), every window anchored, no failure;
   - measured cadence 198.5 ms inside a window and 267.7 ms at the hand-over.
+
+## 2026-10-26 10:32–10:34 UTC — Study 3 freeze, Memo, payer funding
+
+- **Freeze** (10:32:27): `scripts/freeze.py --study 3` wrote `design/campaign-study3.json` at commit `ba141b8`
+  (manifest committed in `f06625e`). The user approved the freeze and the Memo first.
+
+  | Frozen file | SHA-256 |
+  |---|---|
+  | `docs/PREREGISTRATION-3.md` | `b75514c9d233347b0ba31b33276b1cb49a11a4a0c8f8998d2eee407bf6649b47` |
+  | `design/design-study3.jsonl` (`itb design --study 3 --seed 20261026`, 192 windows, worst case 0.0060 SOL) | `bfaa83b62ac3b0987ce636367fdc8b638362942d65f571eacffc16542c60340d` |
+  | `design/campaign-study3.json` (12 hypotheses at planned n 32, budget `study3`, cutoff 2026-11-03T23:59Z, carry-over, prior claims, `analysis_tree` `be2eaf049f608edda392875876e1dbcad8a5e4d3`) | `a0518591a4485df50a3913c70c05656c325c93676ede6e79099dd8241c003f74` |
+
+  The frozen prior claims: `reward_cost` in both Study 1 and Study 2 for all six core targets, read from the
+  committed `data/derived/results.json` (`23cb5ba0…`) and `data/derived/study2/results.json` (`8f12e7a7…`).
+- **Binary:** the `itb:local` image rebuilt at the freeze commit. Every layer came from cache: the Rust sources have
+  not changed since the final dry run.
+- **Funding received:** 40,000,000 lamports on the Study 3 master, finalized before the Memo.
+- **Memo** (10:33:30): transaction [`2C57e22K…beUz5`](https://explorer.solana.com/tx/2C57e22K29Hj1v5z1J3Wrp3gXS717KQBrzVuMgPQKWhMX7Lv38VZmsWybxHK8A5JErxRW3JHq6dkXRtisRxbeUz5),
+  slot 461,631,524, signed by the Study 3 master, fee 5,000. Its text, re-read from the chain, equals
+  `itb-prereg v3 prereg=<sha> design=<sha> manifest=<sha>` for the three files above.
+- **Payer funding** (10:34:01, 10:34:04): `itb setup fund --lamports-per-payer 1600000`, two transfers (16 and 8
+  payers), fees 10,000. Study 3 spend so far: 15,000 lamports.
+
+## 2026-10-26 10:34–12:17 UTC — Study 3 (confirmatory H4, H5)
+
+- **Run:** [`data/raw/20261026T103425Z-s1-live-8da8`](../data/raw/20261026T103425Z-s1-live-8da8), the frozen design
+  (hash checked at run time) and the frozen parameters, on the binary rebuilt at the freeze commit.
+- **All 192 plans ran,** 32 per core target. Five targets had finished an hour in; Agave `7QQGNm3p`, with about 12
+  leader windows an hour, took the rest. No window failure, no data-dependent stopping, no payer left leased.
+- **Probes:** 768 planned, 636 landed in their target window, 12 expired, 120 never sent (no fee).
+- **Ledger:** 4,944,000 lamports spent including setup, equal to the owned accounts' on-chain drop. Cadence: 198.4 ms
+  inside a window, 272.0 ms at the hand-over (median `cadence_at_prep`).
+
+## 2026-10-26 12:19 UTC — Study 3 sweep
+
+- `itb setup sweep`: 24 transfers back to the master, fees 120,000. Study 3 total: **5,064,000 lamports**
+  (0.0051 SOL), setup included.
+- On chain, at slot 461,661,494: the master holds 34,936,000 = 40,000,000 − 5,064,000, and all 24 payers hold 0.
+
+## 2026-10-26 — Study 3 analysis and verification
+
+- `itb-analysis study3 report` → [`data/derived/study3/`](../data/derived/study3/summary.md):
+  - **all twelve hypotheses supported**, every one robust to selection, with 318 of 318 complete pairs in
+    reward ÷ cost order;
+  - both positive controls passed without the qualifier;
+  - all six core targets: **reward ÷ (cost + 1) identified among the registered candidates**;
+  - the three sensitivity analyses give the same counts.
+- The results were computed by the analysis tree frozen in the manifest (`be2eaf04`, identical to HEAD at the time).
+  `scripts/verify_frozen_study3.py` re-decides them from that tree.
+- **Archive check:** all 636 landings verified, and no probe without a matching claim in any of the 768 archived window
+  blocks. **Chain check:** a random sample of 60 verified against public mainnet RPC.
+- **Study 1 and Study 2 results files:** `rejected_runs` gained the Study 3 run (other budget and design); every number
+  is unchanged. `scripts/verify_frozen_study2.py` passes again.
+- **Reporting additions** (no effect on any decision): the Study 3 figure, the explorer's Study 3 tab, the Study 3
+  ledger export, and POSIX paths in the ledger summary.
+- `docker compose up` reproduces all three studies and every figure.

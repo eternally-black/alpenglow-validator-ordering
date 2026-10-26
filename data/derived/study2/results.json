@@ -636,6 +636,13 @@
     "started before the freeze"
    ],
    "run_id": "20261024T133825Z-s2-live-4ab3"
+  },
+  {
+   "reasons": [
+    "design_sha256 mismatch",
+    "budget=study3 (pilot or other purpose)"
+   ],
+   "run_id": "20261026T103425Z-s1-live-8da8"
   }
  ],
  "replicated": [
@@ -865,6 +872,13 @@
      "started before the freeze"
     ],
     "run_id": "20261024T133825Z-s2-live-4ab3"
+   },
+   {
+    "reasons": [
+     "design_sha256 mismatch",
+     "budget=study3 (pilot or other purpose)"
+    ],
+    "run_id": "20261026T103425Z-s1-live-8da8"
    }
   ],
   "runs": [

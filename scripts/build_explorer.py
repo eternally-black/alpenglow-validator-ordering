@@ -3,7 +3,7 @@
 
     python scripts/build_explorer.py
 
-Every window of every confirmatory run of both studies (runs selected by each study's frozen manifest), with its
+Every window of every confirmatory run of the three studies (runs selected by each study's frozen manifest), with its
 eligibility, and every probe with its signature, status and landing position, so that each published claim can be
 followed down to single transactions on the block explorer. Group summaries come from the committed results files;
 nothing is recomputed differently here.
@@ -24,6 +24,8 @@ STUDIES = (
      "memo": "5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg"},
     {"id": 2, "manifest": "design/campaign-study2.json", "results": "data/derived/study2/results.json",
      "memo": "2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww"},
+    {"id": 3, "manifest": "design/campaign-study3.json", "results": "data/derived/study3/results.json",
+     "memo": "2C57e22K29Hj1v5z1J3Wrp3gXS717KQBrzVuMgPQKWhMX7Lv38VZmsWybxHK8A5JErxRW3JHq6dkXRtisRxbeUz5"},
 )
 STATUS = {"landed_target": "L", "expired_confirmed": "E", "not_sent": "N", "spillover_other_leader": "S",
           "spillover_same_validator_other_window": "W", "unresolved": "U"}
@@ -71,6 +73,8 @@ def study(s: dict, designs: dict) -> dict | None:
     for key, v in validators.items():
         groups[key] = {"claim": v.get("published_claim"), "confirmatory": v.get("confirmatory"),
                        "label": {c: {"est": e.get("estimate"), "n": e.get("n")} for c, e in v.get("label", {}).items()}}
+    for r in results.get("identification", []):  # Study 3: the per-target verdict of PREREGISTRATION-3 §5
+        groups[f"{r['identity']}|{r['client_id']}|{r['ingress']}"] = {"claim": r["verdict"], "confirmatory": True, "label": {}}
     return {"id": s["id"], "memo": s["memo"], "runs": [d.name for d in dirs], "groups": groups,
             "hypotheses": [{"id": h["id"], "statement": h["statement"], "k": h["k"], "n": h["n"],
                             "claim": h.get("published_claim"), "groups": h["groups"]} for h in results.get("hypotheses", [])],

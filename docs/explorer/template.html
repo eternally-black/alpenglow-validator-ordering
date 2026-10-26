@@ -111,8 +111,8 @@ const FAMILY = ["Agave", "JitoLabs", "Rakurai", "Firedancer", "AgaveBam", "FireB
 const KITS = {k: "Contrasts (K)", t: "Races (T)", h: "Hold cliff (H)", s: "Spill-over (S)", r: "Race curve (R)", e: "Equal key (E)"};
 const STATUS = {L: "landed in the window", E: "expired", N: "not sent", S: "landed with another leader", W: "landed in a later window", U: "unresolved"};
 // Who reward ÷ (cost + 1) puts first in each contrast (PREREGISTRATION §3); races: hi outranks lo under every key.
-const PREDICTED = {c1: "A", c2: "B", c3: "A", c2_uncontended: "B", race: "hi"};
-const STUDY_DAY = {1: "2026-10-24", 2: "2026-10-25"};
+const PREDICTED = {c1: "A", c2: "B", c3: "A", c2_uncontended: "B", race: "hi", c4: "Y", c5: "hi"};
+const STUDY_DAY = {1: "2026-10-24", 2: "2026-10-25", 3: "2026-10-26"};
 const EXPLORER = "https://explorer.solana.com";
 let data = null, state = {study: 1, group: null, kit: "", ev: false, hit: null};
 
@@ -237,8 +237,8 @@ function renderPanel() {
       <label><input type="checkbox" id="ev"${state.ev ? " checked" : ""}> Evaluable only</label>
       <span class="count">${ws.length} windows</span>
     </div>
-    <div class="legend"><span class="pair follows"><span class="v">A first</span></span> the member reward ÷ (cost + 1) prefers landed first
-      <span class="pair against"><span class="v">B first</span></span> the other member landed first
+    <div class="legend"><span class="pair follows"><span class="v">preferred first</span></span> the member reward ÷ (cost + 1) prefers landed first
+      <span class="pair against"><span class="v">other first</span></span> the other member landed first
       <span class="pair"><span class="v">A:E B:L</span></span> not both landed (L landed, E expired, N not sent)</div>
     <div class="windows">${ws.map(windowRow).join("") || `<div class="empty">No windows match these filters.</div>`}</div>`;
   $("kit").onchange = (e) => { state.kit = e.target.value; renderPanel(); };
@@ -280,7 +280,7 @@ $("search").onsubmit = (e) => {
       return;
     }
   }
-  $("lede").innerHTML = `No probe of either study has a signature starting with <code>${esc(q.slice(0, 20))}</code>. Paste the full signature or its first characters.`;
+  $("lede").innerHTML = `No probe of any study has a signature starting with <code>${esc(q.slice(0, 20))}</code>. Paste the full signature or its first characters.`;
 };
 
 // The built index.html embeds the ledger, so the page also opens from a plain file; otherwise fetch data.json.

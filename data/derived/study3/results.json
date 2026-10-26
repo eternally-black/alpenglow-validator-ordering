@@ -1,0 +1,1037 @@
+{
+ "diagnostics": [
+  {
+   "both_landed": 31,
+   "client_id": "Agave",
+   "confirmatory_group": true,
+   "evaluable_pairs": 31,
+   "first_sent_first": [
+    15,
+    31
+   ],
+   "ingress": "direct",
+   "landed": {
+    "A": [
+     31,
+     31
+    ],
+    "Y": [
+     31,
+     31
+    ]
+   },
+   "pair_kind": "c4",
+   "pairs": 32,
+   "target_identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE"
+  },
+  {
+   "both_landed": 31,
+   "client_id": "Agave",
+   "confirmatory_group": true,
+   "evaluable_pairs": 31,
+   "first_sent_first": [
+    16,
+    31
+   ],
+   "ingress": "direct",
+   "landed": {
+    "A": [
+     31,
+     31
+    ],
+    "hi": [
+     31,
+     31
+    ]
+   },
+   "pair_kind": "c5",
+   "pairs": 32,
+   "target_identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE"
+  },
+  {
+   "both_landed": 21,
+   "client_id": "AgaveBam",
+   "confirmatory_group": true,
+   "evaluable_pairs": 24,
+   "first_sent_first": [
+    11,
+    21
+   ],
+   "ingress": "bam_node",
+   "landed": {
+    "A": [
+     21,
+     24
+    ],
+    "Y": [
+     21,
+     24
+    ]
+   },
+   "pair_kind": "c4",
+   "pairs": 32,
+   "target_identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy"
+  },
+  {
+   "both_landed": 21,
+   "client_id": "AgaveBam",
+   "confirmatory_group": true,
+   "evaluable_pairs": 24,
+   "first_sent_first": [
+    11,
+    21
+   ],
+   "ingress": "bam_node",
+   "landed": {
+    "A": [
+     21,
+     24
+    ],
+    "hi": [
+     21,
+     24
+    ]
+   },
+   "pair_kind": "c5",
+   "pairs": 32,
+   "target_identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy"
+  },
+  {
+   "both_landed": 24,
+   "client_id": "Firedancer",
+   "confirmatory_group": true,
+   "evaluable_pairs": 24,
+   "first_sent_first": [
+    13,
+    24
+   ],
+   "ingress": "direct",
+   "landed": {
+    "A": [
+     24,
+     24
+    ],
+    "Y": [
+     24,
+     24
+    ]
+   },
+   "pair_kind": "c4",
+   "pairs": 32,
+   "target_identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4"
+  },
+  {
+   "both_landed": 24,
+   "client_id": "Firedancer",
+   "confirmatory_group": true,
+   "evaluable_pairs": 24,
+   "first_sent_first": [
+    12,
+    24
+   ],
+   "ingress": "direct",
+   "landed": {
+    "A": [
+     24,
+     24
+    ],
+    "hi": [
+     24,
+     24
+    ]
+   },
+   "pair_kind": "c5",
+   "pairs": 32,
+   "target_identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4"
+  },
+  {
+   "both_landed": 24,
+   "client_id": "HarmonicAgave",
+   "confirmatory_group": true,
+   "evaluable_pairs": 24,
+   "first_sent_first": [
+    11,
+    24
+   ],
+   "ingress": "harmonic_remote_tpu",
+   "landed": {
+    "A": [
+     24,
+     24
+    ],
+    "Y": [
+     24,
+     24
+    ]
+   },
+   "pair_kind": "c4",
+   "pairs": 32,
+   "target_identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk"
+  },
+  {
+   "both_landed": 24,
+   "client_id": "HarmonicAgave",
+   "confirmatory_group": true,
+   "evaluable_pairs": 24,
+   "first_sent_first": [
+    11,
+    24
+   ],
+   "ingress": "harmonic_remote_tpu",
+   "landed": {
+    "A": [
+     24,
+     24
+    ],
+    "hi": [
+     24,
+     24
+    ]
+   },
+   "pair_kind": "c5",
+   "pairs": 32,
+   "target_identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk"
+  },
+  {
+   "both_landed": 29,
+   "client_id": "JitoLabs",
+   "confirmatory_group": true,
+   "evaluable_pairs": 29,
+   "first_sent_first": [
+    15,
+    29
+   ],
+   "ingress": "direct",
+   "landed": {
+    "A": [
+     29,
+     29
+    ],
+    "Y": [
+     29,
+     29
+    ]
+   },
+   "pair_kind": "c4",
+   "pairs": 32,
+   "target_identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU"
+  },
+  {
+   "both_landed": 29,
+   "client_id": "JitoLabs",
+   "confirmatory_group": true,
+   "evaluable_pairs": 29,
+   "first_sent_first": [
+    14,
+    29
+   ],
+   "ingress": "direct",
+   "landed": {
+    "A": [
+     29,
+     29
+    ],
+    "hi": [
+     29,
+     29
+    ]
+   },
+   "pair_kind": "c5",
+   "pairs": 32,
+   "target_identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU"
+  },
+  {
+   "both_landed": 30,
+   "client_id": "HarmonicFiredancer",
+   "confirmatory_group": true,
+   "evaluable_pairs": 30,
+   "first_sent_first": [
+    14,
+    30
+   ],
+   "ingress": "harmonic_remote_tpu",
+   "landed": {
+    "A": [
+     30,
+     30
+    ],
+    "Y": [
+     30,
+     30
+    ]
+   },
+   "pair_kind": "c4",
+   "pairs": 32,
+   "target_identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b"
+  },
+  {
+   "both_landed": 30,
+   "client_id": "HarmonicFiredancer",
+   "confirmatory_group": true,
+   "evaluable_pairs": 30,
+   "first_sent_first": [
+    14,
+    30
+   ],
+   "ingress": "harmonic_remote_tpu",
+   "landed": {
+    "A": [
+     30,
+     30
+    ],
+    "hi": [
+     30,
+     30
+    ]
+   },
+   "pair_kind": "c5",
+   "pairs": 32,
+   "target_identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b"
+  }
+ ],
+ "funnel": {
+  "evaluable": 162,
+  "exclusions": {
+   "not_all_sent": 30
+  },
+  "windows": 192
+ },
+ "funnel_by_target": {
+  "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE": {
+   "evaluable": 31,
+   "exclusions": {
+    "not_all_sent": 1
+   },
+   "windows": 32
+  },
+  "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy": {
+   "evaluable": 24,
+   "exclusions": {
+    "not_all_sent": 8
+   },
+   "windows": 32
+  },
+  "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4": {
+   "evaluable": 24,
+   "exclusions": {
+    "not_all_sent": 8
+   },
+   "windows": 32
+  },
+  "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk": {
+   "evaluable": 24,
+   "exclusions": {
+    "not_all_sent": 8
+   },
+   "windows": 32
+  },
+  "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU": {
+   "evaluable": 29,
+   "exclusions": {
+    "not_all_sent": 3
+   },
+   "windows": 32
+  },
+  "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b": {
+   "evaluable": 30,
+   "exclusions": {
+    "not_all_sent": 2
+   },
+   "windows": 32
+  }
+ },
+ "hypotheses": [
+  {
+   "ci95": [
+    0.887811,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "Agave",
+     "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+     "ingress": "direct"
+    }
+   ],
+   "id": "H4-7QQGNm3p",
+   "incomplete_pairs": 0,
+   "k": 31,
+   "n": 31,
+   "p": 0.0,
+   "p_holm": 0.0,
+   "p_worst": 0.0,
+   "pair_kind": "c4",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.887811,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "Agave",
+     "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+     "ingress": "direct"
+    }
+   ],
+   "id": "H5-7QQGNm3p",
+   "incomplete_pairs": 0,
+   "k": 31,
+   "n": 31,
+   "p": 0.0,
+   "p_holm": 0.0,
+   "p_worst": 0.0,
+   "pair_kind": "c5",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.880555,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "JitoLabs",
+     "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+     "ingress": "direct"
+    }
+   ],
+   "id": "H4-HEL1USMZ",
+   "incomplete_pairs": 0,
+   "k": 29,
+   "n": 29,
+   "p": 0.0,
+   "p_holm": 0.0,
+   "p_worst": 0.0,
+   "pair_kind": "c4",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.880555,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "JitoLabs",
+     "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+     "ingress": "direct"
+    }
+   ],
+   "id": "H5-HEL1USMZ",
+   "incomplete_pairs": 0,
+   "k": 29,
+   "n": 29,
+   "p": 0.0,
+   "p_holm": 0.0,
+   "p_worst": 0.0,
+   "pair_kind": "c5",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.857526,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "Firedancer",
+     "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+     "ingress": "direct"
+    }
+   ],
+   "id": "H4-EvnRmnMr",
+   "incomplete_pairs": 0,
+   "k": 24,
+   "n": 24,
+   "p": 0.0,
+   "p_holm": 0.0,
+   "p_worst": 0.0,
+   "pair_kind": "c4",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.857526,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "Firedancer",
+     "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+     "ingress": "direct"
+    }
+   ],
+   "id": "H5-EvnRmnMr",
+   "incomplete_pairs": 0,
+   "k": 24,
+   "n": 24,
+   "p": 0.0,
+   "p_holm": 0.0,
+   "p_worst": 0.0,
+   "pair_kind": "c5",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.838902,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "AgaveBam",
+     "identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+     "ingress": "bam_node"
+    }
+   ],
+   "id": "H4-DRpbCBMx",
+   "incomplete_pairs": 3,
+   "k": 21,
+   "n": 21,
+   "p": 0.0,
+   "p_holm": 1e-06,
+   "p_worst": 0.000139,
+   "pair_kind": "c4",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.838902,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "AgaveBam",
+     "identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+     "ingress": "bam_node"
+    }
+   ],
+   "id": "H5-DRpbCBMx",
+   "incomplete_pairs": 3,
+   "k": 21,
+   "n": 21,
+   "p": 0.0,
+   "p_holm": 1e-06,
+   "p_worst": 0.000139,
+   "pair_kind": "c5",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.857526,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "HarmonicAgave",
+     "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+     "ingress": "harmonic_remote_tpu"
+    }
+   ],
+   "id": "H4-Fd7btgyS",
+   "incomplete_pairs": 0,
+   "k": 24,
+   "n": 24,
+   "p": 0.0,
+   "p_holm": 0.0,
+   "p_worst": 0.0,
+   "pair_kind": "c4",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.857526,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "HarmonicAgave",
+     "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+     "ingress": "harmonic_remote_tpu"
+    }
+   ],
+   "id": "H5-Fd7btgyS",
+   "incomplete_pairs": 0,
+   "k": 24,
+   "n": 24,
+   "p": 0.0,
+   "p_holm": 0.0,
+   "p_worst": 0.0,
+   "pair_kind": "c5",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.884297,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "HarmonicFiredancer",
+     "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+     "ingress": "harmonic_remote_tpu"
+    }
+   ],
+   "id": "H4-JUPiTERr",
+   "incomplete_pairs": 0,
+   "k": 30,
+   "n": 30,
+   "p": 0.0,
+   "p_holm": 0.0,
+   "p_worst": 0.0,
+   "pair_kind": "c4",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "verdict": "supported"
+  },
+  {
+   "ci95": [
+    0.884297,
+    1.0
+   ],
+   "estimate": 1.0,
+   "groups": [
+    {
+     "client_id": "HarmonicFiredancer",
+     "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+     "ingress": "harmonic_remote_tpu"
+    }
+   ],
+   "id": "H5-JUPiTERr",
+   "incomplete_pairs": 0,
+   "k": 30,
+   "n": 30,
+   "p": 0.0,
+   "p_holm": 0.0,
+   "p_worst": 0.0,
+   "pair_kind": "c5",
+   "published_claim": "supported",
+   "selection_robust": true,
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "verdict": "supported"
+  }
+ ],
+ "identification": [
+  {
+   "c4": "supported",
+   "c5": "supported",
+   "client_id": "Agave",
+   "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+   "ingress": "direct",
+   "reward_cost_identified": true,
+   "reward_cost_identified_assuming_selection": true,
+   "study1_claim": "reward_cost",
+   "study2_claim": "reward_cost",
+   "verdict": "reward \u00f7 (cost + 1) identified among the registered candidates"
+  },
+  {
+   "c4": "supported",
+   "c5": "supported",
+   "client_id": "JitoLabs",
+   "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+   "ingress": "direct",
+   "reward_cost_identified": true,
+   "reward_cost_identified_assuming_selection": true,
+   "study1_claim": "reward_cost",
+   "study2_claim": "reward_cost",
+   "verdict": "reward \u00f7 (cost + 1) identified among the registered candidates"
+  },
+  {
+   "c4": "supported",
+   "c5": "supported",
+   "client_id": "Firedancer",
+   "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+   "ingress": "direct",
+   "reward_cost_identified": true,
+   "reward_cost_identified_assuming_selection": true,
+   "study1_claim": "reward_cost",
+   "study2_claim": "reward_cost",
+   "verdict": "reward \u00f7 (cost + 1) identified among the registered candidates"
+  },
+  {
+   "c4": "supported",
+   "c5": "supported",
+   "client_id": "AgaveBam",
+   "identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+   "ingress": "bam_node",
+   "reward_cost_identified": true,
+   "reward_cost_identified_assuming_selection": true,
+   "study1_claim": "reward_cost",
+   "study2_claim": "reward_cost",
+   "verdict": "reward \u00f7 (cost + 1) identified among the registered candidates"
+  },
+  {
+   "c4": "supported",
+   "c5": "supported",
+   "client_id": "HarmonicAgave",
+   "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+   "ingress": "harmonic_remote_tpu",
+   "reward_cost_identified": true,
+   "reward_cost_identified_assuming_selection": true,
+   "study1_claim": "reward_cost",
+   "study2_claim": "reward_cost",
+   "verdict": "reward \u00f7 (cost + 1) identified among the registered candidates"
+  },
+  {
+   "c4": "supported",
+   "c5": "supported",
+   "client_id": "HarmonicFiredancer",
+   "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+   "ingress": "harmonic_remote_tpu",
+   "reward_cost_identified": true,
+   "reward_cost_identified_assuming_selection": true,
+   "study1_claim": "reward_cost",
+   "study2_claim": "reward_cost",
+   "verdict": "reward \u00f7 (cost + 1) identified among the registered candidates"
+  }
+ ],
+ "manifest": "design/campaign-study3.json",
+ "positive_controls": {
+  "conditional": [],
+  "failed": []
+ },
+ "rejected_runs": [
+  {
+   "reasons": [
+    "design_sha256 mismatch",
+    "budget=campaign (pilot or other purpose)",
+    "started before the freeze"
+   ],
+   "run_id": "20261024T103156Z-s1-live-916e"
+  },
+  {
+   "reasons": [
+    "design_sha256 mismatch",
+    "budget=campaign (pilot or other purpose)",
+    "started before the freeze"
+   ],
+   "run_id": "20261024T133825Z-s2-live-4ab3"
+  },
+  {
+   "reasons": [
+    "design_sha256 mismatch",
+    "budget=study2 (pilot or other purpose)",
+    "started before the freeze"
+   ],
+   "run_id": "20261025T061534Z-s1-live-4e60"
+  },
+  {
+   "reasons": [
+    "design_sha256 mismatch",
+    "budget=study2 (pilot or other purpose)",
+    "started before the freeze"
+   ],
+   "run_id": "20261025T090530Z-s2-live-0b4f"
+  }
+ ],
+ "runs": [
+  {
+   "budget": "study3",
+   "run_id": "20261026T103425Z-s1-live-8da8",
+   "started_at": "2026-10-26T10:34:26.573256907Z"
+  }
+ ],
+ "sensitivity": {
+  "censored": {
+   "H4-7QQGNm3p": {
+    "estimate": 1.0,
+    "k": 31,
+    "n": 31,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-DRpbCBMx": {
+    "estimate": 1.0,
+    "k": 21,
+    "n": 21,
+    "p_holm": 1e-06,
+    "verdict": "supported"
+   },
+   "H4-EvnRmnMr": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-Fd7btgyS": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-HEL1USMZ": {
+    "estimate": 1.0,
+    "k": 29,
+    "n": 29,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-JUPiTERr": {
+    "estimate": 1.0,
+    "k": 30,
+    "n": 30,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-7QQGNm3p": {
+    "estimate": 1.0,
+    "k": 31,
+    "n": 31,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-DRpbCBMx": {
+    "estimate": 1.0,
+    "k": 21,
+    "n": 21,
+    "p_holm": 1e-06,
+    "verdict": "supported"
+   },
+   "H5-EvnRmnMr": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-Fd7btgyS": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-HEL1USMZ": {
+    "estimate": 1.0,
+    "k": 29,
+    "n": 29,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-JUPiTERr": {
+    "estimate": 1.0,
+    "k": 30,
+    "n": 30,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   }
+  },
+  "including_transition_ambiguous": {
+   "H4-7QQGNm3p": {
+    "estimate": 1.0,
+    "k": 31,
+    "n": 31,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-DRpbCBMx": {
+    "estimate": 1.0,
+    "k": 21,
+    "n": 21,
+    "p_holm": 1e-06,
+    "verdict": "supported"
+   },
+   "H4-EvnRmnMr": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-Fd7btgyS": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-HEL1USMZ": {
+    "estimate": 1.0,
+    "k": 29,
+    "n": 29,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-JUPiTERr": {
+    "estimate": 1.0,
+    "k": 30,
+    "n": 30,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-7QQGNm3p": {
+    "estimate": 1.0,
+    "k": 31,
+    "n": 31,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-DRpbCBMx": {
+    "estimate": 1.0,
+    "k": 21,
+    "n": 21,
+    "p_holm": 1e-06,
+    "verdict": "supported"
+   },
+   "H5-EvnRmnMr": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-Fd7btgyS": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-HEL1USMZ": {
+    "estimate": 1.0,
+    "k": 29,
+    "n": 29,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-JUPiTERr": {
+    "estimate": 1.0,
+    "k": 30,
+    "n": 30,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   }
+  },
+  "same_slot": {
+   "H4-7QQGNm3p": {
+    "estimate": 1.0,
+    "k": 31,
+    "n": 31,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-DRpbCBMx": {
+    "estimate": 1.0,
+    "k": 21,
+    "n": 21,
+    "p_holm": 1e-06,
+    "verdict": "supported"
+   },
+   "H4-EvnRmnMr": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-Fd7btgyS": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-HEL1USMZ": {
+    "estimate": 1.0,
+    "k": 29,
+    "n": 29,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H4-JUPiTERr": {
+    "estimate": 1.0,
+    "k": 30,
+    "n": 30,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-7QQGNm3p": {
+    "estimate": 1.0,
+    "k": 31,
+    "n": 31,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-DRpbCBMx": {
+    "estimate": 1.0,
+    "k": 21,
+    "n": 21,
+    "p_holm": 1e-06,
+    "verdict": "supported"
+   },
+   "H5-EvnRmnMr": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-Fd7btgyS": {
+    "estimate": 1.0,
+    "k": 24,
+    "n": 24,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-HEL1USMZ": {
+    "estimate": 1.0,
+    "k": 29,
+    "n": 29,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   },
+   "H5-JUPiTERr": {
+    "estimate": 1.0,
+    "k": 30,
+    "n": 30,
+    "p_holm": 0.0,
+    "verdict": "supported"
+   }
+  }
+ }
+}
