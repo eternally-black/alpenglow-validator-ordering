@@ -1,0 +1,257 @@
+{
+ "frozen_at": "2026-10-26T10:32:27Z",
+ "genesis_hash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+ "design_sha256": "bfaa83b62ac3b0987ce636367fdc8b638362942d65f571eacffc16542c60340d",
+ "preregistration_sha256": "b75514c9d233347b0ba31b33276b1cb49a11a4a0c8f8998d2eee407bf6649b47",
+ "core_targets": [
+  {
+   "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+   "client_id": "Agave",
+   "ingress": "direct"
+  },
+  {
+   "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+   "client_id": "JitoLabs",
+   "ingress": "direct"
+  },
+  {
+   "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+   "client_id": "Firedancer",
+   "ingress": "direct"
+  },
+  {
+   "identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+   "client_id": "AgaveBam",
+   "ingress": "bam_node"
+  },
+  {
+   "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+   "client_id": "HarmonicAgave",
+   "ingress": "harmonic_remote_tpu"
+  },
+  {
+   "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+   "client_id": "HarmonicFiredancer",
+   "ingress": "harmonic_remote_tpu"
+  }
+ ],
+ "extended_targets": [],
+ "positive_controls": [
+  "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+  "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4"
+ ],
+ "budget": "study3",
+ "not_after": "2026-11-03T23:59:00Z",
+ "excluded_run_ids": [],
+ "study": 3,
+ "hypotheses": [
+  {
+   "id": "H4-7QQGNm3p",
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "pair_kind": "c4",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+     "client_id": "Agave",
+     "ingress": "direct"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H5-7QQGNm3p",
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "pair_kind": "c5",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE",
+     "client_id": "Agave",
+     "ingress": "direct"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H4-HEL1USMZ",
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "pair_kind": "c4",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+     "client_id": "JitoLabs",
+     "ingress": "direct"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H5-HEL1USMZ",
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "pair_kind": "c5",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU",
+     "client_id": "JitoLabs",
+     "ingress": "direct"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H4-EvnRmnMr",
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "pair_kind": "c4",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+     "client_id": "Firedancer",
+     "ingress": "direct"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H5-EvnRmnMr",
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "pair_kind": "c5",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4",
+     "client_id": "Firedancer",
+     "ingress": "direct"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H4-DRpbCBMx",
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "pair_kind": "c4",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+     "client_id": "AgaveBam",
+     "ingress": "bam_node"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H5-DRpbCBMx",
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "pair_kind": "c5",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy",
+     "client_id": "AgaveBam",
+     "ingress": "bam_node"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H4-Fd7btgyS",
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "pair_kind": "c4",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+     "client_id": "HarmonicAgave",
+     "ingress": "harmonic_remote_tpu"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H5-Fd7btgyS",
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "pair_kind": "c5",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk",
+     "client_id": "HarmonicAgave",
+     "ingress": "harmonic_remote_tpu"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H4-JUPiTERr",
+   "statement": "P(Y lands before A) > 0.5: the reward counts against a higher requested cost (cost alone predicts A first)",
+   "pair_kind": "c4",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+     "client_id": "HarmonicFiredancer",
+     "ingress": "harmonic_remote_tpu"
+    }
+   ],
+   "planned_n": 32
+  },
+  {
+   "id": "H5-JUPiTERr",
+   "statement": "P(hi lands before A) > 0.5: at equal cost the higher reward goes first (cost alone predicts a tie)",
+   "pair_kind": "c5",
+   "side": "greater",
+   "groups": [
+    {
+     "identity": "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b",
+     "client_id": "HarmonicFiredancer",
+     "ingress": "harmonic_remote_tpu"
+    }
+   ],
+   "planned_n": 32
+  }
+ ],
+ "prior_claims": {
+  "7QQGNm3ptwinipDCyaCF7jY5katgmFUu1ieP2f7nwLpE": {
+   "study1": "reward_cost",
+   "study2": "reward_cost"
+  },
+  "HEL1USMZKAL2odpNBj2oCjffnFGaYwmbGmyewGv1e2TU": {
+   "study1": "reward_cost",
+   "study2": "reward_cost"
+  },
+  "EvnRmnMrd69kFdbLMxWkTn1icZ7DCceRhvmb2SJXqDo4": {
+   "study1": "reward_cost",
+   "study2": "reward_cost"
+  },
+  "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm21hy": {
+   "study1": "reward_cost",
+   "study2": "reward_cost"
+  },
+  "Fd7btgySsrjuo25CJCj7oE7VPMyezDhnx7pZkj2v69Nk": {
+   "study1": "reward_cost",
+   "study2": "reward_cost"
+  },
+  "JUPiTERrZqgf1jUyR7dSkhMx4Kn2qJyekWsg3LT1h4b": {
+   "study1": "reward_cost",
+   "study2": "reward_cost"
+  }
+ },
+ "prior_claims_source": {
+  "study1": {
+   "path": "data/derived/results.json",
+   "sha256": "23cb5ba0d14d837144b7648c4aa9d9b450bf2d006f0b8ca8c4f723014359a761",
+   "commit": "ba141b8510e4864fe8b142a3be70871413141a97"
+  },
+  "study2": {
+   "path": "data/derived/study2/results.json",
+   "sha256": "8f12e7a79534e9c73c3c34a13dc24da6f387cbce057efbd56bb69909c088d608",
+   "commit": "ba141b8510e4864fe8b142a3be70871413141a97"
+  }
+ },
+ "carry_over_lamports": 42926000,
+ "analysis_tree": "be2eaf049f608edda392875876e1dbcad8a5e4d3"
+}
