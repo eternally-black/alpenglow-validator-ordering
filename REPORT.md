@@ -639,7 +639,7 @@ It does not rerun:
 The cost accounting comes from the three spend ledgers, exported with every transaction signature and fee to
 [`data/derived/ledgers/`](data/derived/ledgers/). Each landed fee there can be checked on chain.
 
-**Probe explorer:** [docs/explorer](docs/explorer/index.html). Every window and every probe of the three studies,
+**Probe explorer:** [live on GitHub Pages](https://eternally-black.github.io/alpenglow-validator-ordering/explorer/), or [docs/explorer](docs/explorer/index.html) in the clone. Every window and every probe of the three studies,
 with eligibility, landing slot and index, each linked to Solana Explorer (`python scripts/build_explorer.py`).
 
 - **Archive check:** all 2,553 Stage-1 landing claims verified, with 26 checks each (signed bytes, signature,
