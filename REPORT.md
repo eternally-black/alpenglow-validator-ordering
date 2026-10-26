@@ -6,8 +6,8 @@ hold, and is there a rule at all?
 **Answer (post-Alpenglow mainnet, our own probe transactions; three pre-registered studies, 2026-10-24, 2026-10-25
 and 2026-10-26).**
 
-- **The rule.** All six core targets order our probes exactly as **Agave's priority, reward ÷ (cost + 1)**,
-  predicts. This is the confirmatory result. A second pre-registered study replicated it the next day for all six.
+- **The rule.** All six core targets order our probes as **Agave's priority, reward ÷ (cost + 1)**, predicts, though
+  not equally strictly (below). This is the confirmatory result. A second pre-registered study replicated it the next day for all six.
   The four extended targets are exploratory and agree: two outright, one with "(assumes selection)" (`5Cchr1XG`) and
   one as `partial` (Rakurai). That makes 10 groups and 8 gossip client types, including BAM nodes and Harmonic block
   builders.
@@ -16,9 +16,10 @@ and 2026-10-26).**
   - a probe that costs more but pays more per cost unit;
   - two probes of equal cost with different rewards.
 
-  In all 318 complete pairs, across the six core targets, the higher reward per cost unit landed first. Among the
-  candidates registered across the three studies (CU price, lamport fee, cost alone, FIFO, random), each target's
-  key is identified as reward ÷ (cost + 1), robust to selection (§6.5).
+  In all 318 complete pairs (C4 and C5 in 159 windows), across the six core targets, the higher reward per cost
+  unit landed first. Among the candidates registered across the three studies (CU price, lamport fee, cost alone,
+  FIFO, random), each target's key is identified as reward ÷ (cost + 1), robust to selection within the evaluable
+  windows (§6.5). The identification assumes each target's key did not change over the three days.
 - **What it rules out, and what it does not.** CU price, lamport fee, cost alone, arrival order (FIFO) and "no rule"
   are all rejected. A key outside the registered set, such as reward − λ·cost, ranks every pair we ran the same way,
   so it is not excluded (§9).
@@ -415,9 +416,12 @@ the verdict combines with. Operating characteristics: [POWER-3.md](docs/POWER-3.
 | Y | 1,500 | 4,000,000 | 2,835 | 8,500 | 2,997,179 |
 | hi | 1,000 | 3,000,000 | 2,335 | 5,500 | 2,354,452 |
 
+Cost is in Agave cost-model units: 720 + 600 + 7 + L + 8 per 32 KiB of loaded-data limit (32 KiB for all three).
+Reward is in lamports: the priority fee ⌈L·p/10⁶⌉ plus 2,500, the unburned half of the signature fee.
+
 - **C4, Y vs A.** Y costs more but pays more per cost unit. Reward ÷ cost puts Y first; cost alone puts A first. This
   holds whatever share of the signature fee a client counts as reward, under any shared cost overhead
-  (PREREGISTRATION-3 §2).
+  (PREREGISTRATION-3 §2), which is also why Study 3 cannot tell those reward variants apart (§9).
 - **C5, hi vs A.** The two cost the same. Reward ÷ cost puts hi first; cost alone ties.
 
 Each of the 32 windows per core target held one C4 and one C5 pair. Send order was balanced, and payers were drawn
@@ -442,34 +446,45 @@ Cells: k/n over evaluable windows where both probes landed, with exact 95 % inte
 for all six.
 
 - **All twelve hypotheses are supported, every one robust to selection.**
-  - Holm-adjusted p is below 10⁻⁶ for ten of them and about 10⁻⁶ for the BAM node's two.
+  - Holm-adjusted p is below 10⁻⁶ for all twelve. The largest, 9.5 × 10⁻⁷, belongs to the BAM node's two (stored as
+    `1e-06` at six decimals).
   - The BAM node's worst-case bound, with its three incomplete pairs counted against it, is p = 1.4 × 10⁻⁴, below
     0.05/12.
-  - Both positive controls passed without the qualifier, so no verdict carries "(assumes selection)".
+  - Both positive controls, Agave `7QQGNm3p` and Firedancer `EvnRmnMr`, passed without the qualifier, so no verdict
+    carries "(assumes selection)".
+  - The bound covers incomplete pairs inside evaluable windows. The 30 excluded windows are outside it, but no probe
+    was sent in any of them, so they cannot select by label.
 - **Not one pair went the other way:** 318 of 318. The three sensitivity analyses (censored coding,
   transition-ambiguous windows included, same slot) give the same counts.
 - **Send order does not explain it.** Per target and contrast, the first-sent probe landed first in between 0.46
   (11 of 24) and 0.54 (13 of 24) of the pairs.
-- **No selection by label.** Five targets landed both probes in every evaluable window. The BAM node lost three whole
-  windows, both probes each time. No evaluable window lost exactly one probe.
-- **Windows:** 162 of 192 were evaluable. Each of the other 30 had a probe that was never sent (`not_all_sent`, no
-  fee): 8 each for Firedancer, Agave + BAM and Agave + Harmonic, 3 for Jito-Solana, 2 for Firedancer + Harmonic and 1
-  for Agave.
+- **No selection by label.** Five targets landed both probes in every evaluable window. The BAM node lost three of
+  its 24 evaluable windows whole, both probes each time. No evaluable window lost exactly one probe.
+- **Windows:** 162 of 192 were evaluable. In each of the other 30 the whole burst was skipped before any send, so
+  all four probes were never sent (`not_all_sent`, no fee):
+  - 26 because the burst would have been late, more than 100 ms past its planned time;
+  - 3 BAM windows because the node closed the stream;
+  - 1 Agave window because the stream timed out before opening.
+
+  Per target: 8 each for Firedancer, Agave + BAM and Agave + Harmonic, 3 for Jito-Solana, 2 for Firedancer +
+  Harmonic and 1 for Agave.
 - **Scope of the regimes.** The Agave-family targets on direct ingress were sent buffered, where Studies 1 and 2 saw
   them follow the rule in every window. Study 3 does not test their streaming arrivals.
 
 ### 6.6 What Study 3 changes in the answer
 
-- **The reward numerator is established**, for all six core targets:
+- **The reward term is established**, for all six core targets:
   - at equal cost, the higher reward goes first (C5);
   - a higher requested cost is outweighed by a higher reward per cost unit (C4).
 
   Ordering by requested cost alone is rejected.
-- **The key is identified.** Combined with the Study 1 and Study 2 claims frozen in the manifest, every core target's
-  key is reward ÷ (cost + 1) among the registered candidates: CU price, lamport fee, cost alone, FIFO, random.
+- **The key is identified among the registered candidates.** Combined with the Study 1 and Study 2 claims frozen in
+  the manifest, every core target's key is reward ÷ (cost + 1) among CU price, lamport fee, cost alone, FIFO and
+  random.
 - **What is still not separated** (§9):
   - keys outside the registered set that rank all our pairs the same way, such as reward − λ·cost;
-  - variants of the reward: the priority fee alone, or with half or all of the signature fee.
+  - variants of the reward: the priority fee alone, or with half or all of the signature fee;
+  - a change of key between the three days: the verdict assumes each target's key held from Study 1 to Study 3.
 
 ## 7. What went wrong
 
@@ -522,8 +537,13 @@ for all six.
     crashed the analysis. It was fixed and tested before the freeze; a second re-check gave "FREEZE OK"
     ([dispositions](docs/review/STUDY3-prefreeze-dispositions.md)).
   - The first Study 3 dry run tested the first draft. A second dry run tested the final design.
-- **Study 3: probes never sent.** 120 of 768 probes, in 30 windows, were never sent (no fee), mostly to Firedancer,
-  the BAM node and Agave + Harmonic (8 windows each).
+- **Study 3: probe accounting.**
+  - 648 of 768 probes were sent: 636 landed and 12 expired. The 12 are the four probes of each of the BAM node's three
+    wholly lost windows. The ledger charges them at their worst case (93,000 lamports), though they cost nothing on
+    chain.
+  - The other 120, in 30 windows, were never sent (no fee). Each was a whole burst skipped before any send: 26
+    windows late against the 100 ms bound, 3 BAM windows whose stream the node closed, 1 Agave window whose stream
+    timed out. Most fell on Firedancer, the BAM node and Agave + Harmonic (8 windows each).
 - **Earlier problems** found by the code reviews, the pilots and the localnet tests are listed with their fixes in
   [docs/review/CODE-gate1b-dispositions.md](docs/review/CODE-gate1b-dispositions.md) and
   [docs/CAMPAIGN-LOG.md](docs/CAMPAIGN-LOG.md).
@@ -574,7 +594,7 @@ for all six.
 
 - **Reward ÷ cost vs cost alone: separated by Study 3.** In Studies 1 and 2, every contrast and race ranked our
   probes by requested cost the same way reward ÷ (cost + 1) does (A 2,335 < B 4,335 < A′ 18,711; hi 2,335 < lo
-  18,711). C3 established the cost term there, where price and fee tie; the reward numerator stayed open. Study 3's C4
+  18,711). C3 established the cost term there, where price and fee tie; the reward term stayed open. Study 3's C4
   and C5 closed it (§6.5).
 - **Keys outside the registered candidates.** An additive key, reward − λ·cost, ranks every pair of the three studies
   as reward ÷ cost does. With λ = 1: A 1,165, Y 5,665, hi 3,165, B −335, A′ −15,211. "Identified" therefore means
