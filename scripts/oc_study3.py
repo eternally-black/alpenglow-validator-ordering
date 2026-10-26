@@ -36,7 +36,7 @@ OBSERVED_LANDING = {AGAVE: 80 / 80, JITO: 80 / 80, FD: 96 / 102, DRPB: 78 / 88, 
 SCENARIOS = {
     "reward_cost": ("every target orders by reward ÷ (cost + 1): the truth Studies 1-2 point to", {}),
     "reward_cost_observed_landing": ("every target orders by reward ÷ (cost + 1), each member landing at its target's "
-                                     "Study 2 rate for small probes (Agave, Jito 1.00; Firedancer 0.94; Harmonic 0.93-0.94; "
+                                     "Study 2 rate for small probes (Agave, Jito 1.00; Firedancer 0.94; Harmonic 0.93; "
                                      "BAM 0.89) instead of 0.90", {t: {"landing": x} for t, x in OBSERVED_LANDING.items()}),
     "weak": ("half of each target's windows order by reward ÷ cost, the other half FIFO (L ≈ 0.75)",
              {t: {"scenario": "mode_switch", "base": "reward_cost_greedy", "mode_b": "fifo"} for t in ALL}),

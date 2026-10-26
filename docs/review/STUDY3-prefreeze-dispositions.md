@@ -38,3 +38,17 @@ and none is left open.
 - **The strict positive-control gate.** GPT (finding 5) notes that requiring all four control hypotheses costs power
   under weak effects. It stays: a gate that withdraws too much errs on the safe side. POWER-3 reports how often the
   gate passes in each scenario.
+
+## Re-check of the fixed snapshot (GPT)
+
+GPT re-checked commit `4384418` against all fifteen dispositions
+([STUDY3-prefreeze-recheck-gpt.md](STUDY3-prefreeze-recheck-gpt.md), packet
+[STUDY3-prefreeze-recheck-packet.md](STUDY3-prefreeze-recheck-packet.md)). It confirmed eleven as resolved and found
+four gaps. DeepSeek independently re-derived every number in PREREGISTRATION-3 §2 and §10 and found no error.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| R1 | BLOCKER | A selected run whose windows were all skipped before any probe was logged crashed in `outcomes.window_table` (an empty frame with a one-level index merged on three keys) | **Fixed.** The empty table now carries the three-level index. Studies 1 and 2 always logged probes, so their results are untouched, and the Docker reproduction passes again. `test_a_loaded_run_with_every_window_skipped` loads such a run and gets all hypotheses, the funnel and the rendered reasons. Reverting the fix makes that test fail. |
+| R2 | SHOULD-FIX | The "neither supported" verdict dropped the qualifier of a conditional gate | **Fixed.** `test_a_conditional_gate_qualifies_every_verdict_row` checks the qualifier on every row, descriptive notes included. |
+| R3 | SHOULD-FIX | The rendered report omitted the exclusion reasons and each diagnostic group's pair total | **Fixed.** The report has a "Windows per target" table (attempted, evaluable, excluded by reason), and the diagnostics show total pairs beside evaluable pairs. |
+| R4 | NIT | Both Harmonic landing rates round to 0.93, but the text said 0.93 and 0.94 | **Fixed** in POWER-3, the OC script and the scenario description in `oc-study3.json`; the simulation inputs are the exact fractions and did not change. |

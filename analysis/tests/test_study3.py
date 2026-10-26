@@ -167,3 +167,41 @@ def test_analyse_and_report_end_to_end(tmp_path):
     text = report2.study3_summary(res)
     assert "Positive-control gate: passed" in text and "identified among the registered candidates" in text
     assert "/30 |" in text, "windows evaluable / attempted beside every claim"
+
+
+def test_a_loaded_run_with_every_window_skipped(tmp_path):
+    """A selected run whose windows were all skipped before any probe was logged (GPT re-check, finding 1)."""
+    run_dir = simulate(DESIGN, TARGETS, tmp_path / "skipped", Params(scenario="reward_cost_greedy", seed=3, **PERFECT), stage=1)
+    rows = [json.loads(line) | {"skipped": "connect_failed"} for line in (run_dir / "windows.jsonl").read_text().splitlines()]
+    (run_dir / "windows.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    for name in ("probes.jsonl", "sends.jsonl", "outcomes.jsonl"):
+        if (run_dir / name).exists():
+            (run_dir / name).write_text("")
+    res = study3.analyse([run_dir], _manifest(), load_designs([DESIGN]))
+    assert {(h["n"], h["verdict"]) for h in res["hypotheses"]} == {(0, "not evaluable")} and len(res["hypotheses"]) == 6
+    assert res["funnel"] == {"windows": 90, "evaluable": 0, "exclusions": {"skipped:connect_failed": 90}}
+    assert res["positive_controls"]["failed"] == [AGAVE, FD]
+    text = report2.study3_summary(res)
+    assert "skipped:connect_failed 30" in text, "exclusion reasons are rendered per target"
+
+
+def test_a_conditional_gate_qualifies_every_verdict_row():
+    spec = SPECS[:1]
+    target = _manifest(specs=spec)["core_targets"][0]
+    state = {"failed": [], "conditional": [FD]}
+
+    def verdict(c4, c5, ci4=(0.1, 0.9)):
+        decided = [{"id": "H4", "pair_kind": "c4", "groups": [target], "n": 25, "ci95": list(ci4)},
+                   {"id": "H5", "pair_kind": "c5", "groups": [target], "n": 25, "ci95": [0.1, 0.9]}]
+        return study3.identification(decided, {"H4": c4, "H5": c5}, _manifest(specs=spec), state)[0]["verdict"]
+
+    q = " (assumes selection)"
+    for c4, c5 in (("supported", "supported"), ("supported", "not supported"), ("not supported", "supported"),
+                   ("not supported", "not supported"), ("not evaluable", "not evaluable")):
+        assert verdict(c4, c5).endswith(q), (c4, c5)
+    assert verdict("not supported", "not supported", ci4=(0.0, 0.3)) == (
+        "the reward term is not shown; cost alone is not rejected" + q + ". C4's interval lies below 0.5 (descriptive): "
+        "the order follows cost against reward")
+    assert verdict("not supported", "supported", ci4=(0.0, 0.3)).startswith(
+        "the equal-cost reward effect is supported; C4 is inconclusive" + q + ". C4's interval")
+    assert verdict("withdrawn: a positive control …", "supported") == "withdrawn: method check failed"

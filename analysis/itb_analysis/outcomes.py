@@ -143,7 +143,7 @@ def window_table(run: Run, designs: dict | None = None) -> pd.DataFrame:
     p = run.probes
     keys = ["run_id", "target_identity", "seq"]
     logged = p.groupby(keys).agg(probes_logged=("probe_id", "size"), probe_ids=("probe_id", "nunique")) if len(p) else \
-        pd.DataFrame(columns=["probes_logged", "probe_ids"])
+        pd.DataFrame(columns=["probes_logged", "probe_ids"], index=pd.MultiIndex.from_tuples([], names=keys))
     w = w.merge(logged, left_on=keys, right_index=True, how="left")
     w["probes_logged"] = w["probes_logged"].fillna(0).astype(int)
     w["duplicate_records"] = w["probes_logged"] != w["probe_ids"].fillna(0).astype(int)

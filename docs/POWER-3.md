@@ -28,7 +28,7 @@ PYTHONPATH=analysis python scripts/oc_study3.py --reps 100   # writes data/deriv
 | Scenario | What is true |
 |---|---|
 | `reward_cost` | Every target orders by reward ÷ (cost + 1): the truth that Studies 1 and 2 point to. Each member lands with probability 0.90 |
-| `reward_cost_observed_landing` | The same rule, with each member landing at its target's Study 2 rate for the small probes A and B: Agave and Jito 1.00, Firedancer 0.94, the Harmonic builders 0.93 and 0.94, BAM 0.89. BAM's Study 2 losses were whole windows, so drawing them per member is pessimistic for BAM |
+| `reward_cost_observed_landing` | The same rule, with each member landing at its target's Study 2 rate for the small probes A and B: Agave and Jito 1.00, Firedancer 0.94, both Harmonic builders 0.93, BAM 0.89. BAM's Study 2 losses were whole windows, so drawing them per member is pessimistic for BAM |
 | `weak` | Half of each target's windows order by reward ÷ cost, the other half FIFO (L ≈ 0.75) |
 | `cost_only` | Every target orders by requested cost alone, ties random. Every hypothesis is false; C5 sits exactly at its null, 0.5 |
 | `control_fails` | Agave orders by cost alone, the other five by reward ÷ cost. The positive-control gate must withdraw the non-control targets |

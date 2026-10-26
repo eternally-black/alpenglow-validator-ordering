@@ -150,7 +150,7 @@ def identification(decided: list[dict], claims: dict[str, str], manifest: dict, 
             if c4_below:
                 verdict += ". C4's interval lies below 0.5 (descriptive): compatible with cost first and the reward only between equal costs"
         else:
-            verdict = "the reward term is not shown; cost alone is not rejected"
+            verdict = "the reward term is not shown; cost alone is not rejected" + q
             if c4_below:
                 verdict += ". C4's interval lies below 0.5 (descriptive): the order follows cost against reward"
         both = ok["c4"] and ok["c5"] and prior_ok and not any(v.startswith("withdrawn") for v in s3.values())

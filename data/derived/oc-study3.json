@@ -206,7 +206,7 @@
   }
  },
  "reward_cost_observed_landing": {
-  "truth": "every target orders by reward \u00f7 (cost + 1), each member landing at its target's Study 2 rate for small probes (Agave, Jito 1.00; Firedancer 0.94; Harmonic 0.93-0.94; BAM 0.89) instead of 0.90",
+  "truth": "every target orders by reward \u00f7 (cost + 1), each member landing at its target's Study 2 rate for small probes (Agave, Jito 1.00; Firedancer 0.94; Harmonic 0.93; BAM 0.89) instead of 0.90",
   "reps": 100,
   "slot_ms": 198.0,
   "any_support": {

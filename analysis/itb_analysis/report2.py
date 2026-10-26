@@ -120,15 +120,20 @@ def study3_summary(res: dict) -> str:
     gate = ("**failed** for " + ", ".join(f"`{t[:8]}`" for t in pc["failed"]) + ": every other target's claims are withdrawn"
             if pc.get("failed") else "passed" + (" under the selection assumption (" + ", ".join(f"`{t[:8]}`" for t in pc["conditional"])
                                                   + "): every verdict carries the qualifier" if pc.get("conditional") else ""))
-    diag = ["| Target | Client | Ingress | Contrast | Group | Evaluable pairs | x landed | A landed | Both landed | First sent first |",
-            "|---|---|---|---|---|---|---|---|---|---|"]
+    excl = ["| Target | Windows attempted | Evaluable | Excluded, by reason |", "|---|---|---|---|"]
+    for t, f in funnel.items():
+        why = ", ".join(f"{r} {n}" for r, n in sorted(f["exclusions"].items())) or "–"
+        excl.append(f"| `{t[:8]}` | {f['windows']} | {f['evaluable']} | {why} |")
+    diag = ["| Target | Client | Ingress | Contrast | Group | Pairs | Evaluable pairs | x landed | A landed | Both landed | First sent first |",
+            "|---|---|---|---|---|---|---|---|---|---|---|"]
     for d in res.get("diagnostics", []):
         (xl, xv), (_, av) = [(k, v) for k, v in d["landed"].items() if k != "A"][0], ("A", d["landed"]["A"])
         group = "confirmatory" if d["confirmatory_group"] else "off-group (exploratory)"
         diag.append(f"| `{d['target_identity'][:8]}` | {NAMES.get(d['client_id'], d['client_id'])} | {d['ingress']} | "
-                    f"{d['pair_kind'].upper()} | {group} | {d['evaluable_pairs']} | {xl} {xv[0]}/{xv[1]} | A {av[0]}/{av[1]} | "
+                    f"{d['pair_kind'].upper()} | {group} | {d['pairs']} | {d['evaluable_pairs']} | {xl} {xv[0]}/{xv[1]} | A {av[0]}/{av[1]} | "
                     f"{d['both_landed']} | {d['first_sent_first'][0]}/{d['first_sent_first'][1]} |")
     parts = ["## Identification (Study 3 with Studies 1 and 2)", f"Positive-control gate: {gate}.", "\n".join(ident),
-             "## Hypotheses H4 and H5", "\n".join(hyp), "## Sensitivity analyses", sensitivity_table(res),
+             "## Hypotheses H4 and H5", "\n".join(hyp), "## Windows per target", "\n".join(excl),
+             "## Sensitivity analyses", sensitivity_table(res),
              "## Per-target diagnostics (descriptive)", "\n".join(diag)]
     return "\n\n".join(parts) + "\n"
