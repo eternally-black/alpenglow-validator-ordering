@@ -2,18 +2,145 @@
  "reward_cost": {
   "truth": "every target orders by reward \u00f7 (cost + 1): the truth Studies 1-2 point to",
   "reps": 100,
-  "campaigns_with_any_support": 100,
-  "any_support_ci95": [
-   0.9637833073548235,
-   1.0
-  ],
+  "slot_ms": 198.0,
+  "any_support": {
+   "k": 100,
+   "n": 100,
+   "share": 1.0,
+   "ci95": [
+    0.9637833073548235,
+    1.0
+   ]
+  },
+  "gate_passed": {
+   "k": 100,
+   "n": 100,
+   "share": 1.0,
+   "ci95": [
+    0.9637833073548235,
+    1.0
+   ]
+  },
+  "gate_passed_unconditionally": {
+   "k": 39,
+   "n": 100,
+   "share": 0.39,
+   "ci95": [
+    0.294010414853417,
+    0.49268552036763646
+   ]
+  },
   "identified": {
-   "7QQGNm3p": 1.0,
-   "HEL1USMZ": 1.0,
-   "EvnRmnMr": 1.0,
-   "DRpbCBMx": 1.0,
-   "Fd7btgyS": 1.0,
-   "JUPiTERr": 1.0
+   "7QQGNm3p": {
+    "k": 39,
+    "n": 100,
+    "share": 0.39,
+    "ci95": [
+     0.294010414853417,
+     0.49268552036763646
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 26,
+    "n": 100,
+    "share": 0.26,
+    "ci95": [
+     0.17739443786765247,
+     0.3573120631001036
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 39,
+    "n": 100,
+    "share": 0.39,
+    "ci95": [
+     0.294010414853417,
+     0.49268552036763646
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 21,
+    "n": 100,
+    "share": 0.21,
+    "ci95": [
+     0.1349436957053291,
+     0.30291537935054064
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 18,
+    "n": 100,
+    "share": 0.18,
+    "ci95": [
+     0.11031122915326057,
+     0.26947708596681186
+    ]
+   },
+   "JUPiTERr": {
+    "k": 23,
+    "n": 100,
+    "share": 0.23,
+    "ci95": [
+     0.15173161130104748,
+     0.3248587327751031
+    ]
+   }
+  },
+  "identified_assuming_selection": {
+   "7QQGNm3p": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "JUPiTERr": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   }
   },
   "rates": {
    "H4-7QQGNm3p": {
@@ -49,17 +176,17 @@
    "H4-DRpbCBMx": {
     "supported": 1.0,
     "withdrawn": 0.0,
-    "median_n": 23
+    "median_n": 25
    },
    "H5-DRpbCBMx": {
     "supported": 1.0,
     "withdrawn": 0.0,
-    "median_n": 22
+    "median_n": 25
    },
    "H4-Fd7btgyS": {
     "supported": 1.0,
     "withdrawn": 0.0,
-    "median_n": 23
+    "median_n": 25
    },
    "H5-Fd7btgyS": {
     "supported": 1.0,
@@ -74,29 +201,362 @@
    "H5-JUPiTERr": {
     "supported": 1.0,
     "withdrawn": 0.0,
+    "median_n": 25
+   }
+  }
+ },
+ "reward_cost_observed_landing": {
+  "truth": "every target orders by reward \u00f7 (cost + 1), each member landing at its target's Study 2 rate for small probes (Agave, Jito 1.00; Firedancer 0.94; Harmonic 0.93-0.94; BAM 0.89) instead of 0.90",
+  "reps": 100,
+  "slot_ms": 198.0,
+  "any_support": {
+   "k": 100,
+   "n": 100,
+   "share": 1.0,
+   "ci95": [
+    0.9637833073548235,
+    1.0
+   ]
+  },
+  "gate_passed": {
+   "k": 100,
+   "n": 100,
+   "share": 1.0,
+   "ci95": [
+    0.9637833073548235,
+    1.0
+   ]
+  },
+  "gate_passed_unconditionally": {
+   "k": 97,
+   "n": 100,
+   "share": 0.97,
+   "ci95": [
+    0.91482394702572,
+    0.9937700284616936
+   ]
+  },
+  "identified": {
+   "7QQGNm3p": {
+    "k": 97,
+    "n": 100,
+    "share": 0.97,
+    "ci95": [
+     0.91482394702572,
+     0.9937700284616936
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 97,
+    "n": 100,
+    "share": 0.97,
+    "ci95": [
+     0.91482394702572,
+     0.9937700284616936
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 97,
+    "n": 100,
+    "share": 0.97,
+    "ci95": [
+     0.91482394702572,
+     0.9937700284616936
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 33,
+    "n": 100,
+    "share": 0.33,
+    "ci95": [
+     0.23919853462260174,
+     0.43117275077756323
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 82,
+    "n": 100,
+    "share": 0.82,
+    "ci95": [
+     0.7305229140331881,
+     0.8896887708467395
+    ]
+   },
+   "JUPiTERr": {
+    "k": 85,
+    "n": 100,
+    "share": 0.85,
+    "ci95": [
+     0.7646924998510451,
+     0.9135456143583515
+    ]
+   }
+  },
+  "identified_assuming_selection": {
+   "7QQGNm3p": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "JUPiTERr": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   }
+  },
+  "rates": {
+   "H4-7QQGNm3p": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 30
+   },
+   "H5-7QQGNm3p": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 30
+   },
+   "H4-HEL1USMZ": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 30
+   },
+   "H5-HEL1USMZ": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 30
+   },
+   "H4-EvnRmnMr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 26
+   },
+   "H5-EvnRmnMr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 26
+   },
+   "H4-DRpbCBMx": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
     "median_n": 24
+   },
+   "H5-DRpbCBMx": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H4-Fd7btgyS": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 26
+   },
+   "H5-Fd7btgyS": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 26
+   },
+   "H4-JUPiTERr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 26
+   },
+   "H5-JUPiTERr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
    }
   }
  },
  "weak": {
   "truth": "half of each target's windows order by reward \u00f7 cost, the other half FIFO (L \u2248 0.75)",
   "reps": 100,
-  "campaigns_with_any_support": 73,
-  "any_support_ci95": [
-   0.6319837270910251,
-   0.8139335777092593
-  ],
+  "slot_ms": 198.0,
+  "any_support": {
+   "k": 74,
+   "n": 100,
+   "share": 0.74,
+   "ci95": [
+    0.6426879368998963,
+    0.8226055621323475
+   ]
+  },
+  "gate_passed": {
+   "k": 8,
+   "n": 100,
+   "share": 0.08,
+   "ci95": [
+    0.0351715625181628,
+    0.15155763586442095
+   ]
+  },
+  "gate_passed_unconditionally": {
+   "k": 0,
+   "n": 100,
+   "share": 0.0,
+   "ci95": [
+    0.0,
+    0.03621669264517641
+   ]
+  },
   "identified": {
-   "7QQGNm3p": 0.24,
-   "HEL1USMZ": 0.05,
-   "EvnRmnMr": 0.17,
-   "DRpbCBMx": 0.04,
-   "Fd7btgyS": 0.03,
-   "JUPiTERr": 0.06
+   "7QQGNm3p": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "JUPiTERr": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   }
+  },
+  "identified_assuming_selection": {
+   "7QQGNm3p": {
+    "k": 24,
+    "n": 100,
+    "share": 0.24,
+    "ci95": [
+     0.16022461317144718,
+     0.3357354892709986
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 4,
+    "n": 100,
+    "share": 0.04,
+    "ci95": [
+     0.011004493986188198,
+     0.09925715671265992
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 15,
+    "n": 100,
+    "share": 0.15,
+    "ci95": [
+     0.08645438564164859,
+     0.23530750014895488
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 5,
+    "n": 100,
+    "share": 0.05,
+    "ci95": [
+     0.016431879182052155,
+     0.11283491110546275
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 4,
+    "n": 100,
+    "share": 0.04,
+    "ci95": [
+     0.011004493986188198,
+     0.09925715671265992
+    ]
+   },
+   "JUPiTERr": {
+    "k": 6,
+    "n": 100,
+    "share": 0.06,
+    "ci95": [
+     0.022334886071316368,
+     0.12602993458082296
+    ]
+   }
   },
   "rates": {
    "H4-7QQGNm3p": {
-    "supported": 0.42,
+    "supported": 0.41,
     "withdrawn": 0.0,
     "median_n": 24
    },
@@ -106,53 +566,53 @@
     "median_n": 24
    },
    "H4-HEL1USMZ": {
-    "supported": 0.08,
-    "withdrawn": 0.9,
+    "supported": 0.07,
+    "withdrawn": 0.92,
     "median_n": 24
    },
    "H5-HEL1USMZ": {
-    "supported": 0.06,
-    "withdrawn": 0.9,
+    "supported": 0.05,
+    "withdrawn": 0.92,
     "median_n": 24
    },
    "H4-EvnRmnMr": {
-    "supported": 0.35,
+    "supported": 0.37,
     "withdrawn": 0.0,
     "median_n": 24
    },
    "H5-EvnRmnMr": {
-    "supported": 0.31,
+    "supported": 0.29,
     "withdrawn": 0.0,
     "median_n": 24
    },
    "H4-DRpbCBMx": {
     "supported": 0.05,
-    "withdrawn": 0.9,
-    "median_n": 23
+    "withdrawn": 0.92,
+    "median_n": 25
    },
    "H5-DRpbCBMx": {
     "supported": 0.06,
-    "withdrawn": 0.9,
-    "median_n": 23
+    "withdrawn": 0.92,
+    "median_n": 24
    },
    "H4-Fd7btgyS": {
-    "supported": 0.05,
-    "withdrawn": 0.9,
+    "supported": 0.06,
+    "withdrawn": 0.92,
     "median_n": 24
    },
    "H5-Fd7btgyS": {
-    "supported": 0.05,
-    "withdrawn": 0.9,
-    "median_n": 23
+    "supported": 0.04,
+    "withdrawn": 0.92,
+    "median_n": 24
    },
    "H4-JUPiTERr": {
-    "supported": 0.08,
-    "withdrawn": 0.9,
+    "supported": 0.06,
+    "withdrawn": 0.92,
     "median_n": 24
    },
    "H5-JUPiTERr": {
     "supported": 0.06,
-    "withdrawn": 0.9,
+    "withdrawn": 0.92,
     "median_n": 24
    }
   }
@@ -160,18 +620,145 @@
  "cost_only": {
   "truth": "every target orders by requested cost alone, ties random: every hypothesis false (C5 exactly at its null)",
   "reps": 100,
-  "campaigns_with_any_support": 1,
-  "any_support_ci95": [
-   0.0002531460329774206,
-   0.054459385392080645
-  ],
+  "slot_ms": 198.0,
+  "any_support": {
+   "k": 1,
+   "n": 100,
+   "share": 0.01,
+   "ci95": [
+    0.0002531460329774206,
+    0.054459385392080645
+   ]
+  },
+  "gate_passed": {
+   "k": 0,
+   "n": 100,
+   "share": 0.0,
+   "ci95": [
+    0.0,
+    0.03621669264517641
+   ]
+  },
+  "gate_passed_unconditionally": {
+   "k": 0,
+   "n": 100,
+   "share": 0.0,
+   "ci95": [
+    0.0,
+    0.03621669264517641
+   ]
+  },
   "identified": {
-   "7QQGNm3p": 0.0,
-   "HEL1USMZ": 0.0,
-   "EvnRmnMr": 0.0,
-   "DRpbCBMx": 0.0,
-   "Fd7btgyS": 0.0,
-   "JUPiTERr": 0.0
+   "7QQGNm3p": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "JUPiTERr": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   }
+  },
+  "identified_assuming_selection": {
+   "7QQGNm3p": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "JUPiTERr": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   }
   },
   "rates": {
    "H4-7QQGNm3p": {
@@ -207,17 +794,17 @@
    "H4-DRpbCBMx": {
     "supported": 0.0,
     "withdrawn": 1.0,
-    "median_n": 23
+    "median_n": 25
    },
    "H5-DRpbCBMx": {
     "supported": 0.0,
     "withdrawn": 1.0,
-    "median_n": 22
+    "median_n": 25
    },
    "H4-Fd7btgyS": {
     "supported": 0.0,
     "withdrawn": 1.0,
-    "median_n": 23
+    "median_n": 25
    },
    "H5-Fd7btgyS": {
     "supported": 0.0,
@@ -232,25 +819,152 @@
    "H5-JUPiTERr": {
     "supported": 0.0,
     "withdrawn": 1.0,
-    "median_n": 24
+    "median_n": 25
    }
   }
  },
  "control_fails": {
   "truth": "Agave orders by cost alone, the rest by reward \u00f7 cost: the positive-control gate must withdraw the non-control targets",
   "reps": 100,
-  "campaigns_with_any_support": 100,
-  "any_support_ci95": [
-   0.9637833073548235,
-   1.0
-  ],
+  "slot_ms": 198.0,
+  "any_support": {
+   "k": 100,
+   "n": 100,
+   "share": 1.0,
+   "ci95": [
+    0.9637833073548235,
+    1.0
+   ]
+  },
+  "gate_passed": {
+   "k": 0,
+   "n": 100,
+   "share": 0.0,
+   "ci95": [
+    0.0,
+    0.03621669264517641
+   ]
+  },
+  "gate_passed_unconditionally": {
+   "k": 0,
+   "n": 100,
+   "share": 0.0,
+   "ci95": [
+    0.0,
+    0.03621669264517641
+   ]
+  },
   "identified": {
-   "7QQGNm3p": 0.0,
-   "HEL1USMZ": 0.0,
-   "EvnRmnMr": 1.0,
-   "DRpbCBMx": 0.0,
-   "Fd7btgyS": 0.0,
-   "JUPiTERr": 0.0
+   "7QQGNm3p": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 62,
+    "n": 100,
+    "share": 0.62,
+    "ci95": [
+     0.5174606942491935,
+     0.7152325238585204
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "JUPiTERr": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   }
+  },
+  "identified_assuming_selection": {
+   "7QQGNm3p": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   },
+   "JUPiTERr": {
+    "k": 0,
+    "n": 100,
+    "share": 0.0,
+    "ci95": [
+     0.0,
+     0.03621669264517641
+    ]
+   }
   },
   "rates": {
    "H4-7QQGNm3p": {
@@ -286,17 +1000,17 @@
    "H4-DRpbCBMx": {
     "supported": 0.0,
     "withdrawn": 1.0,
-    "median_n": 23
+    "median_n": 25
    },
    "H5-DRpbCBMx": {
     "supported": 0.0,
     "withdrawn": 1.0,
-    "median_n": 22
+    "median_n": 25
    },
    "H4-Fd7btgyS": {
     "supported": 0.0,
     "withdrawn": 1.0,
-    "median_n": 23
+    "median_n": 25
    },
    "H5-Fd7btgyS": {
     "supported": 0.0,
@@ -311,7 +1025,213 @@
    "H5-JUPiTERr": {
     "supported": 0.0,
     "withdrawn": 1.0,
+    "median_n": 25
+   }
+  }
+ },
+ "additive": {
+  "truth": "every target orders by reward \u2212 cost: a key outside the registered candidates that ranks every registered pair as reward \u00f7 cost does, so Study 3 cannot tell them apart",
+  "reps": 100,
+  "slot_ms": 198.0,
+  "any_support": {
+   "k": 100,
+   "n": 100,
+   "share": 1.0,
+   "ci95": [
+    0.9637833073548235,
+    1.0
+   ]
+  },
+  "gate_passed": {
+   "k": 100,
+   "n": 100,
+   "share": 1.0,
+   "ci95": [
+    0.9637833073548235,
+    1.0
+   ]
+  },
+  "gate_passed_unconditionally": {
+   "k": 39,
+   "n": 100,
+   "share": 0.39,
+   "ci95": [
+    0.294010414853417,
+    0.49268552036763646
+   ]
+  },
+  "identified": {
+   "7QQGNm3p": {
+    "k": 39,
+    "n": 100,
+    "share": 0.39,
+    "ci95": [
+     0.294010414853417,
+     0.49268552036763646
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 26,
+    "n": 100,
+    "share": 0.26,
+    "ci95": [
+     0.17739443786765247,
+     0.3573120631001036
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 39,
+    "n": 100,
+    "share": 0.39,
+    "ci95": [
+     0.294010414853417,
+     0.49268552036763646
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 21,
+    "n": 100,
+    "share": 0.21,
+    "ci95": [
+     0.1349436957053291,
+     0.30291537935054064
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 18,
+    "n": 100,
+    "share": 0.18,
+    "ci95": [
+     0.11031122915326057,
+     0.26947708596681186
+    ]
+   },
+   "JUPiTERr": {
+    "k": 23,
+    "n": 100,
+    "share": 0.23,
+    "ci95": [
+     0.15173161130104748,
+     0.3248587327751031
+    ]
+   }
+  },
+  "identified_assuming_selection": {
+   "7QQGNm3p": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "HEL1USMZ": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "EvnRmnMr": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "DRpbCBMx": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "Fd7btgyS": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   },
+   "JUPiTERr": {
+    "k": 100,
+    "n": 100,
+    "share": 1.0,
+    "ci95": [
+     0.9637833073548235,
+     1.0
+    ]
+   }
+  },
+  "rates": {
+   "H4-7QQGNm3p": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H5-7QQGNm3p": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H4-HEL1USMZ": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
     "median_n": 24
+   },
+   "H5-HEL1USMZ": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H4-EvnRmnMr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H5-EvnRmnMr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H4-DRpbCBMx": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H5-DRpbCBMx": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H4-Fd7btgyS": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
+   },
+   "H5-Fd7btgyS": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H4-JUPiTERr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 24
+   },
+   "H5-JUPiTERr": {
+    "supported": 1.0,
+    "withdrawn": 0.0,
+    "median_n": 25
    }
   }
  }

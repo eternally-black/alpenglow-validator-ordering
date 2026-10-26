@@ -92,7 +92,7 @@ def planned_n(design: Path, h: dict) -> int:
     for line in design.read_text().splitlines():
         plan = json.loads(line)
         if plan["target_identity"] in ids:
-            n += sum(1 for q in plan["pairs"] if q["kind"] == h["pair_kind"] and q["race_dt_ms"] == h["dt_ms"]
+            n += sum(1 for q in plan["pairs"] if q["kind"] == h["pair_kind"] and q.get("race_dt_ms") == h["dt_ms"]
                      and (h["pair_kind"] != "race" or q["first_sent_label"] == "lo"))
     return n
 
@@ -108,6 +108,35 @@ def study2_fields(targets: list[dict], design: Path) -> dict:
     return {"study": 2, "hypotheses": hyps, "carry_over_lamports": STUDY1_COST_LAMPORTS, "analysis_tree": analysis_tree()}
 
 
+#: the committed results whose per-target published claims Study 3's identification verdict combines with (§5)
+PRIOR_RESULTS = {"study1": (Path("data/derived/results.json"), ()),
+                 "study2": (Path("data/derived/study2/results.json"), ("replication",))}
+
+
+def prior_claims(targets: list[dict]) -> tuple[dict, dict]:
+    """Study 1 and Study 2 published claims per core target, frozen with their source files' hashes and commit, so the
+    identification verdict cannot depend on files edited after the freeze."""
+    head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    claims: dict[str, dict] = {}
+    provenance = {}
+    for study, (path, keys) in PRIOR_RESULTS.items():
+        dirty = subprocess.run(["git", "status", "--porcelain", "--", str(path)], capture_output=True, text=True, check=True)
+        if dirty.stdout.strip():
+            raise SystemExit(f"{path} has uncommitted changes; commit it before freezing")
+        # The committed blob, byte for byte what a clone holds (a Windows checkout may carry CRLF in the working copy).
+        blob = subprocess.run(["git", "show", f"HEAD:{path.as_posix()}"], capture_output=True, check=True).stdout
+        doc = json.loads(blob)
+        for k in keys:
+            doc = doc[k]
+        for t in (t for t in targets if t.get("tier", "core") == "core"):
+            v = doc["validators"].get(f"{t['identity']}|{t['client_id']}|{t['ingress']}")
+            if v is None:
+                raise SystemExit(f"{path}: no {study} claim for {t['identity']} ({t['client_id']}, {t['ingress']})")
+            claims.setdefault(t["identity"], {})[study] = v["published_claim"]
+        provenance[study] = {"path": path.as_posix(), "sha256": hashlib.sha256(blob).hexdigest(), "commit": head}
+    return claims, provenance
+
+
 def study3_fields(targets: list[dict], design: Path) -> dict:
     from itb_analysis import study3  # PYTHONPATH=analysis
 
@@ -116,8 +145,9 @@ def study3_fields(targets: list[dict], design: Path) -> dict:
         h["planned_n"] = planned_n(design, h | {"dt_ms": None})
         if h["planned_n"] == 0:
             raise SystemExit(f"{h['id']}: the design plans no pair for it")
-    return {"study": 3, "hypotheses": hyps, "carry_over_lamports": STUDIES_1_2_COST_LAMPORTS,
-            "analysis_tree": analysis_tree()}
+    claims, provenance = prior_claims(targets)
+    return {"study": 3, "hypotheses": hyps, "prior_claims": claims, "prior_claims_source": provenance,
+            "carry_over_lamports": STUDIES_1_2_COST_LAMPORTS, "analysis_tree": analysis_tree()}
 
 
 def main() -> None:

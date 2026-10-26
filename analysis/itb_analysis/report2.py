@@ -94,22 +94,41 @@ def markdown_summary(res: dict) -> str:
     return "\n\n".join(parts) + "\n"
 
 
+def _short(claim: str | None) -> str | None:
+    return "withdrawn" if claim and claim.startswith("withdrawn") else claim
+
+
 def study3_summary(res: dict) -> str:
-    """Study 3 tables: the identification verdict per core target, then H4/H5 and their sensitivity analyses."""
+    """Study 3 tables: the identification verdict per core target, then H4/H5, their sensitivity analyses and the
+    per-target diagnostics."""
     ident = ["| Target | Client | Ingress | Study 1 | Study 2 | C4: Y before A | C5: hi before A | Verdict (PREREGISTRATION-3 §5) |",
              "|---|---|---|---|---|---|---|---|"]
     for r in res.get("identification", []):
-        verdict = f"**{r['verdict']}**" if r["reward_cost_identified"] else r["verdict"]
+        verdict = f"**{r['verdict']}**" if r["reward_cost_identified_assuming_selection"] else r["verdict"]
         ident.append(f"| `{r['identity'][:8]}` | {NAMES.get(r['client_id'], r['client_id'])} | {r['ingress']} | {r['study1_claim']} | "
-                     f"{r['study2_claim']} | {r['c4']} | {r['c5']} | {verdict} |")
-    hyp = ["| ID | Estimand | k/n | Estimate [95 % CI] | Holm p | Published claim |", "|---|---|---|---|---|---|"]
+                     f"{r['study2_claim']} | {_short(r['c4'])} | {_short(r['c5'])} | {verdict} |")
+    hyp = ["| ID | Estimand | k/n | Estimate [95 % CI] | Holm p | Incomplete pairs | Windows evaluable / attempted | Published claim |",
+           "|---|---|---|---|---|---|---|---|"]
+    funnel = res.get("funnel_by_target", {})
     for h in res.get("hypotheses", []):
         est = "–" if not h["n"] else f"{h['estimate']:.2f} [{h['ci95'][0]:.2f}, {h['ci95'][1]:.2f}]"
         sym = "P(Y before A)" if h["pair_kind"] == "c4" else "P(hi before A)"
-        hyp.append(f"| `{h['id']}` | {sym} > 0.5 | {h['k']}/{h['n']} | {est} | {_p(h['p_holm'])} | **{h['published_claim']}** |")
-    order = ", ".join(f"{k.upper()}: first-sent first {v['first_sent_first']}/{v['n']}" for k, v in res.get("send_order", {}).items())
-    parts = ["## Identification (Study 3 with Studies 1 and 2)", "\n".join(ident), "## Hypotheses H4 and H5", "\n".join(hyp),
-             "## Sensitivity analyses", sensitivity_table(res)]
-    if order:
-        parts += ["## Send order (descriptive)", order]
+        f = funnel.get(h["groups"][0]["identity"], {"windows": 0, "evaluable": 0})
+        hyp.append(f"| `{h['id']}` | {sym} > 0.5 | {h['k']}/{h['n']} | {est} | {_p(h['p_holm'])} | {h['incomplete_pairs']} | "
+                   f"{f['evaluable']}/{f['windows']} | **{h['published_claim']}** |")
+    pc = res.get("positive_controls", {})
+    gate = ("**failed** for " + ", ".join(f"`{t[:8]}`" for t in pc["failed"]) + ": every other target's claims are withdrawn"
+            if pc.get("failed") else "passed" + (" under the selection assumption (" + ", ".join(f"`{t[:8]}`" for t in pc["conditional"])
+                                                  + "): every verdict carries the qualifier" if pc.get("conditional") else ""))
+    diag = ["| Target | Client | Ingress | Contrast | Group | Evaluable pairs | x landed | A landed | Both landed | First sent first |",
+            "|---|---|---|---|---|---|---|---|---|---|"]
+    for d in res.get("diagnostics", []):
+        (xl, xv), (_, av) = [(k, v) for k, v in d["landed"].items() if k != "A"][0], ("A", d["landed"]["A"])
+        group = "confirmatory" if d["confirmatory_group"] else "off-group (exploratory)"
+        diag.append(f"| `{d['target_identity'][:8]}` | {NAMES.get(d['client_id'], d['client_id'])} | {d['ingress']} | "
+                    f"{d['pair_kind'].upper()} | {group} | {d['evaluable_pairs']} | {xl} {xv[0]}/{xv[1]} | A {av[0]}/{av[1]} | "
+                    f"{d['both_landed']} | {d['first_sent_first'][0]}/{d['first_sent_first'][1]} |")
+    parts = ["## Identification (Study 3 with Studies 1 and 2)", f"Positive-control gate: {gate}.", "\n".join(ident),
+             "## Hypotheses H4 and H5", "\n".join(hyp), "## Sensitivity analyses", sensitivity_table(res),
+             "## Per-target diagnostics (descriptive)", "\n".join(diag)]
     return "\n\n".join(parts) + "\n"

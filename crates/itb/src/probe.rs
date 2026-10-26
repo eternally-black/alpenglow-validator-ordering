@@ -120,9 +120,9 @@ pub mod library {
     pub const A_PRIME: Template = Template::new(1_000, 1_000_000, MIB_64);
     pub const HI: Template = Template::new(1_000, 3_000_000, KIB_32);
     pub const LO: Template = Template::new(1_000, 1_000_000, MIB_64);
-    /// Study 3: B's limits at four times its price. It costs more than A but pays more per cost unit, so ordering by
-    /// cost alone and reward ÷ cost disagree on Y vs A.
-    pub const Y: Template = Template::new(3_000, 2_000_000, KIB_32);
+    /// Study 3: costs more than A (2,835 vs 2,335) but pays more per cost unit under any share of the signature fee in
+    /// the reward (none, the unburned half, all of it), so ordering by cost alone and reward ÷ cost disagree on Y vs A.
+    pub const Y: Template = Template::new(1_500, 4_000_000, KIB_32);
 
     pub const ALL: [(&str, Template); 6] = [
         ("A", A),
@@ -193,7 +193,7 @@ mod tests {
             (B, 1_500, 6_500, 4_335, 922_509),
             (A_PRIME, 1_000, 6_000, 18_711, 187_045),
             (HI, 3_000, 8_000, 2_335, 2_354_452),
-            (Y, 6_000, 11_000, 4_335, 1_960_332),
+            (Y, 6_000, 11_000, 2_835, 2_997_179),
         ];
         for (t, prio, total, cost, priority) in golden {
             assert_eq!(t.priority_fee(), prio, "{t:?}");
@@ -234,6 +234,14 @@ mod tests {
                 "{r:?} was rejected by C2 / C3 in Studies 1-2"
             );
         }
+        // Whatever share of the 5,000-lamport signature fee a scheduler counts as reward, Y and hi still beat A per
+        // cost unit.
+        for base in [0u64, 2_500, 5_000] {
+            let per_cost = |t: &Template| (base + t.priority_fee()) as f64 / (t.cost() + 1) as f64;
+            assert!(per_cost(&Y) > per_cost(&A), "base share {base}");
+            assert!(per_cost(&HI) > per_cost(&A), "base share {base}");
+        }
+        assert!(Y.cost() > A.cost() && HI.cost() == A.cost());
     }
 
     #[test]

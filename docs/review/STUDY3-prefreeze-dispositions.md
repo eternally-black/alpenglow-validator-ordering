@@ -1,0 +1,40 @@
+# Study 3 pre-freeze review — dispositions
+
+Two independent reviews of the Study 3 plan, pre-registration and code ran on 2026-10-26, before anything was frozen:
+- GPT, through the user's `codex exec` orchestrator: [STUDY3-prefreeze-gpt.md](STUDY3-prefreeze-gpt.md), from the
+  packet [STUDY3-prefreeze-packet.md](STUDY3-prefreeze-packet.md);
+- DeepSeek, through its API, with the same files (its answer is summarised below).
+
+Both were advisory: every change was made by the project's author. Each finding below is either fixed or disclosed,
+and none is left open.
+
+## GPT
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | BLOCKER | `probe.rs` already had the new Y (L 1,500, 4,000,000 µlamports/CU), but the documents, the design and the fixtures still had the first draft (L 3,000, 2,000,000) | **Fixed.** One Y everywhere: PREREGISTRATION-3 §2 and STUDY3-PLAN (cost 2,835, reward 8,500, priority 2,997,179). `design/design-study3.jsonl` was regenerated with the final binary (`bfaa83b6…`), and so was the test fixture. A new mainnet dry run tests the final design; the 08:53 UTC dry run is logged as testing the first draft (CAMPAIGN-LOG). |
+| 2 | BLOCKER | "H5 supported, H4 not" turned a non-significant C4 into "C4 rejects reward ÷ cost" | **Fixed.** The verdict is now "the equal-cost reward effect is supported; C4 is inconclusive". Only when C4's whole exact interval lies below 0.5 does a note add that the data are compatible with cost first and reward only between equal costs, and the note is marked descriptive. PREREGISTRATION-3 §5 has the row; `test_every_verdict_row_of_the_preregistration` checks it. |
+| 3 | SHOULD-FIX | The result identifies a key among a finite candidate set, not the formula. An additive key, reward − λ·cost, survives. The verdict also assumes the key was stable across the three studies | **Fixed and disclosed.** Every identified verdict reads "among the registered candidates", in the code (`study3.identification`) and in §5. §1 defines cost alone as ascending requested cost. §10 names the additive counterexample with its scores (λ = 1: A 1,165, Y 5,665, hi 3,165, B −335, A′ −15,211) and the cross-study stability assumption. The operating characteristics include an `additive` scenario, which Study 3 cannot tell apart from reward ÷ cost ([POWER-3.md](../POWER-3.md)). |
+| 4 | SHOULD-FIX | The selection qualifier did not reach every derived verdict, and a control supported only under the selection assumption still let other targets be identified without the qualifier | **Fixed.** The qualifier now reaches every verdict row. `study3.control_state` separates three gate states: failed, passed conditionally (some control support assumes selection) and passed. A conditional pass puts "(assumes selection)" on every target's verdict. Two booleans per target: `reward_cost_identified` (robust) and `reward_cost_identified_assuming_selection`. §5 and §6 match the code; `test_a_conditional_positive_control_qualifies_every_verdict` covers the case. |
+| 5 | SHOULD-FIX | POWER-3 no longer matched the decision code, and the simulator used 130 ms slots while the design avoids 198 ms boundaries | **Fixed.** The simulator's slot length is now a parameter (`Params.slot_ms`; the default is unchanged, so Studies 1 and 2 reproduce). The 100 replicates per scenario were rerun at 198 ms with the final design and verdict code. They report robust identification, identification assuming selection, and both gate rates, each with a Clopper–Pearson interval over the replicates. A scenario calibrated to each target's Study 2 landing rate was added beside the 0.90 stress case. Identified, assuming selection: 1.00 for every target in both. Robust to selection: 0.18–0.39 at 0.90 landing, and 0.82–0.97 at the observed rates, except BAM at 0.33, whose per-member draw is pessimistic. POWER-3 calls the results simulation results, not guaranteed power. §4 states that the exact test assumes independent windows and that Holm tolerates dependence between hypotheses. |
+| 6 | SHOULD-FIX | The verdict read whichever Study 1 and Study 2 result files were present | **Fixed.** `scripts/freeze.py` freezes each core target's Study 1 and Study 2 published claims in the manifest (`prior_claims`), with the source files' SHA-256 and commit (`prior_claims_source`). It refuses to freeze if those files have uncommitted changes. `study3.identification` reads only the manifest. |
+| 7 | SHOULD-FIX | A run with no informative pair crashed (a pair table without columns), and with no run selected no rows were emitted | **Fixed.** `study3._frame` turns any empty or column-less pair table into a typed empty frame. All twelve hypotheses are emitted with n = 0, p = 1 and "not evaluable", together with the control-gate state, every identification row and the funnel. `test_an_empty_run_still_emits_every_hypothesis_and_verdict` covers no run, an empty frame and a column-less frame, and renders the report. |
+| 8 | SHOULD-FIX | Diagnostics were pooled across targets and groups; there were no off-group rows and no landing by label | **Fixed.** `study3.diagnostics` reports per target, per observed (client, ingress) group and per contrast: windows, evaluable windows, landing per label (numerator and denominator), both landed and send order. Off-group rows are marked exploratory. Beside every claim, the report shows the target's evaluable and attempted windows (`funnel_by_target`, with exclusion reasons), which lie outside the selection bound. PREREGISTRATION-3 §9 describes all of it. |
+
+## DeepSeek
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | BLOCKER | With the first-draft Y, total fee ÷ (cost + 1) puts A first on C4 (6,000/2,336 > 11,000/4,336), yet C5 puts hi first; the code would then have said "cost alone is not rejected" | **Fixed.** This finding is why Y was changed before freezing. With Y = (1,500, 4,000,000), Y wins C4 whenever b < 10·c₀ + 9,000, where b is the counted share of the signature fee and c₀ ≥ 0 the cost overhead the two probes share. That covers the priority fee alone, Agave's reward and the total fee under any overhead (PREREGISTRATION-3 §2). `probe.rs` checks b ∈ {0, 2,500, 5,000}. The "H5 supported, H4 not" case has its own verdict (GPT 2). |
+| 2 | SHOULD-FIX | Priority fee alone ÷ (cost + 1) gives the same pattern as Agave's reward | **Disclosed.** With one signature per probe, every reward variant ranks the probes the same way. §10 says Study 3 does not separate them, and the verdict is scoped to the registered candidates. |
+| 3 | SHOULD-FIX | Support that holds only under the selection assumption still produced an unqualified identification | **Fixed** (GPT 4): separate robust and conditional booleans, and the qualifier carried through every verdict. |
+| 4 | SHOULD-FIX | Under cost alone, C5 sits at 0.5 only if ties are broken independently of the label: a tie-break by transaction id or account could favour hi | **Fixed by design and stated.** §2 lists why the label cannot line up with any tie-break key: send order balanced, burst order shuffled, one shared lock per pair, payers drawn per window in a seeded random order, random signatures. A tie-break by reward is the reward entering the key, which C5 is meant to detect. |
+| 5 | SHOULD-FIX | The verdict row "both supported, an earlier claim not `reward_cost`" was in the code but not in §5 | **Fixed.** §5 has the row. |
+| 6 | NIT | `planned_n` read `q["race_dt_ms"]` and would fail on pairs without it | **Fixed** (`q.get`). The freeze refuses any hypothesis with no planned pair. |
+| 7 | NIT | The budget text should say that payer funding is not counted gross against the cap | **Fixed.** STUDY3-PLAN: the SOL moved to the payers and swept back is not spent; only transaction fees count against the cap. |
+
+## Not changed
+
+- **The strict positive-control gate.** GPT (finding 5) notes that requiring all four control hypotheses costs power
+  under weak effects. It stays: a gate that withdraws too much errs on the safe side. POWER-3 reports how often the
+  gate passes in each scenario.

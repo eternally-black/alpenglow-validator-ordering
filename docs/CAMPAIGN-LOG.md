@@ -291,3 +291,36 @@ or scoped in the text before freezing, each fix with a test that fails on the re
 - **Total cost of both studies:** 24,717,500 + 18,208,500 = **42,926,000 lamports (0.0429 SOL)**, under the 0.05 SOL cap.
 - The Study 2 keypairs (`keys-study2/`, never in git) are deleted by the wallet owner after this entry, as are
   Study 1's (`keys/`).
+
+## 2026-10-26 08:53–08:56 UTC — Study 3 prepared: first dry run, wallet, ledger
+
+- **Why Study 3:** the final review found that Studies 1 and 2 cannot separate reward ÷ (cost + 1) from ordering by
+  requested cost alone ([STUDY3-PLAN.md](STUDY3-PLAN.md)). Two new contrasts, C4 (Y vs A) and C5 (hi vs A), separate
+  them.
+- **Wallet** (08:55 UTC): a new master `DrMFg9FgLhiJqD5BjiqDVK7cobZU8Web8H6DGbdbDxex` and 24 payers in `keys-study3/` (never in git).
+- **Ledger:** `state/ledger-study3.sqlite`, opened under the compiled 0.05 SOL cap with Studies 1 and 2's
+  42,926,000 lamports as a carry-over. Headroom: 7,074,000 lamports.
+- **First dry run** (08:53 UTC, `20261026T085305Z-s1-dry-1cf9`, 8 windows, clean). It tested the **first draft** of the design,
+  whose Y was (L 3,000, 2,000,000 µlamports/CU). That design was withdrawn before freezing (next entry); the dry run
+  does not count for the final design.
+
+## 2026-10-26 09:00–09:35 UTC — Study 3 pre-freeze review and final design
+
+- **Reviews:** GPT ([STUDY3-prefreeze-gpt.md](review/STUDY3-prefreeze-gpt.md)) and DeepSeek. All findings are fixed
+  or disclosed ([STUDY3-prefreeze-dispositions.md](review/STUDY3-prefreeze-dispositions.md)). The main changes:
+  - **Y is now (L 1,500, 4,000,000 µlamports/CU):** cost 2,835, priority 2,997,179. The first-draft Y lost C4 under
+    total fee ÷ cost. The new one wins it for any share of the signature fee counted as reward, under any shared
+    cost overhead.
+  - **Verdicts:** "H5 supported, H4 not" no longer reads as a rejection. Identification is scoped to the registered
+    candidates, and the selection qualifier reaches every verdict.
+  - **Freeze:** the Study 1 and Study 2 claims are frozen into the manifest.
+  - **Analysis:** an empty run yields all twelve hypotheses, and there are per-target diagnostics.
+- **Final design:** `design/design-study3.jsonl` (`itb design --study 3 --seed 20261026`, 192 windows, worst case
+  5,952,000 lamports), SHA-256 `bfaa83b62ac3b0987ce636367fdc8b638362942d65f571eacffc16542c60340d`. The frozen Study 1
+  and Study 2 designs still regenerate byte for byte.
+- **Final dry run** (09:33–09:34 UTC, `20261026T093300Z-s1-dry-9959`):
+  - ran with `--design-sha256` of the final design, the frozen execution parameters and budget `study3`; nothing was
+    signed or sent;
+  - 8 windows: Agave ×2, Firedancer ×2, Agave + Harmonic ×2, Jito-Solana, Firedancer + Harmonic;
+  - 32 probes (A 16, Y 8, hi 8), every window anchored, no failure;
+  - measured cadence 198.5 ms inside a window and 267.7 ms at the hand-over.

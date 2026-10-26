@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from itb_analysis import outcomes, study3
+from itb_analysis import outcomes, report2, study3
 from itb_analysis.load import load_designs, load_run
 from itb_analysis.sim import Params, simulate
 
@@ -22,6 +22,13 @@ CONTROLS = [AGAVE, FD]
 PERFECT = {"p_transport_error": 0.0, "p_unproduced": 0.0, "p_transition": 0.0}
 
 
+def _manifest(claim="reward_cost", specs=SPECS):
+    """The parts of a frozen Study 3 manifest the verdict reads: core targets and the frozen Study 1 / 2 claims."""
+    return {"core_targets": [{"identity": t["identity"], "client_id": t["client_id"], "ingress": t["ingress"]} for t in specs],
+            "prior_claims": {t["identity"]: {"study1": claim, "study2": claim} for t in specs},
+            "hypotheses": study3.hypotheses(specs), "positive_controls": CONTROLS}
+
+
 def _decide(tmp_path, name, scenarios, landing=1.0):
     params = Params(scenario="reward_cost_greedy", seed=13, landing=landing, target_scenarios=scenarios, **PERFECT)
     run = load_run(simulate(DESIGN, TARGETS, tmp_path / name, params, stage=1))
@@ -35,28 +42,25 @@ def test_reward_cost_schedulers_are_identified(tmp_path):
     decided, claims, pairs = _decide(tmp_path, "rc", {})
     assert pairs["evaluable"].all() and len(pairs) == 3 * 30 * 2
     assert {h["verdict"] for h in decided} == {"supported"} and all(h["selection_robust"] for h in decided)
-    manifest = {"core_targets": [{"identity": t["identity"], "client_id": t["client_id"], "ingress": t["ingress"]} for t in SPECS]}
-    prior = {s: {"validators": {f"{t['identity']}|{t['client_id']}|{t['ingress']}": {"published_claim": "reward_cost"}
-                                for t in SPECS}} for s in ("study1", "study2")}
-    rows = study3.identification(decided, claims, manifest, prior)
+    manifest = _manifest()
+    rows = study3.identification(decided, claims, manifest)
     assert [r["reward_cost_identified"] for r in rows] == [True, True, True]
-    assert {r["verdict"] for r in rows} == {"reward ÷ (cost + 1) identified"}
-    prior["study2"]["validators"][f"{HARM}|HarmonicAgave|harmonic_remote_tpu"]["published_claim"] = "partial:reward_cost"
-    assert study3.identification(decided, claims, manifest, prior)[2]["reward_cost_identified"] is False
+    assert {r["verdict"] for r in rows} == {"reward ÷ (cost + 1) identified among the registered candidates"}
+    manifest["prior_claims"][HARM]["study2"] = "partial:reward_cost"
+    assert study3.identification(decided, claims, manifest)[2]["reward_cost_identified"] is False
 
 
 def test_cost_only_schedulers_reject_the_reward_term(tmp_path):
     cost_only = {t: {"scenario": "cost_only_greedy", "tie": "random"} for t in (AGAVE, FD, HARM)}
     decided, claims, _ = _decide(tmp_path, "cost", cost_only)
-    manifest = {"core_targets": [{"identity": t["identity"], "client_id": t["client_id"], "ingress": t["ingress"]} for t in SPECS]}
-    prior = {s: {"validators": {f"{t['identity']}|{t['client_id']}|{t['ingress']}": {"published_claim": "reward_cost"}
-                                for t in SPECS}} for s in ("study1", "study2")}
-    rows = {r["identity"]: r for r in study3.identification(decided, claims, manifest, prior)}
-    assert rows[AGAVE]["verdict"].endswith("the order follows cost against reward (C4 interval below 0.5)")
+    rows = {r["identity"]: r for r in study3.identification(decided, claims, _manifest())}
+    assert rows[AGAVE]["verdict"] == ("the reward term is not shown; cost alone is not rejected. C4's interval lies below "
+                                      "0.5 (descriptive): the order follows cost against reward")
     c4 = {h["groups"][0]["identity"]: h for h in decided if h["pair_kind"] == "c4"}
     assert c4[AGAVE]["k"] == c4[FD]["k"] == 0, "buffered: both pending, cost alone always takes the cheaper A first"
     assert c4[HARM]["estimate"] < 0.2, "streaming: only a pass boundary between the two sends lets Y through"
     assert {h["verdict"] for h in decided} == {"not supported"}
+    assert not any(r["reward_cost_identified_assuming_selection"] for r in rows.values())
 
 
 def test_a_failed_positive_control_withdraws_the_other_targets(tmp_path):
@@ -65,17 +69,101 @@ def test_a_failed_positive_control_withdraws_the_other_targets(tmp_path):
     assert all(claims[i].startswith("withdrawn") for i in harm)
     fd = [h["id"] for h in decided if h["groups"][0]["identity"] == FD]
     assert all(claims[i] == "supported" for i in fd), "the controls keep their own claims"
-    manifest = {"core_targets": [{"identity": t["identity"], "client_id": t["client_id"], "ingress": t["ingress"]} for t in SPECS]}
-    rows = {r["identity"]: r for r in study3.identification(decided, claims, manifest, {})}
+    assert study3.control_state(decided, CONTROLS) == {"failed": [AGAVE], "conditional": []}
+    rows = {r["identity"]: r for r in study3.identification(decided, claims, _manifest())}
     assert rows[HARM]["verdict"] == "withdrawn: method check failed"
 
 
 def test_decision_rule_counts_incomplete_pairs_against():
     base = {"run_id": "r", "seq": 0, "target_identity": AGAVE, "client_id": "Agave", "ingress": "direct", "evaluable": True,
-            "pair_kind": "c4"}
+            "pair_kind": "c4", "x_label": "Y", "landed_x": True, "landed_y": True, "same_slot": False,
+            "first_sent_first_cc": 1.0}
     rows = [base | {"x_first_cc": 1.0, "x_first": 1.0, "both_landed": True}] * 12 \
-        + [base | {"x_first_cc": float("nan"), "x_first": float("nan"), "both_landed": False}] * 6
+        + [base | {"x_first_cc": float("nan"), "x_first": float("nan"), "both_landed": False, "landed_y": False}] * 6
     h = study3.evaluate(pd.DataFrame(rows), HYPS[:1])[0]
     assert (h["k"], h["n"], h["incomplete_pairs"]) == (12, 12, 6)
     assert h["p_worst"] > h["p"] and h["verdict"] == "supported" and not h["selection_robust"]
     assert study3.published([h], [])[h["id"]] == "supported (assumes selection)"
+
+
+def test_a_conditional_positive_control_qualifies_every_verdict():
+    """§6: a control supported only under the selection assumption makes every downstream verdict conditional."""
+    def h(target, kind, robust):
+        return {"id": f"{kind}-{target[:8]}", "pair_kind": kind, "groups": [{"identity": target}], "verdict": "supported",
+                "selection_robust": robust, "n": 25, "ci95": [0.7, 1.0]}
+    decided = [h(AGAVE, "c4", False), h(AGAVE, "c5", True), h(FD, "c4", True), h(FD, "c5", True),
+               h(HARM, "c4", True), h(HARM, "c5", True)]
+    state = study3.control_state(decided, CONTROLS)
+    assert state == {"failed": [], "conditional": [AGAVE]}
+    claims = study3.published(decided, CONTROLS)
+    assert claims["c5-" + HARM[:8]] == "supported", "the claim itself is robust"
+    row = {r["identity"]: r for r in study3.identification(decided, claims, _manifest(), state)}[HARM]
+    assert row["verdict"] == "reward ÷ (cost + 1) identified among the registered candidates (assumes selection)"
+    assert (row["reward_cost_identified"], row["reward_cost_identified_assuming_selection"]) == (False, True)
+
+
+def test_an_empty_run_still_emits_every_hypothesis_and_verdict():
+    manifest = _manifest()
+    for pairs in (None, pd.DataFrame(), pd.DataFrame({"run_id": []})):
+        decided = study3.evaluate(pairs, manifest["hypotheses"])
+        assert len(decided) == 6 and {(h["n"], h["p"], h["verdict"]) for h in decided} == {(0, 1.0, "not evaluable")}
+    res = study3.analyse([], manifest, None)
+    assert len(res["hypotheses"]) == 6 and res["funnel"] == {"windows": 0, "evaluable": 0, "exclusions": {}}
+    assert res["positive_controls"] == {"failed": [AGAVE, FD], "conditional": []}
+    assert [r["identity"] for r in res["identification"]] == [AGAVE, FD, HARM]
+    assert all(r["verdict"] == "withdrawn: method check failed" for r in res["identification"] if r["identity"] == HARM)
+    assert all(not r["reward_cost_identified_assuming_selection"] for r in res["identification"])
+    assert res["diagnostics"] == [] and res["funnel_by_target"] == {}
+    assert "not evaluable" in report2.study3_summary(res)
+
+
+def test_diagnostics_separate_confirmatory_from_off_group_windows(tmp_path):
+    _, _, pairs = _decide(tmp_path, "diag", {}, landing=0.9)
+    off = pairs.copy()
+    off["client_id"] = "AgaveBam"
+    rows = study3.diagnostics(pd.concat([pairs, off]), _manifest())
+    assert len(rows) == 2 * 3 * 2 and sum(r["confirmatory_group"] for r in rows) == 3 * 2
+    r = next(r for r in rows if r["confirmatory_group"] and r["pair_kind"] == "c4" and r["target_identity"] == AGAVE)
+    assert set(r["landed"]) == {"Y", "A"} and r["landed"]["Y"][1] == r["evaluable_pairs"] == 30
+    assert r["first_sent_first"][1] == r["both_landed"]
+
+
+def test_every_verdict_row_of_the_preregistration():
+    spec = SPECS[:1]
+    target = _manifest(specs=spec)["core_targets"][0]
+
+    def verdict(c4, c5, claim="reward_cost", ci4=(0.1, 0.9), state=None):
+        decided = [{"id": "H4", "pair_kind": "c4", "groups": [target], "n": 25, "ci95": list(ci4)},
+                   {"id": "H5", "pair_kind": "c5", "groups": [target], "n": 25, "ci95": [0.1, 0.9]}]
+        row = study3.identification(decided, {"H4": c4, "H5": c5}, _manifest(claim, spec), state)[0]
+        return row["verdict"], row["reward_cost_identified"], row["reward_cost_identified_assuming_selection"]
+
+    ident = "reward ÷ (cost + 1) identified among the registered candidates"
+    assert verdict("supported", "supported") == (ident, True, True)
+    assert verdict("supported (assumes selection)", "supported") == (ident + " (assumes selection)", False, True)
+    assert verdict("supported", "supported", state={"failed": [], "conditional": [FD]})[1:] == (False, True)
+    assert verdict("supported", "supported", claim="partial:reward_cost")[0] == (
+        "cost alone rejected and the reward effect shown; the Study 1 / Study 2 claims are partial:reward_cost / "
+        "partial:reward_cost")
+    assert verdict("supported", "not supported")[0] == "cost alone rejected; the equal-cost reward effect is not shown"
+    assert verdict("not supported", "supported")[0] == "the equal-cost reward effect is supported; C4 is inconclusive"
+    assert verdict("not supported", "supported", ci4=(0.0, 0.3))[0] == (
+        "the equal-cost reward effect is supported; C4 is inconclusive. C4's interval lies below 0.5 (descriptive): "
+        "compatible with cost first and the reward only between equal costs")
+    assert verdict("not supported", "not supported")[0] == "the reward term is not shown; cost alone is not rejected"
+    assert verdict("not evaluable", "not evaluable")[0] == "the reward term is not shown; cost alone is not rejected"
+    assert verdict("withdrawn: a positive control …", "supported")[0] == "withdrawn: method check failed"
+
+
+def test_analyse_and_report_end_to_end(tmp_path):
+    params = Params(scenario="reward_cost_greedy", seed=5, landing=0.9, slot_ms=198.0, **PERFECT)
+    run_dir = simulate(DESIGN, TARGETS, tmp_path / "e2e", params, stage=1)
+    res = study3.analyse([run_dir], _manifest(), load_designs([DESIGN]))
+    assert res["positive_controls"] == {"failed": [], "conditional": []}
+    assert {r["identity"]: r["reward_cost_identified_assuming_selection"] for r in res["identification"]} == \
+        {AGAVE: True, FD: True, HARM: True}
+    assert set(res["funnel_by_target"]) == {AGAVE, FD, HARM}
+    assert all(f["windows"] == 30 for f in res["funnel_by_target"].values())
+    text = report2.study3_summary(res)
+    assert "Positive-control gate: passed" in text and "identified among the registered candidates" in text
+    assert "/30 |" in text, "windows evaluable / attempted beside every claim"

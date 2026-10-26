@@ -32,7 +32,7 @@ PROBES = {
     "A'": (1000, 1_000_000, M64),
     "hi": (1000, 3_000_000, K32),
     "lo": (1000, 1_000_000, M64),
-    "Y": (3000, 2_000_000, K32),  # Study 3
+    "Y": (1500, 4_000_000, K32),  # Study 3: costs more than A, pays more per cost unit under any base-fee share
 }
 CONTRASTS = {"C1": ("A", "B"), "C2": ("A'", "B"), "C3": ("A", "A'"), "dominance": ("hi", "lo"),
              "C4": ("Y", "A"), "C5": ("hi", "A")}

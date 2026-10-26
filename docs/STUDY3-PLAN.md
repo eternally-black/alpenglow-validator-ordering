@@ -9,12 +9,17 @@ price and fee tie. The reward numerator is not (REPORT §9, [final-review dispos
 
 | Contrast | Reward ÷ cost | Cost alone |
 |---|---|---|
-| **C4**: Y (L 3,000, 2,000,000 µlamports/CU: cost 4,335, reward 8,500) vs A (cost 2,335, reward 3,500) | Y first | **A first** |
+| **C4**: Y (L 1,500, 4,000,000 µlamports/CU: cost 2,835, reward 8,500) vs A (cost 2,335, reward 3,500) | Y first | **A first** |
 | **C5**: hi (cost 2,335, reward 5,500) vs A (cost 2,335, reward 3,500) | hi first | **tie** |
 
 - C4 decides between the two rules: they predict opposite winners.
+  - Y wins per cost unit whatever share b of the signature fee a client counts as reward, for b < 10·c₀ + 9,000, with
+    c₀ the shared cost overhead. That covers the priority fee alone, Agave's reward and the total fee, under any
+    overhead.
+  - A first draft of Y (L 3,000, 2,000,000) lost C4 under total fee ÷ cost, and was replaced before freezing.
 - C5 checks the reward effect at equal cost.
-- A target's key counts as identified when both are supported and its Study 1 and Study 2 claims are `reward_cost`.
+- A target's key counts as identified, among the registered candidates, when both are supported and the Study 1 and
+  Study 2 claims frozen in the manifest are `reward_cost`.
 
 **Design.** 32 windows per target, one C4 and one C5 pair in each:
 - direct ingress buffered (−150 ms), shared ingress inside the window;
@@ -23,23 +28,26 @@ price and fee tie. The reward numerator is not (REPORT §9, [final-review dispos
 
 **Hypotheses.** H4-t (L_C4 > 0.5) and H5-t (L_C5 > 0.5) for each target: twelve tests, one-sided exact binomial,
 Holm at 0.05, a selection bound, and the Agave and Firedancer positive-control gate. Operating characteristics,
-simulated on the frozen design: [POWER-3.md](POWER-3.md).
+simulated on the frozen design at the measured 198 ms slot: [POWER-3.md](POWER-3.md).
 
 **Budget: still one cap for everything.**
 - A new ledger (`state/ledger-study3.sqlite`) is opened with the compiled 0.05 SOL cap, carrying Studies 1 and 2's
   42,926,000 lamports.
-- Headroom: 7,074,000 lamports. The `study3` budget is 6,500,000, which covers the worst case (5,952,000). Setup (Memo,
-  payer funding, sweep) takes about 135,000.
-- The three studies together cannot pass 0.05 SOL.
+- **Fees:** headroom is 7,074,000 lamports. The `study3` budget is 6,500,000, which covers the worst case (5,952,000).
+  Setup (the Memo, payer funding and the sweep) adds about 135,000 in transaction fees, inside the remaining 574,000.
+- **Funding transfers are not fees.** The SOL moved from the master to the payers and swept back is not spent; only
+  the transfer fees count against the cap.
+- The three studies together cannot pass 0.05 SOL in fees.
 
-**Wallet.** A new master (`DrMFg9Fg…bDxex`) and 24 payers in `keys-study3/` (git-ignored). Funding about 0.04 SOL
+**Wallet.** A new master (`DrMFg9Fg…bDxex`) and 24 payers in `keys-study3/` (git-ignored). Funding of about 0.04 SOL
 covers payer rent and fees; everything left returns to the funder.
 
 **Gate before freezing.**
 - Rust and Python tests;
 - the frozen Study 1 and 2 designs still regenerating byte for byte;
-- a mainnet dry run of the Study 3 design (done 2026-10-26 08:53 UTC, 8 windows, clean);
-- independent reviews of this plan, the pre-registration and the code.
+- a mainnet dry run of the final Study 3 design;
+- independent reviews of this plan, the pre-registration and the code, with dispositions
+  ([STUDY3-prefreeze-dispositions.md](review/STUDY3-prefreeze-dispositions.md)).
 
 **Schedule.** Freeze, Memo and funding on approval. The run takes about 2–3 hours, set by Agave's ≈ 12 windows an
 hour; the cutoff is 2026-11-03T23:59Z. Results then go into REPORT §6 and the answer, before the 2026-11-05

@@ -51,6 +51,7 @@ KEYS = {
     "lamport_fee": priority_fee,
     "reward_cost": agave_priority,
     "cost_only": lambda t: -cost(t),  # cheapest requested cost first (Study 3's alternative)
+    "additive": lambda t: 2500 + priority_fee(t) - cost(t),  # reward - cost: ranks every registered pair as reward / cost does
 }
 
 
@@ -82,6 +83,8 @@ class Params:
     tie: str = "random"
     #: per-target overrides of any field above, e.g. {identity: {"scenario": "fifo"}} (Study 2 mixes clients)
     target_scenarios: dict = field(default_factory=dict)
+    #: in-window slot length: the design-time estimate by default; Study 3 simulates the measured ≈ 198 ms
+    slot_ms: float = SLOT_MS
     extra: dict = field(default_factory=dict)
 
 
@@ -179,6 +182,8 @@ def apply_rule(name, items, p, rng, shared):
         _greedy(items, p, rng)
     elif name == "cost_only_greedy":
         _greedy(items, p, rng, key="cost_only")
+    elif name == "additive_greedy":
+        _greedy(items, p, rng, key="additive")
     elif name == "streaming_pacing":
         _paced(items, p, rng)
     elif name == "cu_price_fifo_tie":
@@ -304,9 +309,9 @@ def simulate_window(plan, target, p, rng, run_id, start_ns):
         o = {"probe_id": i.probe["probe_id"], "signature": i.probe["signature"], "fee": None, "err": None, "cost_units": None,
              "compute_units_consumed": None, "transport_error": None, "slot": None, "index_in_block": None,
              "block_tx_count": None, "leader": None}
-        late = i.sched >= WINDOW_MS
+        late = i.sched >= p.slot_ms * WINDOW_SLOTS
         if i.landed and not i.spill and not late and rng.random() < p.landing:
-            placed.append((i, first + int(max(i.sched, 0.0) // SLOT_MS)))
+            placed.append((i, first + int(max(i.sched, 0.0) // p.slot_ms)))
             o["status"] = "landed_target"
         elif (i.spill or (late and shared)) and i.landed:
             o.update(status="spillover_other_leader", slot=first - 1 if i.spill else first + WINDOW_SLOTS,
