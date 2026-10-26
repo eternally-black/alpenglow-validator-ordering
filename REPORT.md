@@ -5,7 +5,9 @@ hold, and is there a rule at all?
 
 **Answer (post-Alpenglow mainnet, our own probe transactions; two pre-registered studies, 2026-10-24 and
 2026-10-25).** Every validator group we measured orders our probes by **Agave's priority, reward ÷ (cost + 1)**.
-That covers 6 core and 4 extended targets and 8 client types, including BAM nodes and Harmonic block builders. Neither
+That covers 6 core and 4 extended targets and 8 client types, including BAM nodes and Harmonic block builders.
+- Eight groups follow it outright.
+- One extended group carries "(assumes selection)" (`5Cchr1XG`) and one is `partial` (Rakurai, §2). Neither
 CU price nor lamport fee explains the order, and neither does arrival order. **On the second day, a separate
 pre-registered study replicated the result for all six core targets.**
 
@@ -45,6 +47,25 @@ Both studies were pre-registered before their first probe. The hashes are in mai
 
 Each step, its cost and its problems are in [docs/CAMPAIGN-LOG.md](docs/CAMPAIGN-LOG.md).
 
+**Targets as identified at measurement time.** Client and version are what each validator advertised in gossip
+(`target_states.jsonl` in every run), identical in every snapshot: 219 in Study 1, 301 in Study 2. The ingress kind
+is the endpoint we actually reached.
+
+| Validator | Gossip client | Version | Ingress | Study 1 | Study 2 |
+|---|---|---|---|---|---|
+| `7QQGNm3p…` | Agave | 4.3.2 | direct | core | core (K, R) |
+| `HEL1USMZ…` | JitoLabs (Jito-Solana) | 4.3.2 | direct | core | core (K, R) |
+| `EvnRmnMr…` | Firedancer | 26.10.4 | direct | core | core (K, R) |
+| `DRpbCBMx…` | AgaveBam | 4.3.2 | BAM node | core | core (K, R) |
+| `Fd7btgyS…` | HarmonicAgave | 4.3.2 | Harmonic remote TPU | core | core (K, R) |
+| `JUPiTERr…` | HarmonicFiredancer | 26.10.4 | Harmonic remote TPU | core | core (K, R) |
+| `9eGrDohd…` | Firedancer | 26.10.4 | direct | extended | equal-key windows (E) |
+| `9jxgosAf…` | FireBAM | 26.10.4 | BAM node | extended | — |
+| `5Cchr1XG…` | AgaveBam | 4.3.2 | BAM node | extended | — |
+| `ana2y2Yv…` | Rakurai | 4.3.2 | direct | extended | — |
+
+Full identities: [`design/targets.json`](design/targets.json), [`design/targets-study2.json`](design/targets-study2.json).
+
 ## 2. Confirmatory result (PREREGISTRATION §1–§5)
 
 L_C = P(x lands before y), with exact Clopper–Pearson intervals, Bonferroni-adjusted over the 36-effect family.
@@ -74,9 +95,16 @@ Windows are the unit, so n is the number of evaluable windows where both members
   label effects are far from 0.5 while the send-order effects are not.
 - **Send order.** P(first-sent member lands first) lies between 0.40 and 0.63 for every core contrast, and every
   interval contains 0.5. Randomisation p-values over the fixed family of 36 effects, Holm-adjusted: every label effect
-  p = 0.00036, the floor for 100,000 draws; every send-order effect p = 1.0.
+  p = 0.00036, which is the floor of 1/100,001 for 100,000 draws after Holm's factor of 36. Every send-order effect
+  has p = 1.0.
 - **Gates (§9).** Both positive controls, Agave `7QQGNm3p` and Firedancer `EvnRmnMr`, recovered their known rule. No
   buffer or streaming gate fired, and the selection-balance check passed for every contrast (all p ≥ 0.15).
+- **Inclusion (co-primary, PREREGISTRATION §1.3).** Within every group and contrast, the two members landed at the
+  same rate: per-label landing rates 0.80–1.00, exact McNemar p = 1.0 in all 30 group × contrast cells
+  (`inclusion` in `results.json`). Whether a probe landed did not depend on its label, which also supports the
+  selection assumption behind the complete-case estimates.
+- **Mixture diagnostic.** In every group the key-dependent component is reward/cost's, and only reward/cost's
+  (`mixture` in `results.json`).
 - **Stopping (§5).** Five core targets reached ≥ 40 informative pairs per contrast. `DRpbCBMx` used all 80 of its
   plans and stopped at 36, the pre-registered stop on exhausted plans. Its intervals are correspondingly wider, and
   the claim stands.
@@ -102,7 +130,7 @@ lower bound). The send regime explains the gap between the two groups (sensitivi
 | BAM and Harmonic builders (shared ingress: every window streaming) | — | 1.00 / 0.00–0.03 / 1.00 (n=20–43 per group) |
 
 - **Agave family.** When both members of a pair are already pending as the slot starts, the scheduler picks by
-  priority every time. When they arrive 0.05 ms apart during the slot, the order looks unrelated to the label. It is
+  priority every time. When they are sent 0.05 ms apart during the slot, the order looks unrelated to the label. It is
   also unrelated to the send order: the first-sent member wins between 27 % and 100 % of the time per contrast, all with wide intervals. That is
   consistent with Agave's multi-threaded banking stage, where near-simultaneous arrivals are taken by whichever thread
   is free. We cannot see the internal queue, and the streaming samples are small (n = 5–11), so this part is
@@ -161,6 +189,14 @@ from `scripts/exploratory_stage2.py`. 156 windows, 118 of them evaluable.
   That is consistent with the streaming-window result of §3.
 - **Firedancer and the Harmonic builders:** they reorder within a short horizon.
 - **BAM:** our race samples are too small to say.
+
+**Uncontended C2: the same A′ and B probes on separate locks.** These are independent transactions that a
+scheduler may run in parallel, so the probes need not land in priority order.
+- Firedancer, Firedancer + BAM and Agave + BAM put B (the reward/cost-preferred one) first in every pair: 0/40, 0/19,
+  0/36, 0/20 and 0/20 with A′ first.
+- The Agave family and the Harmonic builders do not: A′ first in 13/40 (Agave), 18/40 (Jito-Solana), 5/20 (Rakurai),
+  22/40 (Agave + Harmonic) and 12/42 (Firedancer + Harmonic).
+- Only conflicting transactions are ordered strictly by the key everywhere.
 
 **Equal-key order: two identical probes Δt apart.**
 - Agave and Rakurai: the first-sent probe landed first in all 20 pairs (FIFO).
@@ -276,7 +312,7 @@ The confirmatory test is in the 2 ms cell:
   - including transition-ambiguous windows;
   - achieved gap within 0.5 ms;
   - same-slot pairs;
-  - buffering evidence.
+  - buffering evidence ("equal key both sent before first shred" in the summary table).
 
 ### 6.3 How far each client reorders (exploratory)
 
@@ -300,12 +336,17 @@ counted in either stream order.
     transaction arriving a few milliseconds later meets one that is already being processed.
 - **Firedancer `EvnRmnMr` held priority order against every head start up to 50 ms** (12 of 13 at 50 ms). In Study 1
   the Firedancer direct group reordered within about 5–25 ms. That group was pooled with `9eGrDohd` and had 3–7 races
-  per cell. So the horizon is a property of a validator's setup on a given day, not a constant of the client. Pack's
-  scheduling intervals are configurable; we cannot see which setting changed.
+  per cell. `EvnRmnMr` advertised the same version, 26.10.4, on both days. So the horizon is a property of a
+  validator's setup on a given day, not a constant of the client or its version. Pack's scheduling intervals are
+  configurable; we cannot see which setting changed.
 - **The builders** reorder over 5–10 ms (Firedancer + Harmonic), 10–25 ms (Agave + Harmonic) and 25–50 ms
   (Agave + BAM). Study 1 had too few races to measure BAM at all.
-- **Equal keys in the Agave family** are not the plain FIFO that Study 1's 20 of 20 pairs suggested. First-sent first
-  happened in 23/35 pairs for Agave and 10/29 for Jito-Solana. It is descriptive, and outside any hypothesis.
+- **Equal keys in the Agave family are not plain FIFO.** Both studies sent these pairs buffered (−150 ms,
+  direct ingress), 10 ms apart:
+  - Study 1: first-sent first in 7/7 pairs for Agave, 5/7 for Jito-Solana.
+  - Study 2: 23/35 for Agave, 10/29 for Jito-Solana.
+
+  It is descriptive, and outside any hypothesis.
 
 ### 6.4 What Study 2 changes in the answer
 
@@ -330,9 +371,18 @@ counted in either stream order.
   (`scripts/foreign_transfers.py`).
 - **Pre-freeze simulation design.** The simulation in POWER.md was first run on a draft design from an older build of
   the generator. It was rerun on the frozen design: same picture within 3 points. The frozen pre-registration quotes
-  the draft's illustrative censored-coding figures (50 % / 51 %); the frozen-design figures are 47 % / 48 %.
-- **Line endings.** Two files to be hashed had CRLF endings from Windows writes. They were normalised to LF before
-  hashing, and `scripts/freeze.py` now refuses CR bytes.
+  the draft's illustrative censored-coding figures. Censored coding recovered reward/cost in 50 % of campaigns at
+  90 % landing (complete case: 99 %) and in 0 % at 50 % landing (complete case: 51 %). On the frozen design the
+  figures are 47 % vs 99 % and 0 % vs 48 %.
+- **Slot cadence assumed in the design.** The design took ≈ 130 ms per in-window slot (≈ 560 ms at the hand-over)
+  from an early dry run. Every campaign run then measured ≈ 198 ms per in-window slot and ≈ 268 ms at the hand-over
+  (median `cadence_at_prep`). The consequences:
+  - The planned offsets only become more conservative. A race ending at +55 ms is further inside a 198 ms slot.
+  - The shared-ingress burst offsets avoided ±15 ms around multiples of 130 ms instead of the real slot boundaries.
+  - The estimands are window-wide, so a pair that crosses a slot boundary is analysed as planned (Study 2 has a
+    same-slot sensitivity). POWER.md simulated 130 ms slots.
+- **Line endings.** `design/targets.json` had CRLF endings from a Python text-mode write. It was normalised to LF
+  before freezing, with its content unchanged. `scripts/freeze.py` now writes LF and refuses CR bytes in hashed files.
 - **Study 2: the same weak spots, smaller.**
   - The far BAM node `DRpbCBMx` again lost the most probes before sending: 39 pairs from all 56 plans.
   - 288 of 1,896 Stage-1 probes and 244 of 1,518 Stage-2 probes were never sent (no fee). Every probe that was sent
@@ -354,6 +404,15 @@ counted in either stream order.
 
 - **Analysis plan:** none. Estimands, decision rules, family, gates and stopping were applied as frozen.
 - **Execution:** none. The frozen design (hash checked at run time) and the frozen parameters were used.
+- **Exploratory items not computed (reporting deviation).** PREREGISTRATION §7 listed three exploratory analyses
+  that we did not run:
+  - block-structure statistics: a Chorus-style footrule, descending-run counts, and each probe's block-index
+    percentile against its priority percentile;
+  - the formal horizon-model fits (step, pending queue, linear batch, constant);
+  - stratification by block fullness.
+
+  The race tables and horizon brackets (§5, §6.3) are reported instead. The archived block excerpts in `data/raw`
+  hold everything these analyses need.
 - **Reporting fix after the freeze, no effect on any estimate:** the funnel labels a window that was skipped before
   any send (3 in Stage 1) only by its skip reason. Before the fix it was also labelled `design_mismatch` and so on.
 - **Study 1 results file after Study 2:** `data/derived/results.json` now lists the two Study 2 runs under
@@ -428,8 +487,8 @@ to the lamport, once the two recorded spam deposits are counted.
 | Closing: sweep of the 24 payers and return of the remainder to the funder | 125,000 | 0 | — |
 | **Total** | **24,717,500 (0.0247 SOL)** | **886,500** | |
 
-The cap was 0.05 SOL, compiled into the binary and enforced by the ledger. The highest charge it ever held was
-0.0255 SOL. The wallet received 0.1 SOL, plus 13,023 lamports of spam deposits, and returned 75,295,523 lamports to its funder
+The cap was 0.05 SOL, compiled into the binary and enforced by the ledger. The highest charge it ever held, after closing, was
+0.0256 SOL (24,712,500 landed in its ledger plus 886,500 for expired probes). The wallet received 0.1 SOL, plus 13,023 lamports of spam deposits, and returned 75,295,523 lamports to its funder
 ([`5j8PEKpj…LA3D`](https://explorer.solana.com/tx/5j8PEKpj5djzEbXGwcqxqdut6HTkMG9h71TV16EoRKfXVfKKq3L1iSGM7AVJv79BjDjvUp5pCVcPUp62d4mJLA3D)). The difference, 24,717,500 lamports, is the whole cost of the measurement.
 
 **Study 2.** From its ledger (`state/ledger-study2.sqlite`), opened with the compiled cap and Study 1's 24,717,500
@@ -440,7 +499,8 @@ lamports as a carry-over. The owned accounts' on-chain balances agree to the lam
 | Setup: Memo, payer funding (2), top-up (2), sweep (24) | 145,000 | 0 | — |
 | Stage 1, replication (316 windows) | 9,376,500 | 539,500 | 288 |
 | Stage 2, races and equal keys (234 windows) | 8,682,000 | 0 | 244 |
-| **Total** | **18,203,500 (0.0182 SOL)** | **539,500** | |
+| Closing: return of the remainder to the funder | 5,000 | 0 | — |
+| **Total** | **18,208,500 (0.0182 SOL)** | **539,500** | |
 
 The wallet received 0.06 SOL and held 41,796,500 lamports after the sweep, exactly 60,000,000 − 18,203,500. It returned
 41,791,500 to its funder ([`3eZAJYz5…SHjHK`](https://explorer.solana.com/tx/3eZAJYz5rNbucd1Yu246uENE2gpseEDzbteA4jVswvuWt7nxXrS7nCsgSHnvTMLb1EDKYNEQhXqHdxWdS2rSHjHK), fee 5,000). The difference,

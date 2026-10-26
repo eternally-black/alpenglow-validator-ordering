@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build docs/explorer/data.json for the results explorer (docs/explorer/index.html).
+"""Build the probe explorer: docs/explorer/data.json and docs/explorer/index.html (template.html with the data embedded).
 
     python scripts/build_explorer.py
 
@@ -83,8 +83,11 @@ def main() -> None:
     path = Path("docs/explorer/data.json")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(json.dumps(out, separators=(",", ":"), default=str).encode())
-    # page.html is the page body as published (title, styles and markup); index.html wraps it for static hosting.
-    page = (path.parent / "page.html").read_text(encoding="utf-8")
+    # template.html is the page (title, styles, markup, script); index.html wraps it in a document and embeds the
+    # ledger before the page script, so it opens from a plain file as well as from static hosting.
+    page = (path.parent / "template.html").read_text(encoding="utf-8")
+    ledger = json.dumps(out, separators=(",", ":"), default=str).replace("</", "<\\/")
+    page = page.replace("<script>", f'<script id="ledger" type="application/json">{ledger}</script>\n<script>', 1)
     head, body = page.split("<header>", 1)
     (path.parent / "index.html").write_bytes(
         ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'

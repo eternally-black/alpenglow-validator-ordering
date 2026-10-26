@@ -1,20 +1,21 @@
 # Inside the Block — how Solana validators order transactions (post-Alpenglow mainnet)
 
-**A pre-registered measurement on Solana mainnet.** We send pairs of our own probe transactions into the leader windows of ≥ 6 validators across ≥ 5 client/fork types (Agave, Jito-Solana, Jito BAM, Harmonic, Firedancer …). The pairs are built so that the candidate ordering rules *disagree* about which member should land first. Every claim can be re-checked on chain with one command.
+**A pre-registered measurement on Solana mainnet.** We send pairs of our own probe transactions into the leader windows of 10 validators. They run four scheduler code bases (Agave 4.3.2, Jito-Solana 4.3.2, Rakurai 4.3.2, Firedancer 26.10.4), reached directly or through BAM and Harmonic block builders: 8 gossip client types in all. The pairs are built so that the candidate ordering rules *disagree* about which member should land first. Every claim can be re-checked on chain with one command.
 
 > Bounty: [Superteam Ukraine — Inside the Block](https://superteam.fun/earn/listing/inside-the-block-how-solana-validators-order-transactions) · verbatim brief in [docs/BOUNTY.md](docs/BOUNTY.md)
 > All measurements are **after** the Alpenglow upgrade: feature gate `A1pengvu…` active at slot 459,648,000; first Alpenglow block 459,653,008. This is enforced in code.
 
 | | |
 |---|---|
-| **Result** | After Alpenglow, all 10 validator groups (8 client types, including BAM nodes and Harmonic builders) ordered our probes by Agave's **reward ÷ (cost + 1)** priority. Neither CU price, nor lamport fee, nor arrival order explains it. **A second pre-registered study on the next day replicated it for all 6 core targets.** Firedancer, BAM and Harmonic follow it in almost every window. The Agave family follows it only for transactions pending at slot start or arriving within about 2 ms of each other. Firedancer and the builders reorder over 5 to more than 50 ms. Full report with intervals, measurement times and what went wrong: [REPORT.md](REPORT.md) |
-| **Reproduce (offline, no keys)** | `docker compose up --build` |
+| **Result** | • **The rule:** all 10 validator groups order our probes by Agave's **reward ÷ (cost + 1)** priority (8 outright, one "assumes selection", one `partial`). Not CU price, not lamport fee, not arrival order.<br>• **Replicated:** a second pre-registered study on the next day gave the same claim for all 6 core targets.<br>• **How strictly:** Firedancer, BAM and Harmonic hold it in almost every window and reorder over 5 to more than 50 ms of arrival. The Agave family holds it for transactions pending at slot start or sent together, but a 2 ms head start already wins 80 % of races.<br>Full report with intervals, measurement times and what went wrong: [REPORT.md](REPORT.md) |
+| **Brief compliance** | Mainnet only, all after Alpenglow · 10 validators, 8 gossip client types, versions 4.3.2 and 26.10.4 ([table](#validators-measured)) · our own transactions as primary evidence · fee cap compiled into the binary and enforced by a ledger (0.0429 of 0.05 SOL spent) · dry run by default · one-command Docker reproduction · raw data with every signature and slot ([requirement → evidence](#requirement--evidence)) |
+| **Reproduce (offline, no keys)** | `docker compose up --build`: a few minutes including the image build; the raw data are 181 MB of the clone |
 | **Re-check claims on chain** | `docker compose --profile verify up` |
 | **Pre-registration** | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md), the normative analysis plan, frozen on 2026-10-24 before the campaign. Its SHA-256 and those of [the design](design/design.jsonl) and [the manifest](design/campaign.json) are in mainnet Memo [`5vRM47a8…QcyG`](https://explorer.solana.com/tx/5vRM47a8LfMLm1rQyQKdap292hmXk68kbad6Vf12nCxuzaZVGJSuL4g2DyLGNyZjsphPQLtVAqFkT3VxmRmLQcyg) (slot 460,779,153, signed by the measurement wallet). Check: `sha256sum docs/PREREGISTRATION.md design/design.jsonl design/campaign.json` |
 | **Does the method work?** | [docs/POWER.md](docs/POWER.md): the analysis is run on simulated schedulers with known rules, including look-alikes built to fool it |
 | **Study 2 (2026-10-25)** | A pre-registered replication plus head-start races on a fine grid ([plan](docs/STUDY2-PLAN.md), [pre-registration 2](docs/PREREGISTRATION-2.md), [operating characteristics](docs/POWER-2.md), [results](REPORT.md#6-study-2-a-second-day-and-how-far-each-client-reorders-pre-registered)). Replication 6/6; all six hypotheses supported, no gate fired. Hashes, including the analysis code's git tree, in mainnet Memo [`2T6ha9FD…D5ww`](https://explorer.solana.com/tx/2T6ha9FDfjp524NLBXFB2WRHvEaYAoQLKFcd7Pmwqmf8FzqHi3Pxf8TcacHm7ixiN8UoyQizReCSSmh5LAR7D5ww) (slot 461,151,605) |
-| **Probe explorer** | [docs/explorer](docs/explorer/index.html): every window and probe of both studies, linked to Solana Explorer |
-| **Cost** | Both studies together: 0.0429 SOL on chain, under the 0.05 SOL cap compiled into the binary and enforced over both studies by one ledger |
+| **Probe explorer** | [docs/explorer/index.html](docs/explorer/index.html): every window and probe of both studies, each linked to Solana Explorer. The data are embedded, so the file opens straight from a clone |
+| **Cost** | Both studies together: 0.0429 SOL on chain, under the 0.05 SOL cap compiled into the binary. The Study 2 ledger carries Study 1's cost, so the cap held over both |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="figures/identification-dark.svg">
@@ -62,6 +63,24 @@ Only **L, p and D** vary between probes. Agave's priority is `reward·10⁶/(cos
 - **Send order is randomised and balanced inside every pair, independently of the labels.** An arrival-order (FIFO) rule therefore shows up only when the outcomes are coded by send order. A random rule shows up in neither coding.
 - **Conflict windows.** In half the windows the economic key and the arrival order disagree. The outcome in those windows measures *how strictly* a rule overrides arrival.
 
+### Validators measured
+
+Client and version as each validator advertised them in gossip at measurement time, identical in every snapshot
+(`target_states.jsonl` in each run). Ingress is the endpoint we actually reached.
+
+| Validator | Gossip client | Version | Ingress | Study 1 | Study 2 |
+|---|---|---|---|---|---|
+| `7QQGNm3p…` | Agave | 4.3.2 | direct | core | core (K, R) |
+| `HEL1USMZ…` | JitoLabs (Jito-Solana) | 4.3.2 | direct | core | core (K, R) |
+| `EvnRmnMr…` | Firedancer | 26.10.4 | direct | core | core (K, R) |
+| `DRpbCBMx…` | AgaveBam | 4.3.2 | BAM node | core | core (K, R) |
+| `Fd7btgyS…` | HarmonicAgave | 4.3.2 | Harmonic remote TPU | core | core (K, R) |
+| `JUPiTERr…` | HarmonicFiredancer | 26.10.4 | Harmonic remote TPU | core | core (K, R) |
+| `9eGrDohd…` | Firedancer | 26.10.4 | direct | extended | equal-key windows (E) |
+| `9jxgosAf…` | FireBAM | 26.10.4 | BAM node | extended | — |
+| `5Cchr1XG…` | AgaveBam | 4.3.2 | BAM node | extended | — |
+| `ana2y2Yv…` | Rakurai | 4.3.2 | direct | extended | — |
+
 ## 2. Why this design
 
 Each decision links to the evidence behind it.
@@ -72,7 +91,7 @@ Each decision links to the evidence behind it.
 | **Leader type = clientId × ingress kind**, per window | ≈ 69 % of stake advertises a TPU that is a **shared BAM node or Harmonic Remote TPU**; there an external builder, not the validator, orders. `clientId` flips when BAM/Harmonic connect or disconnect | [research 02](docs/research/02-transaction-path-and-tooling.md), [research 03](docs/research/03-client-schedulers.md) |
 | **Buffered regime for direct ingress** (probes sent ≈ 150 ms before the window, in 3 of every 4 windows; the 4th streams, as a built-in check of the buffer assumption) | Agave holds packets that arrive ≤ 20 slots before its window, and Firedancer keeps pending txs. So every member of a pair is in the queue when the leader starts, and the scheduler's key is isolated from arrival | agave v4.3.2 `decision_maker.rs`; firedancer `default.toml` (research 02 errata) |
 | **Streaming regime for shared ingress** | Pre-window sends to a shared builder land with whichever leader is current (spill-over). They are measured separately as a spill-over map | [PLAN §2.4](docs/PLAN.md) |
-| **Event-anchored send times** | After Alpenglow a slot inside a leader window is observed every ≈ 130 ms, but the hand-over between leaders takes ≈ 560 ms (≈ 235 ms per slot, not 200). We send relative to *observed* first shreds, not an extrapolated clock | dry-run data, [`timing.rs`](crates/itb/src/timing.rs) |
+| **Event-anchored send times** | Slot times after Alpenglow are not the nominal 400 ms, nor a steady 200 ms. In all four campaign runs the median was ≈ 198 ms per slot inside a leader window and ≈ 268 ms across the hand-over between leaders (the design's early dry-run estimate, 130 / 560 ms, was off: REPORT §7). So we send relative to *observed* first shreds, not an extrapolated clock | `cadence_at_prep` in every run's `windows.jsonl`, [`timing.rs`](crates/itb/src/timing.rs) |
 | **Window = statistical unit**; exact binomial intervals; Bonferroni over 36 effects; randomisation tests that follow the real assignment | Pairs inside one window are not independent | [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md) §4 |
 | **Positive controls first** (vanilla Agave, Firedancer) | Their rule is public. If we cannot recover it, nothing else in the report should be believed | PREREGISTRATION §9 |
 | **Stopping by landed pairs, not by results** | Probes that do not land cost nothing. Low-landing ingress gets more windows, without a peek at the ordering | PREREGISTRATION §5 |
@@ -117,6 +136,23 @@ For each landed probe, the verifier checks that:
 
 A completeness check runs over the archived window blocks: no probe may sit in a block of its window unless its outcome claims exactly that landing. This catches an RPC that answered "not found" for a transaction that was included. The verifier separates **chain-verifiable** facts from **locally recorded** ones (send timestamps). Raw data layout: [docs/DATA.md](docs/DATA.md).
 
+### Requirement → evidence
+
+| Brief requirement (docs/BOUNTY.md) | Where it is met |
+|---|---|
+| Mainnet only | Every live run checks the genesis hash; each study's manifest freezes it ([`design/campaign.json`](design/campaign.json), [`design/campaign-study2.json`](design/campaign-study2.json)). Non-mainnet needs `--allow-non-mainnet`, used by the localnet tests only |
+| ≥ 6 validators across ≥ 3 client types, identifiable by version string | [Validators measured](#validators-measured): 10 validators, 8 gossip client types, versions 4.3.2 and 26.10.4 as advertised in gossip |
+| The whole measurement within ≈ 0.05 SOL, enforced in code | `COMPILED_MAX_SPEND_LAMPORTS` in [`auth.rs`](crates/itb/src/auth.rs); every fee reserved before sending in [`ledger.rs`](crates/itb/src/ledger.rs); 0.0429 SOL spent for both studies ([REPORT §11](REPORT.md)) |
+| Dry run by default, live only behind a flag and a cap | `LiveAuthorization` in [`auth.rs`](crates/itb/src/auth.rs); `docker compose --profile dryrun up` |
+| Our own transactions as the primary evidence | Every estimand is computed on our probes ([PREREGISTRATION §1](docs/PREREGISTRATION.md), [PREREGISTRATION-2 §2](docs/PREREGISTRATION-2.md)); other transactions appear only as block context |
+| Pre- and post-Alpenglow data never mixed | Gate in [`alpenglow.rs`](crates/itb/src/alpenglow.rs); every slot ≥ 459,653,008; eligibility (d) rejects earlier slots ([`outcomes.py`](analysis/itb_analysis/outcomes.py)) |
+| Docker Compose, one command | `docker compose up --build`: offline, `network_mode: none`, recomputes both studies and every figure |
+| Raw data with signatures and slots | [`data/raw/`](data/raw) (format: [docs/DATA.md](docs/DATA.md)); [probe explorer](docs/explorer/index.html) |
+| README: why this design, how each consideration is handled, what is not separated | [§2](#2-why-this-design), [§3](#3-how-the-design-handles-each-item-in-what-you-will-have-to-account-for), [What this design does NOT separate](#what-this-design-does-not-separate-also-in-reportmd) |
+| REPORT: the date of every measurement and what went wrong | [REPORT.md](REPORT.md) §1 (timeline) and §7 (what went wrong) |
+| Keys only through a volume or env | [§5](#5-engineering); `.gitignore` covers `keys/` and `keys-*/`; gitleaks in CI |
+| Jito bundles and tips out of scope | Untipped single transactions, no bundles ([REPORT §9](REPORT.md)) |
+
 ## 5. Engineering
 
 - **Dry-run by default, type-enforced.** Transaction bytes can only be written with a `LiveAuthorization`. The CLI builds one only after it has checked `--live`, `--max-spend-sol`, the keypair and the Alpenglow gate ([`auth.rs`](crates/itb/src/auth.rs)). A dry run still uses the real schedule, gossip and QUIC handshakes.
@@ -150,6 +186,7 @@ docker/              Dockerfiles; docker/LOCALNET.md
 
 ## 7. Process
 
+- Study 2's pre-registration was reviewed before its freeze by GPT (gpt-6.1-sol) and DeepSeek (deepseek-v4-flash): five blocking problems, all fixed with tests ([dispositions](docs/review/STUDY2-prefreeze-dispositions.md)). The finished submission had a last review by both, plus Claude Fable reading it as a judge ([FINAL-dispositions.md](docs/review/FINAL-dispositions.md)).
 - The plan was reviewed adversarially by three independent models before any code: GPT-6 Astra, Claude Fable and DeepSeek-V4.1-Flash. Their reviews and every disposition are in [docs/review/](docs/review/) and [PLAN §12](docs/PLAN.md).
 - The code was reviewed at the first gate by GPT-6 Astra ([CODE-gate1-gpt.md](docs/review/CODE-gate1-gpt.md), 30 findings). It was then re-reviewed adversarially after the fixes ([CODE-gate1b-gpt.md](docs/review/CODE-gate1b-gpt.md): 10 closed, 19 partial, 1 open, 14 new). Every gate-1b item and how it was handled: [docs/review/CODE-gate1b-dispositions.md](docs/review/CODE-gate1b-dispositions.md).
 

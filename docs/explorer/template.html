@@ -283,7 +283,10 @@ $("search").onsubmit = (e) => {
   $("lede").innerHTML = `No probe of either study has a signature starting with <code>${esc(q.slice(0, 20))}</code>. Paste the full signature or its first characters.`;
 };
 
-fetch("data.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((d) => {
+// The built index.html embeds the ledger, so the page also opens from a plain file; otherwise fetch data.json.
+const embedded = document.getElementById("ledger");
+(embedded ? Promise.resolve(JSON.parse(embedded.textContent))
+          : fetch("data.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })).then((d) => {
   data = d; renderFoot(); openHash(); render();
   window.addEventListener("hashchange", () => { openHash(); render(); });
 }).catch(() => { $("lede").textContent = "The probe ledger (data.json) could not be loaded. It is built by scripts/build_explorer.py next to this page."; });
